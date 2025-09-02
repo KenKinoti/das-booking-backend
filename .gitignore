@@ -53,4 +53,4 @@ uploads/*
 !uploads/.gitkeep
 
 # Air (hot reload) temporary files
-tmp/
+tmp/NUL

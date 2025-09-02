@@ -3,6 +3,7 @@ package main
 import (
     "encoding/json"
     "fmt"
+    "io"
     "log"
     "net/http"
     "os"
@@ -16,15 +17,20 @@ import (
 )
 
 type Booking struct {
-    ID         uint      `json:"id" gorm:"primaryKey"`
-    StartTime  time.Time `json:"start_time"`
-    EndTime    time.Time `json:"end_time"`
-    Status     string    `json:"status"`
-    TotalPrice float64   `json:"total_price"`
-    CustomerID uint      `json:"customer_id"`
-    Customer   Customer  `json:"customer" gorm:"foreignKey:CustomerID"`
-    CreatedAt  time.Time `json:"created_at"`
-    UpdatedAt  time.Time `json:"updated_at"`
+    ID          uint      `json:"id" gorm:"primaryKey"`
+    ServiceID   uint      `json:"service_id"`
+    StaffID     uint      `json:"staff_id"`
+    StartTime   time.Time `json:"start_time"`
+    EndTime     time.Time `json:"end_time"`
+    Duration    int       `json:"duration"`
+    Status      string    `json:"status"`
+    TotalPrice  float64   `json:"total_price"`
+    Notes       string    `json:"notes"`
+    VehicleInfo string    `json:"vehicle_info"`
+    CustomerID  uint      `json:"customer_id"`
+    Customer    Customer  `json:"customer" gorm:"foreignKey:CustomerID"`
+    CreatedAt   time.Time `json:"created_at"`
+    UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type Customer struct {
@@ -47,10 +53,11 @@ type Organization struct {
 }
 
 type Service struct {
-    ID       uint    `json:"id" gorm:"primaryKey"`
-    Name     string  `json:"name"`
-    Duration int     `json:"duration"`
-    Price    float64 `json:"price"`
+    ID        uint      `json:"id" gorm:"primaryKey"`
+    Name      string    `json:"name"`
+    Category  string    `json:"category"`
+    Duration  int       `json:"duration"`
+    Price     float64   `json:"price"`
     CreatedAt time.Time `json:"created_at"`
     UpdatedAt time.Time `json:"updated_at"`
 }
@@ -200,7 +207,7 @@ func main() {
         if r.Method == "GET" {
             // Get pagination parameters
             page := 1
-            pageSize := 20
+            pageSize := 10
             
             if pageStr := r.URL.Query().Get("page"); pageStr != "" {
                 if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
@@ -226,7 +233,7 @@ func main() {
             
             // Get paginated bookings
             var bookings []Booking
-            if err := db.Preload("Customer").Order("created_at DESC").Limit(pageSize).Offset(offset).Find(&bookings).Error; err != nil {
+            if err := db.Preload("Customer").Order("start_time ASC").Limit(pageSize).Offset(offset).Find(&bookings).Error; err != nil {
                 http.Error(w, err.Error(), http.StatusInternalServerError)
                 return
             }
@@ -246,37 +253,107 @@ func main() {
             json.NewEncoder(w).Encode(response)
         } else if r.Method == "POST" {
             // Create new booking with support for new customer creation
-            var requestData struct {
-                ServiceID   uint      `json:"service_id"`
-                StaffID     uint      `json:"staff_id"`
-                CustomerID  interface{} `json:"customer_id"`
-                StartTime   time.Time `json:"start_time"`
-                Duration    int       `json:"duration"`
-                Price       float64   `json:"price"`
-                Notes       string    `json:"notes"`
-                VehicleInfo string    `json:"vehicle_info"`
-                Status      string    `json:"status"`
-                NewCustomer *Customer `json:"new_customer,omitempty"`
-            }
+            body, _ := io.ReadAll(r.Body)
             
-            if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
+            // Parse JSON into map first to handle time format
+            var requestMap map[string]interface{}
+            if err := json.Unmarshal(body, &requestMap); err != nil {
                 http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
                 return
             }
             
-            // Create the booking object
-            booking := Booking{
-                ServiceID:   requestData.ServiceID,
-                StaffID:     requestData.StaffID,
-                StartTime:   requestData.StartTime,
-                Duration:    requestData.Duration,
-                TotalPrice:  requestData.Price,
-                Notes:       requestData.Notes,
-                VehicleInfo: requestData.VehicleInfo,
-                Status:      requestData.Status,
-                CreatedAt:   time.Now(),
-                UpdatedAt:   time.Now(),
+            // Handle new customer creation if present
+            var newCustomer *Customer
+            if newCustomerData, exists := requestMap["new_customer"]; exists && newCustomerData != nil {
+                newCustomerMap := newCustomerData.(map[string]interface{})
+                newCustomer = &Customer{
+                    FirstName: newCustomerMap["first_name"].(string),
+                    LastName:  newCustomerMap["last_name"].(string),
+                    Phone:     newCustomerMap["phone"].(string),
+                    Email:     newCustomerMap["email"].(string),
+                    CreatedAt: time.Now(),
+                    UpdatedAt: time.Now(),
+                }
             }
+            
+            // Parse start_time manually with fallback formats
+            var startTime time.Time
+            if startTimeStr, ok := requestMap["start_time"].(string); ok {
+                var err error
+                // Try RFC3339 format first
+                startTime, err = time.Parse(time.RFC3339, startTimeStr)
+                if err != nil {
+                    // Try without timezone (assume local)
+                    startTime, err = time.Parse("2006-01-02T15:04:05", startTimeStr)
+                    if err != nil {
+                        http.Error(w, "Invalid start_time format: "+err.Error(), http.StatusBadRequest)
+                        return
+                    }
+                }
+            }
+            
+            // Create booking data structure
+            var requestData struct {
+                ServiceID   uint    
+                StaffID     uint    
+                StartTime   time.Time
+                Duration    int     
+                Status      string  
+                TotalPrice  float64 
+                Notes       string  
+                VehicleInfo string  
+                CustomerID  uint    
+                NewCustomer *Customer
+            }
+            
+            // Populate from parsed map with flexible type handling
+            // Handle service_id (can be string or float64)
+            if serviceID, exists := requestMap["service_id"]; exists {
+                switch v := serviceID.(type) {
+                case string:
+                    if id, err := strconv.Atoi(v); err == nil {
+                        requestData.ServiceID = uint(id)
+                    }
+                case float64:
+                    requestData.ServiceID = uint(v)
+                }
+            }
+            
+            // Handle staff_id (can be string or float64)
+            if staffID, exists := requestMap["staff_id"]; exists {
+                switch v := staffID.(type) {
+                case string:
+                    if id, err := strconv.Atoi(v); err == nil {
+                        requestData.StaffID = uint(id)
+                    }
+                case float64:
+                    requestData.StaffID = uint(v)
+                }
+            }
+            
+            requestData.StartTime = startTime
+            requestData.Duration = int(requestMap["duration"].(float64))
+            requestData.Status = requestMap["status"].(string)
+            requestData.TotalPrice = requestMap["total_price"].(float64)
+            requestData.Notes = requestMap["notes"].(string)
+            requestData.VehicleInfo = requestMap["vehicle_info"].(string)
+            
+            // Handle customer_id which might be string for new customers or number for existing
+            if customerID, exists := requestMap["customer_id"]; exists && customerID != nil {
+                switch v := customerID.(type) {
+                case string:
+                    // For new customers, this will be like "new_1234567890"
+                    // We'll handle this in the new customer creation logic
+                    if !strings.HasPrefix(v, "new_") {
+                        if id, err := strconv.Atoi(v); err == nil {
+                            requestData.CustomerID = uint(id)
+                        }
+                    }
+                case float64:
+                    requestData.CustomerID = uint(v)
+                }
+            }
+            requestData.NewCustomer = newCustomer
             
             // If new customer data is provided, create the customer first
             if requestData.NewCustomer != nil {
@@ -290,21 +367,28 @@ func main() {
                 }
                 
                 // Update booking with the new customer ID
-                booking.CustomerID = newCustomer.ID
+                requestData.CustomerID = newCustomer.ID
                 log.Printf("Created new customer with ID: %d", newCustomer.ID)
-            } else {
-                // Use existing customer ID
-                switch v := requestData.CustomerID.(type) {
-                case float64:
-                    booking.CustomerID = uint(v)
-                case string:
-                    // Parse string ID if needed
-                    if id, err := strconv.ParseUint(v, 10, 32); err == nil {
-                        booking.CustomerID = uint(id)
-                    }
-                default:
-                    booking.CustomerID = 0
-                }
+            }
+            
+            // Create the booking from embedded struct fields
+            booking := Booking{
+                ServiceID:   requestData.ServiceID,
+                StaffID:     requestData.StaffID,
+                StartTime:   requestData.StartTime,
+                Duration:    requestData.Duration,
+                Status:      requestData.Status,
+                TotalPrice:  requestData.TotalPrice,
+                Notes:       requestData.Notes,
+                VehicleInfo: requestData.VehicleInfo,
+                CustomerID:  requestData.CustomerID,
+                CreatedAt:   time.Now(),
+                UpdatedAt:   time.Now(),
+            }
+            
+            // Calculate end time if not provided
+            if booking.EndTime.IsZero() && booking.Duration > 0 {
+                booking.EndTime = booking.StartTime.Add(time.Duration(booking.Duration) * time.Minute)
             }
             
             // Create booking in database
@@ -351,11 +435,44 @@ func main() {
         
         if r.Method == "PUT" {
             // Update existing booking
-            var updatedBooking Booking
-            if err := json.NewDecoder(r.Body).Decode(&updatedBooking); err != nil {
+            body, _ := io.ReadAll(r.Body)
+            
+            // Parse JSON into map first to handle time format
+            var requestData map[string]interface{}
+            if err := json.Unmarshal(body, &requestData); err != nil {
                 http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
                 return
             }
+            
+            // Convert to Booking struct manually
+            updatedBooking := Booking{
+                ServiceID:   uint(requestData["service_id"].(float64)),
+                StaffID:     uint(requestData["staff_id"].(float64)),
+                CustomerID:  uint(requestData["customer_id"].(float64)),
+                Duration:    int(requestData["duration"].(float64)),
+                TotalPrice:  requestData["total_price"].(float64),
+                Notes:       requestData["notes"].(string),
+                VehicleInfo: requestData["vehicle_info"].(string),
+                Status:      requestData["status"].(string),
+            }
+            
+            // Parse start_time manually with fallback formats
+            if startTimeStr, ok := requestData["start_time"].(string); ok {
+                var err error
+                // Try RFC3339 format first
+                updatedBooking.StartTime, err = time.Parse(time.RFC3339, startTimeStr)
+                if err != nil {
+                    // Try without timezone (assume local)
+                    updatedBooking.StartTime, err = time.Parse("2006-01-02T15:04:05", startTimeStr)
+                    if err != nil {
+                        http.Error(w, "Invalid start_time format: "+err.Error(), http.StatusBadRequest)
+                        return
+                    }
+                }
+            }
+            
+            // Calculate end time
+            updatedBooking.EndTime = updatedBooking.StartTime.Add(time.Duration(updatedBooking.Duration) * time.Minute)
             
             // Ensure the ID matches
             updatedBooking.ID = uint(bookingID)
@@ -381,15 +498,15 @@ func main() {
             }
             json.NewEncoder(w).Encode(response)
         } else if r.Method == "DELETE" {
-            // Delete booking
-            if err := db.Delete(&Booking{}, bookingID).Error; err != nil {
-                http.Error(w, "Failed to delete booking: "+err.Error(), http.StatusInternalServerError)
+            // Cancel booking (set status to cancelled instead of deleting)
+            if err := db.Model(&Booking{}).Where("id = ?", bookingID).Update("status", "cancelled").Error; err != nil {
+                http.Error(w, "Failed to cancel booking: "+err.Error(), http.StatusInternalServerError)
                 return
             }
             
             response := map[string]interface{}{
                 "success": true,
-                "message": "Booking deleted successfully",
+                "message": "Booking cancelled successfully",
             }
             json.NewEncoder(w).Encode(response)
         } else if r.Method == "GET" {
@@ -537,11 +654,11 @@ func seedDatabase() {
 
     // Seed Services
     services := []Service{
-        {Name: "Oil Change", Duration: 60, Price: 85.00},
-        {Name: "Brake Service", Duration: 90, Price: 180.00},
-        {Name: "Tire Rotation", Duration: 45, Price: 120.00},
-        {Name: "Hair Cut & Style", Duration: 60, Price: 65.00},
-        {Name: "Facial Treatment", Duration: 75, Price: 95.00},
+        {Name: "Oil Change", Category: "automotive", Duration: 60, Price: 85.00},
+        {Name: "Brake Service", Category: "automotive", Duration: 90, Price: 180.00},
+        {Name: "Tire Rotation", Category: "automotive", Duration: 45, Price: 120.00},
+        {Name: "Hair Cut & Style", Category: "beauty", Duration: 60, Price: 65.00},
+        {Name: "Facial Treatment", Category: "beauty", Duration: 75, Price: 95.00},
     }
     
     for _, service := range services {
@@ -550,6 +667,13 @@ func seedDatabase() {
             if err == gorm.ErrRecordNotFound {
                 db.Create(&service)
                 fmt.Printf("   ✓ Created service: %s\n", service.Name)
+            }
+        } else {
+            // Update existing service with category if it doesn't have one
+            if existingService.Category == "" {
+                existingService.Category = service.Category
+                db.Save(&existingService)
+                fmt.Printf("   ✓ Updated service category: %s -> %s\n", service.Name, service.Category)
             }
         }
     }
