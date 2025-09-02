@@ -1,0 +1,946 @@
+{
+	"info": {
+		"_postman_id": "12345678-1234-5678-9012-123456789012",
+		"name": "GoFiber CRM API",
+		"description": "Complete API collection for GoFiber AGO CRM Backend with all CRUD operations",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{access_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080/api/v1"
+		},
+		{
+			"key": "access_token",
+			"value": ""
+		},
+		{
+			"key": "refresh_token",
+			"value": ""
+		},
+		{
+			"key": "user_id",
+			"value": ""
+		},
+		{
+			"key": "participant_id",
+			"value": ""
+		},
+		{
+			"key": "shift_id",
+			"value": ""
+		},
+		{
+			"key": "document_id",
+			"value": ""
+		},
+		{
+			"key": "contact_id",
+			"value": ""
+		},
+		{
+			"key": "care_plan_id",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "🔐 Authentication",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('access_token', response.data.token);",
+									"    pm.collectionVariables.set('refresh_token', response.data.refresh_token);",
+									"    pm.collectionVariables.set('user_id', response.data.user.id);",
+									"    console.log('Login successful, tokens saved');",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"kennedy@dasyin.com.au\",\n    \"password\": \"password\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						}
+					}
+				},
+				{
+					"name": "Refresh Token",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"refresh_token\": \"{{refresh_token}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/refresh",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "refresh"]
+						}
+					}
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/auth/logout",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "logout"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "👤 Users Management",
+			"item": [
+				{
+					"name": "Get Current User",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/users/me",
+							"host": ["{{base_url}}"],
+							"path": ["users", "me"]
+						}
+					}
+				},
+				{
+					"name": "Get All Users",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/users?page=1&limit=10&search=john",
+							"host": ["{{base_url}}"],
+							"path": ["users"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "search",
+									"value": "john"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Create User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('created_user_id', response.data.id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"john.doe@dasyin.com.au\",\n    \"password\": \"securepassword123\",\n    \"first_name\": \"John\",\n    \"last_name\": \"Doe\",\n    \"phone\": \"+61412345678\",\n    \"role\": \"care_worker\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users",
+							"host": ["{{base_url}}"],
+							"path": ["users"]
+						}
+					}
+				},
+				{
+					"name": "Update User",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"first_name\": \"Johnny\",\n    \"phone\": \"+61487654321\",\n    \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/{{created_user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["users", "{{created_user_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Delete User",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/users/{{created_user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["users", "{{created_user_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "👥 Participants Management",
+			"item": [
+				{
+					"name": "Get All Participants",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/participants?page=1&limit=10&is_active=true",
+							"host": ["{{base_url}}"],
+							"path": ["participants"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "is_active",
+									"value": "true"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Participant by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/participants/{{participant_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["participants", "{{participant_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Create Participant",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('participant_id', response.data.id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"first_name\": \"Jane\",\n    \"last_name\": \"Smith\",\n    \"date_of_birth\": \"1990-05-15\",\n    \"ndis_number\": \"4321098765\",\n    \"email\": \"jane.smith@email.com\",\n    \"phone\": \"+61456789123\",\n    \"address\": {\n        \"street\": \"123 Main Street\",\n        \"suburb\": \"Adelaide\",\n        \"state\": \"SA\",\n        \"postcode\": \"5000\",\n        \"country\": \"Australia\"\n    },\n    \"medical_information\": {\n        \"conditions\": \"[\\\"Autism\\\", \\\"Anxiety\\\"]\",\n        \"medications\": \"[\\\"Medication A\\\"]\",\n        \"allergies\": \"[\\\"Peanuts\\\"]\",\n        \"doctor_name\": \"Dr. Johnson\",\n        \"doctor_phone\": \"+61887654321\",\n        \"notes\": \"Requires gentle approach\"\n    },\n    \"funding\": {\n        \"total_budget\": 50000.00,\n        \"used_budget\": 12500.00,\n        \"remaining_budget\": 37500.00,\n        \"budget_year\": \"2023-2024\",\n        \"plan_start_date\": \"2023-07-01T00:00:00Z\",\n        \"plan_end_date\": \"2024-06-30T23:59:59Z\"\n    },\n    \"emergency_contacts\": [\n        {\n            \"name\": \"John Smith\",\n            \"relationship\": \"Father\",\n            \"phone\": \"+61423456789\",\n            \"email\": \"john.smith@email.com\",\n            \"is_primary\": true\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/participants",
+							"host": ["{{base_url}}"],
+							"path": ["participants"]
+						}
+					}
+				},
+				{
+					"name": "Update Participant",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"phone\": \"+61456789999\",\n    \"address\": {\n        \"street\": \"456 Updated Street\",\n        \"suburb\": \"Adelaide\",\n        \"state\": \"SA\",\n        \"postcode\": \"5001\",\n        \"country\": \"Australia\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/participants/{{participant_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["participants", "{{participant_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Delete Participant",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/participants/{{participant_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["participants", "{{participant_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "📅 Shifts Management",
+			"item": [
+				{
+					"name": "Get All Shifts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/shifts?page=1&limit=10&status=scheduled&start_date=2023-12-01&end_date=2023-12-31",
+							"host": ["{{base_url}}"],
+							"path": ["shifts"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "status",
+									"value": "scheduled"
+								},
+								{
+									"key": "start_date",
+									"value": "2023-12-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2023-12-31"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Shift by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/shifts/{{shift_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["shifts", "{{shift_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Create Shift",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('shift_id', response.data.id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"participant_id\": \"{{participant_id}}\",\n    \"staff_id\": \"{{user_id}}\",\n    \"start_time\": \"2023-12-15T09:00:00Z\",\n    \"end_time\": \"2023-12-15T17:00:00Z\",\n    \"service_type\": \"Personal Care\",\n    \"location\": \"Participant's Home\",\n    \"hourly_rate\": 45.50,\n    \"notes\": \"First session with this participant\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/shifts",
+							"host": ["{{base_url}}"],
+							"path": ["shifts"]
+						}
+					}
+				},
+				{
+					"name": "Update Shift",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"hourly_rate\": 50.00,\n    \"notes\": \"Updated hourly rate and notes\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/shifts/{{shift_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["shifts", "{{shift_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Update Shift Status",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"in_progress\",\n    \"actual_start_time\": \"2023-12-15T09:05:00Z\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/shifts/{{shift_id}}/status",
+							"host": ["{{base_url}}"],
+							"path": ["shifts", "{{shift_id}}", "status"]
+						}
+					}
+				},
+				{
+					"name": "Delete Shift",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/shifts/{{shift_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["shifts", "{{shift_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "📄 Documents Management",
+			"item": [
+				{
+					"name": "Get All Documents",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/documents?page=1&limit=10&category=care_plan&is_active=true",
+							"host": ["{{base_url}}"],
+							"path": ["documents"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "category",
+									"value": "care_plan"
+								},
+								{
+									"key": "is_active",
+									"value": "true"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Document by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/documents/{{document_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["documents", "{{document_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Upload Document",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('document_id', response.data.id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "title",
+									"value": "Care Plan Document",
+									"type": "text"
+								},
+								{
+									"key": "description",
+									"value": "Updated care plan for participant",
+									"type": "text"
+								},
+								{
+									"key": "category",
+									"value": "care_plan",
+									"type": "text"
+								},
+								{
+									"key": "participant_id",
+									"value": "{{participant_id}}",
+									"type": "text"
+								},
+								{
+									"key": "expiry_date",
+									"value": "2024-12-31",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/documents",
+							"host": ["{{base_url}}"],
+							"path": ["documents"]
+						}
+					}
+				},
+				{
+					"name": "Update Document",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Updated Care Plan Document\",\n    \"description\": \"Updated description\",\n    \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/documents/{{document_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["documents", "{{document_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Download Document",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/documents/{{document_id}}/download",
+							"host": ["{{base_url}}"],
+							"path": ["documents", "{{document_id}}", "download"]
+						}
+					}
+				},
+				{
+					"name": "Delete Document",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/documents/{{document_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["documents", "{{document_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "🆘 Emergency Contacts",
+			"item": [
+				{
+					"name": "Get Emergency Contacts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/emergency-contacts?participant_id={{participant_id}}&page=1&limit=10",
+							"host": ["{{base_url}}"],
+							"path": ["emergency-contacts"],
+							"query": [
+								{
+									"key": "participant_id",
+									"value": "{{participant_id}}"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Emergency Contact by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/emergency-contacts/{{contact_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["emergency-contacts", "{{contact_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Create Emergency Contact",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('contact_id', response.data.id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"participant_id\": \"{{participant_id}}\",\n    \"name\": \"Mary Smith\",\n    \"relationship\": \"Mother\",\n    \"phone\": \"+61412345678\",\n    \"email\": \"mary.smith@email.com\",\n    \"is_primary\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/emergency-contacts",
+							"host": ["{{base_url}}"],
+							"path": ["emergency-contacts"]
+						}
+					}
+				},
+				{
+					"name": "Update Emergency Contact",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"phone\": \"+61487654321\",\n    \"email\": \"mary.updated@email.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/emergency-contacts/{{contact_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["emergency-contacts", "{{contact_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Delete Emergency Contact",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/emergency-contacts/{{contact_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["emergency-contacts", "{{contact_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "🏥 Care Plans",
+			"item": [
+				{
+					"name": "Get All Care Plans",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/care-plans?page=1&limit=10&status=active&participant_id={{participant_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["care-plans"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "status",
+									"value": "active"
+								},
+								{
+									"key": "participant_id",
+									"value": "{{participant_id}}"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Care Plan by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/care-plans/{{care_plan_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["care-plans", "{{care_plan_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Create Care Plan",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('care_plan_id', response.data.id);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"participant_id\": \"{{participant_id}}\",\n    \"title\": \"Personal Care and Social Support Plan\",\n    \"description\": \"Comprehensive plan focusing on daily living skills and community integration\",\n    \"goals\": \"Improve independence in personal care activities and increase social participation\",\n    \"start_date\": \"2023-12-01T00:00:00Z\",\n    \"end_date\": \"2024-11-30T23:59:59Z\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/care-plans",
+							"host": ["{{base_url}}"],
+							"path": ["care-plans"]
+						}
+					}
+				},
+				{
+					"name": "Update Care Plan",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"description\": \"Updated comprehensive plan with new focus areas\",\n    \"goals\": \"Enhanced goals for better outcomes\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/care-plans/{{care_plan_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["care-plans", "{{care_plan_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Approve Care Plan",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"approval_action\": \"approve\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/care-plans/{{care_plan_id}}/approve",
+							"host": ["{{base_url}}"],
+							"path": ["care-plans", "{{care_plan_id}}", "approve"]
+						}
+					}
+				},
+				{
+					"name": "Delete Care Plan",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/care-plans/{{care_plan_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["care-plans", "{{care_plan_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "🏢 Organization Management",
+			"item": [
+				{
+					"name": "Get Organization",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/organization",
+							"host": ["{{base_url}}"],
+							"path": ["organization"]
+						}
+					}
+				},
+				{
+					"name": "Update Organization",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"DASYIN - ADL Services Updated\",\n    \"phone\": \"+61887654999\",\n    \"email\": \"info.updated@dasyin.com.au\",\n    \"website\": \"https://dasyin.com.au\",\n    \"address\": {\n        \"street\": \"789 Updated Business Avenue\",\n        \"suburb\": \"Adelaide\",\n        \"state\": \"SA\",\n        \"postcode\": \"5000\",\n        \"country\": \"Australia\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/organization",
+							"host": ["{{base_url}}"],
+							"path": ["organization"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "🔧 Health Check",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8080/health",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8080",
+							"path": ["health"]
+						}
+					}
+				}
+			]
+		}
+	]
+}

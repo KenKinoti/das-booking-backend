@@ -1,0 +1,27 @@
+package main
+
+import (
+	"log"
+	
+	"github.com/kenkinoti/gofiber-ago-crm-backend/internal/config"
+	"github.com/kenkinoti/gofiber-ago-crm-backend/internal/database"
+	"github.com/kenkinoti/gofiber-ago-crm-backend/internal/models"
+)
+
+func main() {
+	// Load configuration
+	cfg := config.Load()
+	
+	// Initialize database
+	db, err := database.Initialize(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal("Failed to connect to database:", err)
+	}
+	
+	// Run organization setup for the default organization
+	if err := models.SetupOrganizationDefaults(db, "org_default"); err != nil {
+		log.Fatal("Failed to setup organization defaults:", err)
+	}
+	
+	log.Println("Organization setup completed successfully")
+}
