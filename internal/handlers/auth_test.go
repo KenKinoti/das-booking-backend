@@ -12,7 +12,7 @@ import (
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/config"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -20,8 +20,23 @@ func setupTestHandler() (*Handler, *gin.Engine) {
 	gin.SetMode(gin.TestMode)
 	
 	// Setup test database
-	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	models.MigrateDB(db)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		panic("Failed to connect to test database: " + err.Error())
+	}
+	
+	// Run only basic migrations for tests
+	err = db.AutoMigrate(
+		&models.Organization{},
+		&models.User{},
+		&models.Customer{},
+		&models.Service{},
+		&models.Booking{},
+		&models.Participant{},
+	)
+	if err != nil {
+		panic("Failed to migrate test database: " + err.Error())
+	}
 	
 	// Setup test configuration
 	cfg := &config.Config{

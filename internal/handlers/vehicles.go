@@ -79,7 +79,7 @@ func (h *Handler) GetCustomerVehicles(c *gin.Context) {
 		return
 	}
 
-	customerID := c.Param("customer_id")
+	customerID := c.Param("id")
 
 	// Verify customer belongs to organization
 	var customer models.Customer

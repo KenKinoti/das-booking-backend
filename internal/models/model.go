@@ -7,11 +7,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// Organization represents any business organization (garage, salon, healthcare, etc.)
+// Organization represents any business organization (garage, salon, retail, etc.)
 type Organization struct {
-	ID          string         `json:"id" gorm:"type:varchar(36);primaryKey"`
+	ID          string         `json:"id" gorm:"type:varchar(255);primaryKey"`
 	Name        string         `json:"name" gorm:"type:varchar(255);not null"`
-	BusinessType string        `json:"business_type" gorm:"type:varchar(100);not null;default:'general';index"` // garage, salon, healthcare, etc.
+	BusinessType string        `json:"business_type" gorm:"type:varchar(100);not null;default:'general';index"` // garage, salon, retail, manufacturing, etc.
 	ABN         string         `json:"abn" gorm:"type:varchar(11);unique"`
 	Phone       string         `json:"phone" gorm:"type:varchar(20)"`
 	Email       string         `json:"email" gorm:"type:varchar(255)"`
@@ -20,7 +20,6 @@ type Organization struct {
 	Address     Address        `json:"address" gorm:"embedded;embeddedPrefix:address_"`
 	BusinessHours BusinessHours `json:"business_hours" gorm:"embedded;embeddedPrefix:hours_"`
 	BookingSettings BookingSettings `json:"booking_settings" gorm:"embedded;embeddedPrefix:booking_"`
-	NDISReg     NDISReg        `json:"ndis_registration,omitempty" gorm:"embedded;embeddedPrefix:ndis_"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
@@ -31,20 +30,19 @@ type Organization struct {
 	Vehicles     []Vehicle     `json:"vehicles,omitempty" gorm:"foreignKey:OrganizationID"`
 	Services     []Service     `json:"services,omitempty" gorm:"foreignKey:OrganizationID"`
 	Bookings     []Booking     `json:"bookings,omitempty" gorm:"foreignKey:OrganizationID"`
-	Participants []Participant `json:"participants,omitempty" gorm:"foreignKey:OrganizationID"` // Legacy healthcare support
 }
 
 // User represents system users (staff, admins, etc.)
 type User struct {
-	ID             string         `json:"id" gorm:"type:varchar(36);primaryKey"`
+	ID             string         `json:"id" gorm:"type:varchar(255);primaryKey"`
 	Email          string         `json:"email" gorm:"type:varchar(255);uniqueIndex;not null"`
 	PasswordHash   string         `json:"-" gorm:"type:varchar(255);not null"`
 	FirstName      string         `json:"first_name" gorm:"type:varchar(100);not null"`
 	LastName       string         `json:"last_name" gorm:"type:varchar(100);not null"`
 	Phone          string         `json:"phone" gorm:"type:varchar(20)"`
 	Role           string         `json:"role" gorm:"type:varchar(50);not null;index"` // admin, manager, care_worker, support_coordinator
-	RoleID         *string        `json:"role_id,omitempty" gorm:"type:varchar(36);index"` // New role-based system
-	OrganizationID string         `json:"organization_id" gorm:"type:varchar(36);not null;index"`
+	RoleID         *string        `json:"role_id,omitempty" gorm:"type:varchar(255);index"` // New role-based system
+	OrganizationID string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
 	IsActive       bool           `json:"is_active" gorm:"default:true;index"`
 	LastLoginAt    *time.Time     `json:"last_login_at,omitempty"`
 	CreatedAt      time.Time      `json:"created_at"`
@@ -61,7 +59,7 @@ type User struct {
 
 // Customer represents business customers (vehicle owners, salon clients, etc.)
 type Customer struct {
-	ID             string         `json:"id" gorm:"type:varchar(36);primaryKey"`
+	ID             string         `json:"id" gorm:"type:varchar(255);primaryKey"`
 	FirstName      string         `json:"first_name" gorm:"type:varchar(100);not null"`
 	LastName       string         `json:"last_name" gorm:"type:varchar(100);not null"`
 	Email          string         `json:"email" gorm:"type:varchar(255);index"`
@@ -69,7 +67,7 @@ type Customer struct {
 	DateOfBirth    *time.Time     `json:"date_of_birth,omitempty"`
 	Address        Address        `json:"address" gorm:"embedded;embeddedPrefix:address_"`
 	Notes          string         `json:"notes" gorm:"type:text"`
-	OrganizationID string         `json:"organization_id" gorm:"type:varchar(36);not null;index"`
+	OrganizationID string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
 	IsActive       bool           `json:"is_active" gorm:"default:true;index"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
@@ -83,9 +81,9 @@ type Customer struct {
 
 // Vehicle represents vehicles for garage businesses
 type Vehicle struct {
-	ID             string         `json:"id" gorm:"type:varchar(36);primaryKey"`
-	CustomerID     string         `json:"customer_id" gorm:"type:varchar(36);not null;index"`
-	OrganizationID string         `json:"organization_id" gorm:"type:varchar(36);not null;index"`
+	ID             string         `json:"id" gorm:"type:varchar(255);primaryKey"`
+	CustomerID     string         `json:"customer_id" gorm:"type:varchar(255);not null;index"`
+	OrganizationID string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
 	Make           string         `json:"make" gorm:"type:varchar(50);not null"`
 	Model          string         `json:"model" gorm:"type:varchar(50);not null"`
 	Year           int            `json:"year" gorm:"not null"`
@@ -107,8 +105,8 @@ type Vehicle struct {
 
 // Service represents services offered by the business
 type Service struct {
-	ID             string         `json:"id" gorm:"type:varchar(36);primaryKey"`
-	OrganizationID string         `json:"organization_id" gorm:"type:varchar(36);not null;index"`
+	ID             string         `json:"id" gorm:"type:varchar(255);primaryKey"`
+	OrganizationID string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
 	Name           string         `json:"name" gorm:"type:varchar(255);not null"`
 	Description    string         `json:"description" gorm:"type:text"`
 	Category       string         `json:"category" gorm:"type:varchar(100);not null;index"` // maintenance, repair, beauty, etc.
@@ -127,11 +125,11 @@ type Service struct {
 
 // Booking represents appointments/bookings
 type Booking struct {
-	ID             string         `json:"id" gorm:"type:varchar(36);primaryKey"`
-	CustomerID     string         `json:"customer_id" gorm:"type:varchar(36);not null;index"`
-	OrganizationID string         `json:"organization_id" gorm:"type:varchar(36);not null;index"`
-	VehicleID      *string        `json:"vehicle_id,omitempty" gorm:"type:varchar(36);index"` // Optional for non-garage businesses
-	StaffID        *string        `json:"staff_id,omitempty" gorm:"type:varchar(36);index"`
+	ID             string         `json:"id" gorm:"type:varchar(255);primaryKey"`
+	CustomerID     string         `json:"customer_id" gorm:"type:varchar(255);not null;index"`
+	OrganizationID string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
+	VehicleID      *string        `json:"vehicle_id,omitempty" gorm:"type:varchar(255);index"` // Optional for non-garage businesses
+	StaffID        *string        `json:"staff_id,omitempty" gorm:"type:varchar(255);index"`
 	StartTime      time.Time      `json:"start_time" gorm:"not null;index"`
 	EndTime        time.Time      `json:"end_time" gorm:"not null;index"`
 	Status         string         `json:"status" gorm:"type:varchar(50);default:'scheduled';index"` // scheduled, confirmed, in_progress, completed, cancelled, no_show
@@ -152,7 +150,7 @@ type Booking struct {
 
 // Participant represents care recipients
 type Participant struct {
-	ID             string             `json:"id" gorm:"type:varchar(36);primaryKey"`
+	ID             string             `json:"id" gorm:"type:varchar(255);primaryKey"`
 	FirstName      string             `json:"first_name" gorm:"type:varchar(100);not null"`
 	LastName       string             `json:"last_name" gorm:"type:varchar(100);not null"`
 	DateOfBirth    time.Time          `json:"date_of_birth" gorm:"not null;index"`
@@ -162,7 +160,7 @@ type Participant struct {
 	Address        Address            `json:"address" gorm:"embedded;embeddedPrefix:address_"`
 	MedicalInfo    MedicalInformation `json:"medical_information" gorm:"embedded;embeddedPrefix:medical_"`
 	Funding        FundingInformation `json:"funding" gorm:"embedded;embeddedPrefix:funding_"`
-	OrganizationID string             `json:"organization_id" gorm:"type:varchar(36);not null;index"`
+	OrganizationID string             `json:"organization_id" gorm:"type:varchar(255);not null;index"`
 	IsActive       bool               `json:"is_active" gorm:"default:true;index"`
 	CreatedAt      time.Time          `json:"created_at"`
 	UpdatedAt      time.Time          `json:"updated_at"`
@@ -178,8 +176,8 @@ type Participant struct {
 
 // EmergencyContact represents participant emergency contacts
 type EmergencyContact struct {
-	ID            string    `json:"id" gorm:"type:varchar(36);primaryKey"`
-	ParticipantID string    `json:"participant_id" gorm:"type:varchar(36);not null;index"`
+	ID            string    `json:"id" gorm:"type:varchar(255);primaryKey"`
+	ParticipantID string    `json:"participant_id" gorm:"type:varchar(255);not null;index"`
 	Name          string    `json:"name" gorm:"type:varchar(200);not null"`
 	Relationship  string    `json:"relationship" gorm:"type:varchar(50);not null"`
 	Phone         string    `json:"phone" gorm:"type:varchar(20);not null"`
@@ -195,9 +193,9 @@ type EmergencyContact struct {
 
 // Shift represents scheduled work shifts
 type Shift struct {
-	ID              string         `json:"id" gorm:"type:varchar(36);primaryKey"`
-	ParticipantID   string         `json:"participant_id" gorm:"type:varchar(36);not null;index"`
-	StaffID         string         `json:"staff_id" gorm:"type:varchar(36);not null;index"`
+	ID              string         `json:"id" gorm:"type:varchar(255);primaryKey"`
+	ParticipantID   string         `json:"participant_id" gorm:"type:varchar(255);not null;index"`
+	StaffID         string         `json:"staff_id" gorm:"type:varchar(255);not null;index"`
 	StartTime       time.Time      `json:"start_time" gorm:"not null;index"`
 	EndTime         time.Time      `json:"end_time" gorm:"not null;index"`
 	ActualStartTime *time.Time     `json:"actual_start_time,omitempty"`
@@ -220,9 +218,9 @@ type Shift struct {
 
 // Document represents uploaded files and documents
 type Document struct {
-	ID               string         `json:"id" gorm:"type:varchar(36);primaryKey"`
-	ParticipantID    *string        `json:"participant_id,omitempty" gorm:"type:varchar(36);index"`
-	UploadedBy       string         `json:"uploaded_by" gorm:"type:varchar(36);not null;index"`
+	ID               string         `json:"id" gorm:"type:varchar(255);primaryKey"`
+	ParticipantID    *string        `json:"participant_id,omitempty" gorm:"type:varchar(255);index"`
+	UploadedBy       string         `json:"uploaded_by" gorm:"type:varchar(255);not null;index"`
 	Filename         string         `json:"filename" gorm:"type:varchar(255);not null"`
 	OriginalFilename string         `json:"original_filename" gorm:"type:varchar(255);not null"`
 	Title            string         `json:"title" gorm:"type:varchar(255);not null"`
@@ -245,16 +243,16 @@ type Document struct {
 
 // CarePlan represents participant care plans
 type CarePlan struct {
-	ID            string         `json:"id" gorm:"type:varchar(36);primaryKey"`
-	ParticipantID string         `json:"participant_id" gorm:"type:varchar(36);not null;index"`
+	ID            string         `json:"id" gorm:"type:varchar(255);primaryKey"`
+	ParticipantID string         `json:"participant_id" gorm:"type:varchar(255);not null;index"`
 	Title         string         `json:"title" gorm:"type:varchar(255);not null"`
 	Description   string         `json:"description" gorm:"type:text"`
 	Goals         string         `json:"goals" gorm:"type:text"` // JSON string of goals
 	StartDate     time.Time      `json:"start_date" gorm:"not null"`
 	EndDate       *time.Time     `json:"end_date,omitempty"`
 	Status        string         `json:"status" gorm:"type:varchar(50);default:'active';index"` // active, completed, cancelled
-	CreatedBy     string         `json:"created_by" gorm:"type:varchar(36);not null"`
-	ApprovedBy    *string        `json:"approved_by,omitempty" gorm:"type:varchar(36)"`
+	CreatedBy     string         `json:"created_by" gorm:"type:varchar(255);not null"`
+	ApprovedBy    *string        `json:"approved_by,omitempty" gorm:"type:varchar(255)"`
 	ApprovedAt    *time.Time     `json:"approved_at,omitempty"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
@@ -268,8 +266,8 @@ type CarePlan struct {
 
 // RefreshToken stores JWT refresh tokens
 type RefreshToken struct {
-	ID        string    `json:"id" gorm:"type:varchar(36);primaryKey"`
-	UserID    string    `json:"user_id" gorm:"type:varchar(36);not null;index"`
+	ID        string    `json:"id" gorm:"type:varchar(255);primaryKey"`
+	UserID    string    `json:"user_id" gorm:"type:varchar(255);not null;index"`
 	Token     string    `json:"token" gorm:"type:varchar(255);not null;uniqueIndex"`
 	ExpiresAt time.Time `json:"expires_at" gorm:"not null;index"`
 	IsRevoked bool      `json:"is_revoked" gorm:"default:false;index"`
@@ -282,8 +280,8 @@ type RefreshToken struct {
 
 // UserPermission represents user permissions
 type UserPermission struct {
-	ID         string    `json:"id" gorm:"type:varchar(36);primaryKey"`
-	UserID     string    `json:"user_id" gorm:"type:varchar(36);not null;index"`
+	ID         string    `json:"id" gorm:"type:varchar(255);primaryKey"`
+	UserID     string    `json:"user_id" gorm:"type:varchar(255);not null;index"`
 	Permission string    `json:"permission" gorm:"type:varchar(100);not null"` // read_participants, create_shifts, etc.
 	CreatedAt  time.Time `json:"created_at"`
 
@@ -487,7 +485,7 @@ func MigrateDB(db *gorm.DB) error {
 	if err := handleCustomMigrations(db); err != nil {
 		return err
 	}
-	
+
 	return db.AutoMigrate(
 		&Organization{},
 		&User{},
@@ -502,6 +500,27 @@ func MigrateDB(db *gorm.DB) error {
 		&CarePlan{},
 		&RefreshToken{},
 		&UserPermission{},
+		// ERP Models
+		&OrganizationModules{},
+		&Product{},
+		&ProductCategory{},
+		&Brand{},
+		&Supplier{},
+		&PurchaseOrder{},
+		&PurchaseOrderItem{},
+		&InventoryItem{},
+		&InventoryLocation{},
+		&InventoryMovement{},
+		// POS Models
+		&POSTransaction{},
+		&POSItem{},
+		&POSPayment{},
+		&CashDrawer{},
+		&Discount{},
+		&TaxRate{},
+		&LaybyPayment{},
+		&LaybyItem{},
+		&LaybyPaymentEntry{},
 	)
 }
 
@@ -579,7 +598,7 @@ func handleCustomMigrations(db *gorm.DB) error {
 		
 		// Handle organization_id column
 		if !db.Migrator().HasColumn(&User{}, "organization_id") {
-			if err := db.Exec("ALTER TABLE users ADD COLUMN organization_id varchar(36) DEFAULT ''").Error; err != nil {
+			if err := db.Exec("ALTER TABLE users ADD COLUMN organization_id varchar(255) DEFAULT ''").Error; err != nil {
 				return err
 			}
 			if err := db.Exec("UPDATE users SET organization_id = 'org_default' WHERE organization_id IS NULL OR organization_id = ''").Error; err != nil {
@@ -737,10 +756,6 @@ func SeedDatabase(db *gorm.DB) error {
 			Postcode: "5000",
 			Country:  "Australia",
 		},
-		NDISReg: NDISReg{
-			RegistrationNumber: "REG123456",
-			RegistrationStatus: "active",
-		},
 	}
 
 	if err := db.FirstOrCreate(&healthcareOrg, "id = ?", healthcareOrg.ID).Error; err != nil {
@@ -865,6 +880,10 @@ func SeedDatabase(db *gorm.DB) error {
 		"create_documents", "read_documents", "update_documents", "delete_documents",
 		"create_care_plans", "read_care_plans", "update_care_plans", "delete_care_plans",
 		"view_reports", "manage_organization",
+		// ERP & POS permissions
+		"manage_inventory", "manage_products", "manage_suppliers", "manage_purchase_orders",
+		"pos_access", "manage_discounts", "manage_tax_rates", "cash_drawer_access",
+		"layby_access", "view_pos_reports",
 	}
 
 	for _, admin := range admins {
@@ -874,6 +893,71 @@ func SeedDatabase(db *gorm.DB) error {
 				Permission: perm,
 			}
 			db.FirstOrCreate(&userPerm, "user_id = ? AND permission = ?", admin.ID, perm)
+		}
+	}
+
+	// Create default module configurations for each organization
+	organizations := []string{garageOrg.ID, salonOrg.ID, healthcareOrg.ID}
+	for _, orgID := range organizations {
+		orgModules := OrganizationModules{
+			OrganizationID:       orgID,
+			InventoryEnabled:     true,
+			SupplierEnabled:      true,
+			PurchaseOrderEnabled: true,
+			POSEnabled:          true,
+			CRMEnabled:          true,
+			ReportsEnabled:      true,
+		}
+		db.FirstOrCreate(&orgModules, "organization_id = ?", orgID)
+
+		// Create default tax rates (Australian GST)
+		gstRate := TaxRate{
+			OrganizationID: orgID,
+			Name:          "GST",
+			Rate:          10.00,
+			IsDefault:     true,
+			IsActive:      true,
+		}
+		db.FirstOrCreate(&gstRate, "organization_id = ? AND name = ?", orgID, "GST")
+
+		// Create default inventory locations
+		locations := []InventoryLocation{
+			{OrganizationID: orgID, Name: "Main Warehouse", Description: "Primary storage location", Type: "warehouse", IsActive: true},
+			{OrganizationID: orgID, Name: "Showroom", Description: "Display area", Type: "showroom", IsActive: true},
+		}
+		if orgID == garageOrg.ID {
+			locations = append(locations, InventoryLocation{OrganizationID: orgID, Name: "Service Bay", Description: "Workshop area", Type: "service_bay", IsActive: true})
+		}
+
+		for _, location := range locations {
+			db.FirstOrCreate(&location, "organization_id = ? AND name = ?", orgID, location.Name)
+		}
+
+		// Create sample product categories based on business type
+		var categories []ProductCategory
+		switch orgID {
+		case garageOrg.ID:
+			categories = []ProductCategory{
+				{OrganizationID: orgID, Name: "Engine Parts", Description: "Engine components and parts", IsActive: true},
+				{OrganizationID: orgID, Name: "Brake System", Description: "Brake pads, discs, and components", IsActive: true},
+				{OrganizationID: orgID, Name: "Oils & Fluids", Description: "Engine oils, coolants, brake fluids", IsActive: true},
+				{OrganizationID: orgID, Name: "Tires", Description: "Car tires and wheels", IsActive: true},
+			}
+		case salonOrg.ID:
+			categories = []ProductCategory{
+				{OrganizationID: orgID, Name: "Hair Care", Description: "Shampoos, conditioners, treatments", IsActive: true},
+				{OrganizationID: orgID, Name: "Nail Care", Description: "Nail polishes, tools, treatments", IsActive: true},
+				{OrganizationID: orgID, Name: "Skin Care", Description: "Facial products and treatments", IsActive: true},
+				{OrganizationID: orgID, Name: "Tools & Equipment", Description: "Salon tools and equipment", IsActive: true},
+			}
+		default:
+			categories = []ProductCategory{
+				{OrganizationID: orgID, Name: "General", Description: "General products and supplies", IsActive: true},
+			}
+		}
+
+		for _, category := range categories {
+			db.FirstOrCreate(&category, "organization_id = ? AND name = ?", orgID, category.Name)
 		}
 	}
 

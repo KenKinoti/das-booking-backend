@@ -54,3 +54,6 @@ uploads/*
 
 # Air (hot reload) temporary files
 tmp/NUL
+nul
+NUL
+src/nul

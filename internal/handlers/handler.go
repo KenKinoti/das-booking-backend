@@ -133,6 +133,13 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 					organizations.PATCH("/:id/status", h.UpdateOrganizationStatus)
 					organizations.DELETE("/:id", h.DeleteOrganization)
 				}
+
+				// Module management
+				modules := superAdmin.Group("/modules")
+				{
+					modules.GET("", h.GetAllOrganizationModules)
+					modules.PUT("/:org_id", h.UpdateOrganizationModulesById)
+				}
 			}
 
 			// Admin routes (require admin role)
@@ -205,6 +212,7 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 				customers.GET("", h.GetCustomers)
 				customers.GET("/stats", h.GetCustomerStats)
 				customers.GET("/:id", h.GetCustomer)
+				customers.GET("/:id/vehicles", h.GetCustomerVehicles)  // Move customer vehicles here
 				customers.POST("", h.CreateCustomer)
 				customers.PUT("/:id", h.UpdateCustomer)
 				customers.PATCH("/:id/toggle-status", h.ToggleCustomerStatus)
@@ -222,12 +230,6 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 				vehicles.PATCH("/:id/toggle-status", h.ToggleVehicleStatus)
 				vehicles.PATCH("/:id/mileage", h.UpdateVehicleMileage)
 				vehicles.DELETE("/:id", h.DeleteVehicle)
-			}
-
-			// Customer vehicle routes
-			customerVehicles := protected.Group("/customers/:customer_id/vehicles")
-			{
-				customerVehicles.GET("", h.GetCustomerVehicles)
 			}
 
 			// Service routes
@@ -254,6 +256,119 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 				bookings.PUT("/:id", h.UpdateBooking)
 				bookings.PATCH("/:id/status", h.UpdateBookingStatus)
 				bookings.DELETE("/:id", h.DeleteBooking)
+			}
+
+			// ERP - Inventory Management routes
+			inventory := protected.Group("/inventory")
+			{
+				// Products
+				products := inventory.Group("/products")
+				{
+					products.GET("", h.GetProducts)
+					products.GET("/:id", h.GetProduct)
+					products.POST("", h.CreateProduct)
+					products.PUT("/:id", h.UpdateProduct)
+					products.DELETE("/:id", h.DeleteProduct)
+				}
+
+				// Product Categories
+				categories := inventory.Group("/categories")
+				{
+					categories.GET("", h.GetProductCategories)
+					categories.POST("", h.CreateProductCategory)
+				}
+
+				// Brands
+				brands := inventory.Group("/brands")
+				{
+					brands.GET("", h.GetBrands)
+					brands.POST("", h.CreateBrand)
+				}
+
+				// Inventory Items
+				items := inventory.Group("/items")
+				{
+					items.GET("", h.GetInventoryItems)
+					items.POST("/adjust", h.AdjustInventory)
+				}
+
+				// Inventory Locations
+				locations := inventory.Group("/locations")
+				{
+					locations.GET("", h.GetInventoryLocations)
+					locations.POST("", h.CreateInventoryLocation)
+				}
+
+				// Inventory Reports
+				inventory.GET("/movements", h.GetInventoryMovements)
+				inventory.GET("/report", h.GetInventoryReport)
+			}
+
+			// ERP - Supplier Management routes
+			suppliers := protected.Group("/suppliers")
+			{
+				suppliers.GET("", h.GetSuppliers)
+				suppliers.GET("/:id", h.GetSupplier)
+				suppliers.POST("", h.CreateSupplier)
+				suppliers.PUT("/:id", h.UpdateSupplier)
+				suppliers.DELETE("/:id", h.DeleteSupplier)
+				suppliers.GET("/report", h.GetSupplierReport)
+
+				// Purchase Orders
+				purchaseOrders := suppliers.Group("/purchase-orders")
+				{
+					purchaseOrders.GET("", h.GetPurchaseOrders)
+					purchaseOrders.GET("/:id", h.GetPurchaseOrder)
+					purchaseOrders.POST("", h.CreatePurchaseOrder)
+					purchaseOrders.PATCH("/:id/status", h.UpdatePurchaseOrderStatus)
+					purchaseOrders.POST("/:id/receive", h.ReceivePurchaseOrder)
+				}
+			}
+
+			// POS routes
+			pos := protected.Group("/pos")
+			{
+				// Transactions
+				transactions := pos.Group("/transactions")
+				{
+					transactions.GET("", h.GetPOSTransactions)
+					transactions.GET("/:id", h.GetPOSTransaction)
+					transactions.POST("", h.CreatePOSTransaction)
+					transactions.POST("/:id/void", h.VoidPOSTransaction)
+				}
+
+				// Cash Drawer
+				cashDrawer := pos.Group("/cash-drawer")
+				{
+					cashDrawer.GET("", h.GetCashDrawers)
+					cashDrawer.POST("/open", h.OpenCashDrawer)
+					cashDrawer.POST("/:id/close", h.CloseCashDrawer)
+				}
+
+				// Discounts
+				discounts := pos.Group("/discounts")
+				{
+					discounts.GET("", h.GetDiscounts)
+					discounts.POST("", h.CreateDiscount)
+				}
+
+				// Tax Rates
+				taxRates := pos.Group("/tax-rates")
+				{
+					taxRates.GET("", h.GetTaxRates)
+					taxRates.POST("", h.CreateTaxRate)
+				}
+
+				// POS Reports
+				pos.GET("/report", h.GetPOSReport)
+			}
+
+			// Organization Module Configuration routes
+			moduleConfig := protected.Group("/module-config")
+			moduleConfig.Use(middleware.RequireRole("admin", "super_admin"))
+			{
+				moduleConfig.GET("", h.GetOrganizationModules)
+				moduleConfig.PUT("", h.UpdateOrganizationModules)
 			}
 		}
 	}

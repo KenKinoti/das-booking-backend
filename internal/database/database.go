@@ -29,6 +29,7 @@ func Initialize(databaseURL string) (*gorm.DB, error) {
 
 	config := &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
+		DisableForeignKeyConstraintWhenMigrating: true,
 	}
 
 	db, err := gorm.Open(dialector, config)
