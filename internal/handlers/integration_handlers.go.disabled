@@ -1,0 +1,744 @@
+package handlers
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/encryption"
+	// "github.com/kenkinoti/gofiber-das-crm-backend/pkg/integrations" // temporarily disabled
+	"gorm.io/gorm"
+)
+
+// IntegrationHandler handles integration-related endpoints
+type IntegrationHandler struct {
+	db               *gorm.DB
+	encrypt          *encryption.EncryptionService
+	stripeService    *integrations.StripeService
+	emailService     *integrations.EmailService
+	twilioService    *integrations.TwilioService
+	whatsappService  *integrations.WhatsAppService
+}
+
+// NewIntegrationHandler creates a new integration handler
+func NewIntegrationHandler(db *gorm.DB) *IntegrationHandler {
+	return &IntegrationHandler{
+		db:               db,
+		encrypt:          encryption.GlobalEncryption,
+		stripeService:    integrations.NewStripeService(db),
+		emailService:     integrations.NewEmailService(db),
+		twilioService:    integrations.NewTwilioService(db),
+		whatsappService:  integrations.NewWhatsAppService(db),
+	}
+}
+
+// GetIntegrationSettings gets integration settings for an organization
+func (h *IntegrationHandler) GetIntegrationSettings(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+	if organizationID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Organization ID is required"})
+		return
+	}
+
+	var settings models.IntegrationSettings
+	if err := h.db.Where("organization_id = ?", organizationID).First(&settings).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// Create default settings
+			settings = models.IntegrationSettings{
+				OrganizationID: organizationID,
+				GeneralSettings: models.GeneralSettings{
+					PlatformName:    "DAS Booking Platform",
+					DefaultTimezone: "UTC",
+					DefaultCurrency: "USD",
+				},
+				EmailSettings: models.EmailSettings{
+					Provider: "smtp",
+				},
+				SecuritySettings: models.SecuritySettings{
+					SessionTimeout:      30,
+					PasswordMinLength:   8,
+					RequireSpecialChars: true,
+					RequireNumbers:      true,
+					RateLimitRequests:   100,
+					RateLimitWindow:     15,
+				},
+			}
+
+			if err := h.db.Create(&settings).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create default settings"})
+				return
+			}
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch settings"})
+			return
+		}
+	}
+
+	// Decrypt sensitive fields for display (mask them)
+	settingsResponse := h.maskSensitiveFields(settings)
+
+	c.JSON(http.StatusOK, gin.H{"data": settingsResponse})
+}
+
+// UpdateIntegrationSettings updates integration settings
+func (h *IntegrationHandler) UpdateIntegrationSettings(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+	if organizationID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Organization ID is required"})
+		return
+	}
+
+	var updateData models.IntegrationSettings
+	if err := c.ShouldBindJSON(&updateData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
+		return
+	}
+
+	// Get existing settings
+	var existingSettings models.IntegrationSettings
+	if err := h.db.Where("organization_id = ?", organizationID).First(&existingSettings).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			// Create new settings
+			updateData.OrganizationID = organizationID
+			if err := h.encryptSensitiveFields(&updateData); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt sensitive data"})
+				return
+			}
+
+			if err := h.db.Create(&updateData).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create settings"})
+				return
+			}
+
+			c.JSON(http.StatusCreated, gin.H{
+				"message": "Integration settings created successfully",
+				"data":    h.maskSensitiveFields(updateData),
+			})
+			return
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch existing settings"})
+			return
+		}
+	}
+
+	// Merge updates with existing settings
+	updateData.ID = existingSettings.ID
+	updateData.OrganizationID = organizationID
+	updateData.CreatedAt = existingSettings.CreatedAt
+
+	// Encrypt sensitive fields
+	if err := h.encryptSensitiveFields(&updateData); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encrypt sensitive data"})
+		return
+	}
+
+	// Update settings
+	if err := h.db.Save(&updateData).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update settings"})
+		return
+	}
+
+	// Log integration event
+	h.logIntegrationEvent(organizationID, "settings_updated", "success", "Integration settings updated", "", "")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Integration settings updated successfully",
+		"data":    h.maskSensitiveFields(updateData),
+	})
+}
+
+// TestStripeConnection tests Stripe connection
+func (h *IntegrationHandler) TestStripeConnection(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+
+	var settings models.IntegrationSettings
+	if err := h.db.Where("organization_id = ?", organizationID).First(&settings).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Integration settings not found"})
+		return
+	}
+
+	if err := h.stripeService.TestConnection(&settings.StripeSettings); err != nil {
+		h.logIntegrationEvent(organizationID, "stripe_test_failed", "error", err.Error(), "", "")
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Stripe connection test failed: %s", err.Error())})
+		return
+	}
+
+	// Update settings with connection status
+	if err := h.db.Save(&settings).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update connection status"})
+		return
+	}
+
+	h.logIntegrationEvent(organizationID, "stripe_test_success", "success", "Stripe connection test successful", "", "")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Stripe connection test successful",
+		"verified": true,
+		"tested_at": settings.StripeSettings.LastTestedAt,
+	})
+}
+
+// TestEmailConnection tests email connection
+func (h *IntegrationHandler) TestEmailConnection(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+
+	var settings models.IntegrationSettings
+	if err := h.db.Where("organization_id = ?", organizationID).First(&settings).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Integration settings not found"})
+		return
+	}
+
+	if err := h.emailService.TestConnection(&settings.EmailSettings); err != nil {
+		h.logIntegrationEvent(organizationID, "email_test_failed", "error", err.Error(), "", "")
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Email connection test failed: %s", err.Error())})
+		return
+	}
+
+	// Update settings with connection status
+	if err := h.db.Save(&settings).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update connection status"})
+		return
+	}
+
+	h.logIntegrationEvent(organizationID, "email_test_success", "success", "Email connection test successful", "", "")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Email connection test successful",
+		"verified": true,
+		"tested_at": settings.EmailSettings.LastTestedAt,
+	})
+}
+
+// TestTwilioConnection tests Twilio connection
+func (h *IntegrationHandler) TestTwilioConnection(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+
+	var settings models.IntegrationSettings
+	if err := h.db.Where("organization_id = ?", organizationID).First(&settings).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Integration settings not found"})
+		return
+	}
+
+	if err := h.twilioService.TestConnection(&settings.TwilioSettings); err != nil {
+		h.logIntegrationEvent(organizationID, "twilio_test_failed", "error", err.Error(), "", "")
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Twilio connection test failed: %s", err.Error())})
+		return
+	}
+
+	// Update settings with connection status
+	if err := h.db.Save(&settings).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update connection status"})
+		return
+	}
+
+	h.logIntegrationEvent(organizationID, "twilio_test_success", "success", "Twilio connection test successful", "", "")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Twilio connection test successful",
+		"verified": true,
+		"tested_at": settings.TwilioSettings.LastTestedAt,
+	})
+}
+
+// TestWhatsAppConnection tests WhatsApp connection
+func (h *IntegrationHandler) TestWhatsAppConnection(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+
+	var settings models.IntegrationSettings
+	if err := h.db.Where("organization_id = ?", organizationID).First(&settings).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Integration settings not found"})
+		return
+	}
+
+	if err := h.whatsappService.TestConnection(&settings.WhatsAppSettings); err != nil {
+		h.logIntegrationEvent(organizationID, "whatsapp_test_failed", "error", err.Error(), "", "")
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("WhatsApp connection test failed: %s", err.Error())})
+		return
+	}
+
+	// Update settings with connection status
+	if err := h.db.Save(&settings).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update connection status"})
+		return
+	}
+
+	h.logIntegrationEvent(organizationID, "whatsapp_test_success", "success", "WhatsApp connection test successful", "", "")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "WhatsApp connection test successful",
+		"verified": true,
+		"tested_at": settings.WhatsAppSettings.LastTestedAt,
+	})
+}
+
+// GetIntegrationLogs gets integration logs for an organization
+func (h *IntegrationHandler) GetIntegrationLogs(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+	page := c.DefaultQuery("page", "1")
+	limit := c.DefaultQuery("limit", "50")
+	integration := c.Query("integration")
+	event := c.Query("event")
+	status := c.Query("status")
+
+	// Parse pagination
+	var offset, limitInt int
+	if _, err := fmt.Sscanf(page, "%d", &offset); err != nil {
+		offset = 1
+	}
+	if _, err := fmt.Sscanf(limit, "%d", &limitInt); err != nil {
+		limitInt = 50
+	}
+	offset = (offset - 1) * limitInt
+
+	// Build query
+	query := h.db.Where("organization_id = ?", organizationID)
+
+	if integration != "" {
+		query = query.Where("integration = ?", integration)
+	}
+	if event != "" {
+		query = query.Where("event = ?", event)
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	// Get total count
+	var totalCount int64
+	query.Model(&models.IntegrationLog{}).Count(&totalCount)
+
+	// Get logs
+	var logs []models.IntegrationLog
+	if err := query.Order("created_at DESC").Offset(offset).Limit(limitInt).Find(&logs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch integration logs"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": logs,
+		"pagination": gin.H{
+			"total":   totalCount,
+			"page":    page,
+			"limit":   limitInt,
+			"has_more": offset+limitInt < int(totalCount),
+		},
+	})
+}
+
+// GetCommunicationLogs gets communication logs for an organization
+func (h *IntegrationHandler) GetCommunicationLogs(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+	page := c.DefaultQuery("page", "1")
+	limit := c.DefaultQuery("limit", "50")
+	commType := c.Query("type")
+	provider := c.Query("provider")
+	status := c.Query("status")
+
+	// Parse pagination
+	var offset, limitInt int
+	if _, err := fmt.Sscanf(page, "%d", &offset); err != nil {
+		offset = 1
+	}
+	if _, err := fmt.Sscanf(limit, "%d", &limitInt); err != nil {
+		limitInt = 50
+	}
+	offset = (offset - 1) * limitInt
+
+	// Build query
+	query := h.db.Where("organization_id = ?", organizationID)
+
+	if commType != "" {
+		query = query.Where("type = ?", commType)
+	}
+	if provider != "" {
+		query = query.Where("provider = ?", provider)
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	// Get total count
+	var totalCount int64
+	query.Model(&models.CommunicationLog{}).Count(&totalCount)
+
+	// Get logs with relationships
+	var logs []models.CommunicationLog
+	if err := query.Preload("Customer").Preload("Booking").
+		Order("created_at DESC").Offset(offset).Limit(limitInt).Find(&logs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch communication logs"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": logs,
+		"pagination": gin.H{
+			"total":   totalCount,
+			"page":    page,
+			"limit":   limitInt,
+			"has_more": offset+limitInt < int(totalCount),
+		},
+	})
+}
+
+// GetPaymentTransactions gets payment transactions for an organization
+func (h *IntegrationHandler) GetPaymentTransactions(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+	page := c.DefaultQuery("page", "1")
+	limit := c.DefaultQuery("limit", "50")
+	provider := c.Query("provider")
+	status := c.Query("status")
+
+	// Parse pagination
+	var offset, limitInt int
+	if _, err := fmt.Sscanf(page, "%d", &offset); err != nil {
+		offset = 1
+	}
+	if _, err := fmt.Sscanf(limit, "%d", &limitInt); err != nil {
+		limitInt = 50
+	}
+	offset = (offset - 1) * limitInt
+
+	// Build query
+	query := h.db.Where("organization_id = ?", organizationID)
+
+	if provider != "" {
+		query = query.Where("provider = ?", provider)
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	// Get total count
+	var totalCount int64
+	query.Model(&models.PaymentTransaction{}).Count(&totalCount)
+
+	// Get transactions with relationships
+	var transactions []models.PaymentTransaction
+	if err := query.Preload("Customer").Preload("Booking").
+		Order("created_at DESC").Offset(offset).Limit(limitInt).Find(&transactions).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payment transactions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": transactions,
+		"pagination": gin.H{
+			"total":   totalCount,
+			"page":    page,
+			"limit":   limitInt,
+			"has_more": offset+limitInt < int(totalCount),
+		},
+	})
+}
+
+// SendTestEmail sends a test email
+func (h *IntegrationHandler) SendTestEmail(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+
+	var requestData struct {
+		ToEmail string `json:"to_email" binding:"required,email"`
+		Subject string `json:"subject"`
+		Message string `json:"message"`
+	}
+
+	if err := c.ShouldBindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
+		return
+	}
+
+	subject := requestData.Subject
+	if subject == "" {
+		subject = "Test Email from DAS Booking Platform"
+	}
+
+	message := requestData.Message
+	if message == "" {
+		message = "This is a test email to verify your email configuration is working correctly."
+	}
+
+	emailMessage := &integrations.EmailMessage{
+		To:        []string{requestData.ToEmail},
+		Subject:   subject,
+		PlainBody: message,
+		HTMLBody:  fmt.Sprintf("<p>%s</p>", message),
+		Priority:  "normal",
+	}
+
+	if err := h.emailService.SendEmail(organizationID, emailMessage); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Failed to send test email: %s", err.Error())})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Test email sent successfully"})
+}
+
+// SendTestSMS sends a test SMS
+func (h *IntegrationHandler) SendTestSMS(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+
+	var requestData struct {
+		ToNumber string `json:"to_number" binding:"required"`
+		Message  string `json:"message"`
+	}
+
+	if err := c.ShouldBindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
+		return
+	}
+
+	message := requestData.Message
+	if message == "" {
+		message = "This is a test SMS from DAS Booking Platform. Your SMS configuration is working correctly."
+	}
+
+	if err := h.twilioService.SendSMS(organizationID, "", "", requestData.ToNumber, message); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Failed to send test SMS: %s", err.Error())})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Test SMS sent successfully"})
+}
+
+// SendTestWhatsApp sends a test WhatsApp message
+func (h *IntegrationHandler) SendTestWhatsApp(c *gin.Context) {
+	organizationID := c.Param("organizationId")
+
+	var requestData struct {
+		ToNumber string `json:"to_number" binding:"required"`
+		Message  string `json:"message"`
+	}
+
+	if err := c.ShouldBindJSON(&requestData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request data"})
+		return
+	}
+
+	message := requestData.Message
+	if message == "" {
+		message = "🎉 This is a test WhatsApp message from DAS Booking Platform. Your WhatsApp configuration is working correctly!"
+	}
+
+	if err := h.whatsappService.SendTextMessage(organizationID, "", "", requestData.ToNumber, message); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Failed to send test WhatsApp message: %s", err.Error())})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Test WhatsApp message sent successfully"})
+}
+
+// Helper methods
+
+func (h *IntegrationHandler) maskSensitiveFields(settings models.IntegrationSettings) models.IntegrationSettings {
+	// Create a copy to avoid modifying the original
+	masked := settings
+
+	// Mask Stripe fields
+	if masked.StripeSettings.SecretKey != "" {
+		masked.StripeSettings.SecretKey = "sk_****"
+	}
+	if masked.StripeSettings.WebhookSecret != "" {
+		masked.StripeSettings.WebhookSecret = "whsec_****"
+	}
+
+	// Mask PayPal fields
+	if masked.PayPalSettings.ClientSecret != "" {
+		masked.PayPalSettings.ClientSecret = "****"
+	}
+
+	// Mask Twilio fields
+	if masked.TwilioSettings.AuthToken != "" {
+		masked.TwilioSettings.AuthToken = "****"
+	}
+
+	// Mask WhatsApp fields
+	if masked.WhatsAppSettings.AccessToken != "" {
+		masked.WhatsAppSettings.AccessToken = "EAA****"
+	}
+	if masked.WhatsAppSettings.VerifyToken != "" {
+		masked.WhatsAppSettings.VerifyToken = "****"
+	}
+
+	// Mask Zoho fields
+	if masked.ZohoSettings.ClientSecret != "" {
+		masked.ZohoSettings.ClientSecret = "****"
+	}
+	if masked.ZohoSettings.RefreshToken != "" {
+		masked.ZohoSettings.RefreshToken = "****"
+	}
+	if masked.ZohoSettings.AccessToken != "" {
+		masked.ZohoSettings.AccessToken = "****"
+	}
+
+	// Mask Email fields
+	if masked.EmailSettings.SMTPPassword != "" {
+		masked.EmailSettings.SMTPPassword = "****"
+	}
+
+	// Mask all API keys
+	if masked.APIKeys.OpenAI != "" {
+		masked.APIKeys.OpenAI = "sk-****"
+	}
+	if masked.APIKeys.Stripe != "" {
+		masked.APIKeys.Stripe = "sk_****"
+	}
+	if masked.APIKeys.Twilio != "" {
+		masked.APIKeys.Twilio = "****"
+	}
+	if masked.APIKeys.SendGrid != "" {
+		masked.APIKeys.SendGrid = "SG.****"
+	}
+	if masked.APIKeys.Cloudinary != "" {
+		masked.APIKeys.Cloudinary = "****"
+	}
+	if masked.APIKeys.Firebase != "" {
+		masked.APIKeys.Firebase = "****"
+	}
+	if masked.APIKeys.Pusher != "" {
+		masked.APIKeys.Pusher = "****"
+	}
+	if masked.APIKeys.Mailgun != "" {
+		masked.APIKeys.Mailgun = "****"
+	}
+	if masked.APIKeys.GoogleMaps != "" {
+		masked.APIKeys.GoogleMaps = "****"
+	}
+	if masked.APIKeys.AWSSecretKey != "" {
+		masked.APIKeys.AWSSecretKey = "****"
+	}
+
+	return masked
+}
+
+func (h *IntegrationHandler) encryptSensitiveFields(settings *models.IntegrationSettings) error {
+	// Encrypt Stripe fields
+	if settings.StripeSettings.SecretKey != "" && settings.StripeSettings.SecretKey != "sk_****" {
+		encrypted, err := h.encrypt.Encrypt(settings.StripeSettings.SecretKey)
+		if err != nil {
+			return err
+		}
+		settings.StripeSettings.SecretKey = encrypted
+	}
+
+	if settings.StripeSettings.WebhookSecret != "" && settings.StripeSettings.WebhookSecret != "whsec_****" {
+		encrypted, err := h.encrypt.Encrypt(settings.StripeSettings.WebhookSecret)
+		if err != nil {
+			return err
+		}
+		settings.StripeSettings.WebhookSecret = encrypted
+	}
+
+	// Encrypt PayPal fields
+	if settings.PayPalSettings.ClientSecret != "" && settings.PayPalSettings.ClientSecret != "****" {
+		encrypted, err := h.encrypt.Encrypt(settings.PayPalSettings.ClientSecret)
+		if err != nil {
+			return err
+		}
+		settings.PayPalSettings.ClientSecret = encrypted
+	}
+
+	// Encrypt Twilio fields
+	if settings.TwilioSettings.AuthToken != "" && settings.TwilioSettings.AuthToken != "****" {
+		encrypted, err := h.encrypt.Encrypt(settings.TwilioSettings.AuthToken)
+		if err != nil {
+			return err
+		}
+		settings.TwilioSettings.AuthToken = encrypted
+	}
+
+	// Encrypt WhatsApp fields
+	if settings.WhatsAppSettings.AccessToken != "" && settings.WhatsAppSettings.AccessToken != "EAA****" {
+		encrypted, err := h.encrypt.Encrypt(settings.WhatsAppSettings.AccessToken)
+		if err != nil {
+			return err
+		}
+		settings.WhatsAppSettings.AccessToken = encrypted
+	}
+
+	if settings.WhatsAppSettings.VerifyToken != "" && settings.WhatsAppSettings.VerifyToken != "****" {
+		encrypted, err := h.encrypt.Encrypt(settings.WhatsAppSettings.VerifyToken)
+		if err != nil {
+			return err
+		}
+		settings.WhatsAppSettings.VerifyToken = encrypted
+	}
+
+	// Encrypt Zoho fields
+	if settings.ZohoSettings.ClientSecret != "" && settings.ZohoSettings.ClientSecret != "****" {
+		encrypted, err := h.encrypt.Encrypt(settings.ZohoSettings.ClientSecret)
+		if err != nil {
+			return err
+		}
+		settings.ZohoSettings.ClientSecret = encrypted
+	}
+
+	if settings.ZohoSettings.RefreshToken != "" && settings.ZohoSettings.RefreshToken != "****" {
+		encrypted, err := h.encrypt.Encrypt(settings.ZohoSettings.RefreshToken)
+		if err != nil {
+			return err
+		}
+		settings.ZohoSettings.RefreshToken = encrypted
+	}
+
+	if settings.ZohoSettings.AccessToken != "" && settings.ZohoSettings.AccessToken != "****" {
+		encrypted, err := h.encrypt.Encrypt(settings.ZohoSettings.AccessToken)
+		if err != nil {
+			return err
+		}
+		settings.ZohoSettings.AccessToken = encrypted
+	}
+
+	// Encrypt Email fields
+	if settings.EmailSettings.SMTPPassword != "" && settings.EmailSettings.SMTPPassword != "****" {
+		encrypted, err := h.encrypt.Encrypt(settings.EmailSettings.SMTPPassword)
+		if err != nil {
+			return err
+		}
+		settings.EmailSettings.SMTPPassword = encrypted
+	}
+
+	// Encrypt API keys
+	apiKeyFields := map[string]*string{
+		"openai":        &settings.APIKeys.OpenAI,
+		"stripe":        &settings.APIKeys.Stripe,
+		"twilio":        &settings.APIKeys.Twilio,
+		"sendgrid":      &settings.APIKeys.SendGrid,
+		"cloudinary":    &settings.APIKeys.Cloudinary,
+		"firebase":      &settings.APIKeys.Firebase,
+		"pusher":        &settings.APIKeys.Pusher,
+		"mailgun":       &settings.APIKeys.Mailgun,
+		"google_maps":   &settings.APIKeys.GoogleMaps,
+		"aws_secret":    &settings.APIKeys.AWSSecretKey,
+	}
+
+	for name, field := range apiKeyFields {
+		if *field != "" && *field != "****" && *field != "sk_****" && *field != "SG.****" {
+			encrypted, err := h.encrypt.Encrypt(*field)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt %s API key: %w", name, err)
+			}
+			*field = encrypted
+		}
+	}
+
+	return nil
+}
+
+func (h *IntegrationHandler) logIntegrationEvent(organizationID, event, status, message, errorCode, userID string) {
+	logEntry := &models.IntegrationLog{
+		OrganizationID: organizationID,
+		Integration:    "system",
+		Event:          event,
+		Status:         status,
+		Message:        message,
+		ErrorCode:      errorCode,
+		UserID:         userID,
+	}
+
+	if err := h.db.Create(logEntry).Error; err != nil {
+		// Don't return error, just log it
+		fmt.Printf("Failed to log integration event: %v\n", err)
+	}
+}

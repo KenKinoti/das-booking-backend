@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: das_erp_production
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-your_secure_password_here}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/database-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d das_erp_production"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # DAS ERP Backend
+  das-erp-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # Database
+      DATABASE_URL: postgres://postgres:${DB_PASSWORD:-your_secure_password_here}@postgres:5432/das_erp_production?sslmode=disable
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: das_erp_production
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-your_secure_password_here}
+
+      # Application
+      PORT: 8080
+      ENVIRONMENT: production
+      APP_NAME: das-erp-backend
+
+      # Security
+      JWT_SECRET: ${JWT_SECRET:-your-super-secure-jwt-secret-change-this}
+      API_KEY: ${API_KEY:-your-api-key-here}
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      CORS_METHODS: GET,POST,PUT,DELETE,OPTIONS
+      CORS_HEADERS: Content-Type,Authorization
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis (for caching and sessions)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-your_redis_password}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Nginx (reverse proxy and load balancer)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/ssl:/etc/ssl/certs:ro
+    depends_on:
+      - das-erp-backend
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  app-network:
+    driver: bridge

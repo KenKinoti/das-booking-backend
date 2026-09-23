@@ -41,8 +41,8 @@ func AuthRequired(cfg *config.Config) gin.HandlerFunc {
 
 		tokenString := tokenParts[1]
 
-		// Handle mock token for development
-		if tokenString == "mock-jwt-token-for-testing" {
+		// Mock token is only honoured in local development
+		if tokenString == "mock-jwt-token-for-testing" && cfg.Environment == "development" {
 			fmt.Printf("Accepted mock token for development\n")
 			c.Set("user_id", "1")
 			c.Set("user_email", "admin@example.com")
@@ -89,8 +89,8 @@ func AuthRequired(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// Set user information in context
-		fmt.Printf("Setting context - user_id: %v, email: %v, role: %v, org_id: %v\n", 
-			claims["user_id"], claims["email"], claims["role"], claims["org_id"])
+		// fmt.Printf("Setting context - user_id: %v, email: %v, role: %v, org_id: %v\n", 
+		// 	claims["user_id"], claims["email"], claims["role"], claims["org_id"])
 		c.Set("user_id", claims["user_id"])
 		c.Set("user_email", claims["email"])
 		c.Set("user_role", claims["role"])
@@ -116,11 +116,17 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 			return
 		}
 
-		roleStr := userRole.(string)
-		for _, role := range roles {
-			if roleStr == role {
-				c.Next()
-				return
+		roleStr, _ := userRole.(string)
+		if roleStr == "super_admin" {
+			c.Next()
+			return
+		}
+		for _, allowed := range roles {
+			for _, role := range strings.Split(allowed, ",") {
+				if roleStr == strings.TrimSpace(role) {
+					c.Next()
+					return
+				}
 			}
 		}
 

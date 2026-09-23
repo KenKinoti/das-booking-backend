@@ -1,13 +1,14 @@
 package handlers
 
 import (
+	"github.com/google/uuid"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/bcrypt"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type LoginRequest struct {
@@ -16,24 +17,24 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token        string      `json:"token"`
-	RefreshToken string      `json:"refresh_token"`
+	Token        string       `json:"token"`
+	RefreshToken string       `json:"refresh_token"`
 	User         UserResponse `json:"user"`
-	ExpiresIn    int         `json:"expires_in"`
+	ExpiresIn    int          `json:"expires_in"`
 }
 
 type UserResponse struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	FirstName      string    `json:"first_name"`
-	LastName       string    `json:"last_name"`
-	Phone          string    `json:"phone"`
-	Role           string    `json:"role"`
-	OrganizationID string    `json:"organization_id"`
-	IsActive       bool      `json:"is_active"`
+	ID             string     `json:"id"`
+	Email          string     `json:"email"`
+	FirstName      string     `json:"first_name"`
+	LastName       string     `json:"last_name"`
+	Phone          string     `json:"phone"`
+	Role           string     `json:"role"`
+	OrganizationID string     `json:"organization_id"`
+	IsActive       bool       `json:"is_active"`
 	LastLoginAt    *time.Time `json:"last_login_at,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type RefreshRequest struct {
@@ -105,6 +106,7 @@ func (h *Handler) Login(c *gin.Context) {
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID,
 		"type":    "refresh",
+		"jti":     uuid.NewString(),
 		"exp":     time.Now().Add(h.Config.RefreshTokenExpiry).Unix(),
 		"iat":     time.Now().Unix(),
 	})
@@ -207,7 +209,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 
 	// Check if refresh token exists and is not revoked
 	var refreshTokenModel models.RefreshToken
-	if err := h.DB.Where("user_id = ? AND token = ? AND is_revoked = ? AND expires_at > ?", 
+	if err := h.DB.Where("user_id = ? AND token = ? AND is_revoked = ? AND expires_at > ?",
 		userID, req.RefreshToken, false, time.Now()).First(&refreshTokenModel).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
@@ -277,31 +279,31 @@ func (h *Handler) GetTestAccounts(c *gin.Context) {
 
 	testAccounts := []gin.H{
 		{
-			"email": "kennedy@dasyin.com.au",
-			"password": "Test123!@#",
-			"role": "super_admin",
-			"name": "Ken Kinoti (System Admin)",
+			"email":       "kennedy@dasyin.com.au",
+			"password":    "Test123!@#",
+			"role":        "super_admin",
+			"name":        "Ken Kinoti (System Admin)",
 			"description": "System administrator with full access",
 		},
 		{
-			"email": "Jane.Jones90@test.com", 
-			"password": "Test123!@#",
-			"role": "care_worker",
-			"name": "Jane Jones",
+			"email":       "Jane.Jones90@test.com",
+			"password":    "Test123!@#",
+			"role":        "care_worker",
+			"name":        "Jane Jones",
 			"description": "Care worker - limited access",
 		},
 		{
-			"email": "David.Jones20@test.com",
-			"password": "Test123!@#", 
-			"role": "support_coordinator",
-			"name": "David Jones",
+			"email":       "David.Jones20@test.com",
+			"password":    "Test123!@#",
+			"role":        "support_coordinator",
+			"name":        "David Jones",
 			"description": "Support coordinator",
 		},
 		{
-			"email": "Michael.Thomas75@test.com",
-			"password": "Test123!@#",
-			"role": "admin",
-			"name": "Michael Thomas", 
+			"email":       "Michael.Thomas75@test.com",
+			"password":    "Test123!@#",
+			"role":        "admin",
+			"name":        "Michael Thomas",
 			"description": "Organization admin",
 		},
 	}
@@ -323,13 +325,13 @@ func (h *Handler) GetTestAccounts(c *gin.Context) {
 				break
 			}
 		}
-		
+
 		if !exists {
 			testAccounts = append(testAccounts, gin.H{
-				"email": user.Email,
-				"password": "Test123!@#",
-				"role": user.Role,
-				"name": user.FirstName + " " + user.LastName,
+				"email":       user.Email,
+				"password":    "Test123!@#",
+				"role":        user.Role,
+				"name":        user.FirstName + " " + user.LastName,
 				"description": "Generated test user - " + user.Role,
 			})
 		}

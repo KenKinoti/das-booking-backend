@@ -7,8 +7,12 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine, handler *Handler, cfg *config.Config) {
-	// WebSocket endpoint
+	// WebSocket clients authenticate with the same JWT as the REST API.
+	handler.jwtSecret = cfg.JWTSecret
+
+	// WebSocket endpoints
 	r.GET("/ws/messaging", handler.HandleWebSocket)
+	r.GET("/ws/communication", handler.HandleWebSocket) // Alias for communication module
 
 	// API routes (protected by auth middleware)
 	api := r.Group("/api/v1/messaging")

@@ -214,7 +214,7 @@ func (w *WhatsAppService) ProcessWebhookEvent(event *WhatsAppWebhookEvent) ([]*m
 					message := &models.Message{
 						Content:     msg.Text.Body,
 						MessageType: "text",
-						SenderID:    0, // Will be set by handler when thread is found/created
+						SenderID:    "", // External sender; identified via metadata.phone
 						Metadata:    fmt.Sprintf(`{"external_id": "%s", "phone": "%s", "integration": "whatsapp"}`, msg.ID, msg.From),
 					}
 

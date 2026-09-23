@@ -1,0 +1,93 @@
+# render.yaml - Render deployment configuration
+services:
+  - type: web
+    name: das-erp-backend
+    env: docker
+    region: singapore # Closest available region to Adelaide
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PORT
+        value: 8080
+      - key: APP_NAME
+        value: das-erp-backend
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: LOG_LEVEL
+        value: info
+
+      # Database configuration (you'll need to create a PostgreSQL service)
+      - key: DB_HOST
+        fromService:
+          type: pserv
+          name: das-erp-postgres
+          property: host
+      - key: DB_PORT
+        fromService:
+          type: pserv
+          name: das-erp-postgres
+          property: port
+      - key: DB_NAME
+        fromService:
+          type: pserv
+          name: das-erp-postgres
+          property: database
+      - key: DB_USER
+        fromService:
+          type: pserv
+          name: das-erp-postgres
+          property: user
+      - key: DB_PASSWORD
+        fromService:
+          type: pserv
+          name: das-erp-postgres
+          property: password
+      - key: DATABASE_URL
+        fromService:
+          type: pserv
+          name: das-erp-postgres
+          property: connectionString
+
+      # Secret environment variables (set these in Render dashboard)
+      - key: JWT_SECRET
+        sync: false  # This will be set manually in Render dashboard
+      - key: API_KEY
+        sync: false
+
+    healthCheckPath: /health
+
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: /api/*
+
+    buildFilter:
+      paths:
+        - "**"
+      ignoredPaths:
+        - "*.md"
+        - ".git/**"
+        - "node_modules/**"
+        - "deploy/**"
+        - ".env*"
+
+  # PostgreSQL Database Service
+  - type: pserv
+    name: das-erp-postgres
+    env: postgresql
+    region: singapore
+    plan: starter
+
+    databases:
+      - name: das_erp_production
+        user: postgres
+
+    disk:
+      name: das-erp-postgres-disk
+      size: 10GB
+
+    ipAllowList: []  # Allow all connections from services

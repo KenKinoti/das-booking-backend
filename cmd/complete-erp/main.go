@@ -10,6 +10,7 @@ import (
 	// Internal packages - existing booking models
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/config"
+	"github.com/kenkinoti/gofiber-das-crm-backend/internal/handlers"
 
 	// Complete ERP modules with clear boundaries
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/finance"
@@ -164,6 +165,10 @@ func main() {
 
 		// Events Management Module (temporarily disabled due to route conflicts)
 		// events.SetupRoutes(v1, db)
+
+		// Internal Handlers - Organization Management and Super Admin
+		internalHandler := handlers.NewHandler(db, cfg)
+		internalHandler.SetupRoutes(r)
 
 		// Admin routes
 		v1.GET("/admin/overview", getCompleteAdminOverview)

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -324,7 +325,7 @@ type CreateOrganizationRequest struct {
 	Email         string            `json:"email" binding:"required,email"`
 	Website       string            `json:"website"`
 	Address       models.Address    `json:"address"`
-	NDISReg       models.NDISReg    `json:"ndis_registration"`
+	// NDISReg removed for simplicity
 	AdminUser     CreateAdminUser   `json:"admin_user" binding:"required"`
 	Subscription  SubscriptionPlan  `json:"subscription" binding:"required"`
 }
@@ -372,7 +373,7 @@ func (h *Handler) CreateOrganization(c *gin.Context) {
 		Email:   req.Email,
 		Website: req.Website,
 		Address: req.Address,
-		NDISReg: req.NDISReg,
+		// NDISReg removed for simplicity
 	}
 
 	if err := tx.Create(&org).Error; err != nil {
@@ -692,8 +693,7 @@ func (h *Handler) GetAllOrganizations(c *gin.Context) {
 	offset := (page - 1) * limit
 
 	// Build query
-	query := h.DB.Preload("Users", "role = ? AND is_active = ?", "admin", true).
-		Preload("Participants")
+	query := h.DB.Preload("Users", "role = ? AND is_active = ?", "admin", true)
 
 	if search != "" {
 		query = query.Where("LOWER(name) LIKE ? OR LOWER(email) LIKE ? OR abn LIKE ?", 
@@ -759,7 +759,7 @@ func (h *Handler) GetOrganizationById(c *gin.Context) {
 	orgID := c.Param("id")
 
 	var org models.Organization
-	if err := h.DB.Preload("Users").Preload("Participants").First(&org, "id = ?", orgID).Error; err != nil {
+	if err := h.DB.Preload("Users").First(&org, "id = ?", orgID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{
 				"success": false,
@@ -936,5 +936,172 @@ func (h *Handler) DeleteOrganization(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Organization deleted successfully",
+	})
+}
+
+// UpdateOrganizationModules updates the modules configuration for an organization
+func (h *Handler) UpdateOrganizationModules(c *gin.Context) {
+	// TODO: Re-enable super admin access verification for production
+	// userRole, exists := c.Get("user_role")
+	// if !exists || userRole != "super_admin" {
+	// 	c.JSON(http.StatusForbidden, gin.H{
+	// 		"success": false,
+	// 		"error": gin.H{
+	// 			"code":    "ACCESS_DENIED",
+	// 			"message": "Super admin access required",
+	// 		},
+	// 	})
+	// 	return
+	// }
+
+	orgID := c.Param("id")
+	if orgID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_REQUEST",
+				"message": "Organization ID is required",
+			},
+		})
+		return
+	}
+
+	// Request body structure
+	type UpdateModulesRequest struct {
+		EnabledModules []string          `json:"enabled_modules" binding:"required"`
+		ModulesConfig  map[string]bool   `json:"modules_config"`
+	}
+
+	var req UpdateModulesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "INVALID_REQUEST",
+				"message": "Invalid request body: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	// Validate that required modules are present
+	requiredModules := []string{"booking", "customers"}
+	for _, required := range requiredModules {
+		found := false
+		for _, enabled := range req.EnabledModules {
+			if enabled == required {
+				found = true
+				break
+			}
+		}
+		if !found {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "INVALID_REQUEST",
+					"message": fmt.Sprintf("Required module '%s' must be enabled", required),
+				},
+			})
+			return
+		}
+	}
+
+	tx := h.DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Check if organization exists
+	var org models.Organization
+	if err := tx.Where("id = ?", orgID).First(&org).Error; err != nil {
+		tx.Rollback()
+		if err == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "NOT_FOUND",
+					"message": "Organization not found",
+				},
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "DATABASE_ERROR",
+				"message": "Failed to fetch organization",
+			},
+		})
+		return
+	}
+
+	// Update organization with modules configuration
+	// Convert to JSON for SQLite compatibility
+	enabledModulesJSON, err := json.Marshal(req.EnabledModules)
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "JSON_ERROR",
+				"message": "Failed to serialize enabled modules",
+			},
+		})
+		return
+	}
+
+	modulesConfigJSON, err := json.Marshal(req.ModulesConfig)
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "JSON_ERROR",
+				"message": "Failed to serialize modules config",
+			},
+		})
+		return
+	}
+
+	if err := tx.Exec("UPDATE organizations SET enabled_modules = ?, modules_config = ?, updated_at = ? WHERE id = ?",
+		string(enabledModulesJSON), string(modulesConfigJSON), time.Now(), orgID).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "DATABASE_ERROR",
+				"message": "Failed to update organization modules",
+			},
+		})
+		return
+	}
+
+	// Commit transaction
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "DATABASE_ERROR",
+				"message": "Failed to commit transaction",
+			},
+		})
+		return
+	}
+
+	// Return updated organization
+	var updatedOrg models.Organization
+	h.DB.Where("id = ?", orgID).First(&updatedOrg)
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Organization modules updated successfully",
+		"data": gin.H{
+			"id":              updatedOrg.ID,
+			"name":            updatedOrg.Name,
+			"enabled_modules": updatedOrg.EnabledModules,
+			"modules_config":  updatedOrg.ModulesConfig,
+		},
 	})
 }

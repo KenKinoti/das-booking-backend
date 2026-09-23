@@ -1,0 +1,41 @@
+# terraform.tfvars.example
+# Copy this file to terraform.tfvars and fill in your values
+
+# Application Configuration
+app_name    = "das-erp-backend"
+environment = "production"
+aws_region  = "ap-southeast-2"
+
+# Database Configuration
+db_instance_class     = "db.t3.micro"
+db_allocated_storage  = 20
+db_password          = "your-secure-database-password-here"
+backup_retention_period = 7
+deletion_protection  = true
+multi_az            = false
+
+# Application Security
+jwt_secret = "your-super-secure-jwt-secret-key-at-least-32-characters-long"
+
+# ECS Configuration
+ecs_cpu        = 512
+ecs_memory     = 1024
+desired_count  = 2
+container_port = 8080
+
+# Load Balancer Configuration
+enable_https    = false
+certificate_arn = ""
+domain_name     = ""
+
+# Monitoring Configuration
+log_retention_in_days = 30
+
+# Tags
+tags = {
+  Project     = "DASYIN ERP"
+  Environment = "production"
+  ManagedBy   = "Terraform"
+  Owner       = "your-team"
+  CostCenter  = "engineering"
+}

@@ -1,50 +1,38 @@
 package messaging
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"gorm.io/gorm"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"gorm.io/gorm"
 )
 
 type Handler struct {
-	DB       *gorm.DB
-	upgrader websocket.Upgrader
-	clients  map[string]*websocket.Conn
-	hub      *WebSocketHub
-}
-
-type WebSocketHub struct {
-	clients    map[*websocket.Conn]bool
-	broadcast  chan []byte
-	register   chan *websocket.Conn
-	unregister chan *websocket.Conn
+	DB        *gorm.DB
+	upgrader  websocket.Upgrader
+	hub       *WebSocketHub
+	jwtSecret string
 }
 
 type WebSocketMessage struct {
 	Type     string      `json:"type"`
 	ThreadID uint        `json:"thread_id,omitempty"`
-	UserID   uint        `json:"user_id,omitempty"`
+	UserID   string      `json:"user_id,omitempty"`
 	Data     interface{} `json:"data"`
 }
 
 func NewHandler(db *gorm.DB) *Handler {
-	hub := &WebSocketHub{
-		clients:    make(map[*websocket.Conn]bool),
-		broadcast:  make(chan []byte),
-		register:   make(chan *websocket.Conn),
-		unregister: make(chan *websocket.Conn),
-	}
-
-	go hub.run()
-
 	return &Handler{
 		DB: db,
 		upgrader: websocket.Upgrader{
@@ -52,124 +40,81 @@ func NewHandler(db *gorm.DB) *Handler {
 				return true // Allow all origins for development
 			},
 		},
-		clients: make(map[string]*websocket.Conn),
-		hub:     hub,
+		hub: newHub(),
 	}
 }
 
-func (h *WebSocketHub) run() {
-	for {
-		select {
-		case client := <-h.register:
-			h.clients[client] = true
-			log.Println("Client connected")
-
-		case client := <-h.unregister:
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				client.Close()
-				log.Println("Client disconnected")
-			}
-
-		case message := <-h.broadcast:
-			for client := range h.clients {
-				select {
-				case err := <-func() chan error {
-					errCh := make(chan error, 1)
-					go func() {
-						defer close(errCh)
-						errCh <- client.WriteMessage(websocket.TextMessage, message)
-					}()
-					return errCh
-				}():
-					if err != nil {
-						log.Printf("Error writing message: %v", err)
-						client.Close()
-						delete(h.clients, client)
-					}
-				default:
-					close := make(chan struct{})
-					go func() {
-						defer func() { close <- struct{}{} }()
-					}()
-					client.Close()
-					delete(h.clients, client)
-				}
-			}
-		}
+// parseThreadID reads the numeric :threadId URL parameter, writing a 400 on
+// failure.
+func parseThreadID(c *gin.Context) (uint, bool) {
+	id, err := strconv.ParseUint(c.Param("threadId"), 10, 32)
+	if err != nil || id == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid thread ID"})
+		return 0, false
 	}
+	return uint(id), true
 }
 
-// WebSocket connection handler
-func (h *Handler) HandleWebSocket(c *gin.Context) {
-	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		log.Printf("Failed to upgrade connection: %v", err)
-		return
-	}
+// isParticipant reports whether the user is an active participant of the
+// thread and the thread belongs to the organisation.
+func (h *Handler) isParticipant(threadID uint, uid, oid string) bool {
+	var count int64
+	h.DB.Model(&models.MessageParticipant{}).
+		Joins("JOIN message_threads ON message_threads.id = message_participants.thread_id AND message_threads.deleted_at IS NULL").
+		Where("message_participants.thread_id = ? AND message_participants.user_id = ? AND message_participants.is_active = ?", threadID, uid, true).
+		Where("message_threads.organization_id = ?", oid).
+		Count(&count)
+	return count > 0
+}
 
-	h.hub.register <- conn
-
-	defer func() {
-		h.hub.unregister <- conn
-	}()
-
-	for {
-		var msg WebSocketMessage
-		err := conn.ReadJSON(&msg)
-		if err != nil {
-			log.Printf("Error reading JSON: %v", err)
-			break
-		}
-
-		// Handle different message types
-		switch msg.Type {
-		case "join_thread":
-			// Handle joining a thread
-		case "leave_thread":
-			// Handle leaving a thread
-		case "typing_start":
-			h.handleTypingIndicator(msg.ThreadID, msg.UserID, true)
-		case "typing_stop":
-			h.handleTypingIndicator(msg.ThreadID, msg.UserID, false)
-		}
-	}
+// unreadCountForThread counts messages in a thread not sent by and not yet
+// read by the user.
+func (h *Handler) unreadCountForThread(threadID uint, uid string) int64 {
+	var n int64
+	h.DB.Model(&models.Message{}).
+		Joins("LEFT JOIN message_read_statuses ON message_read_statuses.message_id = messages.id AND message_read_statuses.user_id = ? AND message_read_statuses.deleted_at IS NULL", uid).
+		Where("messages.thread_id = ? AND messages.is_deleted = ? AND message_read_statuses.id IS NULL AND messages.sender_id <> ?", threadID, false, uid).
+		Count(&n)
+	return n
 }
 
 // Get all threads for a user
 func (h *Handler) GetThreads(c *gin.Context) {
-	userID := c.GetUint("user_id") // Assumes user ID is set by auth middleware
-	if userID == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	uid, oid, ok := requireUserAndOrg(c)
+	if !ok {
 		return
 	}
 
-	var threads []models.MessageThread
-	err := h.DB.Joins("JOIN message_participants ON message_participants.thread_id = message_threads.id").
-		Where("message_participants.user_id = ? AND message_participants.is_active = ?", userID, true).
+	threads := []models.MessageThread{}
+	err := h.DB.
+		Where("message_threads.organization_id = ?", oid).
+		Where("message_threads.id IN (?)", h.DB.Model(&models.MessageParticipant{}).
+			Select("thread_id").
+			Where("user_id = ? AND is_active = ?", uid, true)).
+		Preload("Participants", "is_active = ?", true).
 		Preload("Participants.User").
-		Preload("Messages", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at DESC").Limit(1)
-		}).
-		Order("message_threads.last_message_at DESC").
+		Order("message_threads.last_message_at DESC NULLS LAST, message_threads.created_at DESC").
 		Find(&threads).Error
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch threads"})
+		log.Printf("messaging: failed to fetch threads: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to fetch threads"})
 		return
 	}
 
-	// Add unread count for each thread
 	for i := range threads {
-		var unreadCount int64
-		h.DB.Model(&models.Message{}).
-			Joins("LEFT JOIN message_read_status ON message_read_status.message_id = messages.id AND message_read_status.user_id = ?", userID).
-			Where("messages.thread_id = ? AND message_read_status.id IS NULL AND messages.sender_id != ?", threads[i].ID, userID).
-			Count(&unreadCount)
+		// Latest message first (clients read messages[0] as the preview).
+		msgs := []models.Message{}
+		h.DB.Where("thread_id = ? AND is_deleted = ?", threads[i].ID, false).
+			Preload("Sender").
+			Order("created_at DESC").
+			Limit(1).
+			Find(&msgs)
 
-		// Add unread count to thread data (you might want to add this field to the model)
-		threads[i].Messages = append(threads[i].Messages, models.Message{
-			Content: fmt.Sprintf("%d", unreadCount), // Temporary way to pass unread count
+		// Unread count is passed as a trailing pseudo-message (legacy shape).
+		unread := h.unreadCountForThread(threads[i].ID, uid)
+		threads[i].Messages = append(msgs, models.Message{
+			Content: fmt.Sprintf("%d", unread),
 		})
 	}
 
@@ -181,62 +126,79 @@ func (h *Handler) GetThreads(c *gin.Context) {
 
 // Create a new thread
 func (h *Handler) CreateThread(c *gin.Context) {
-	userID := c.GetUint("user_id")
-	orgID := c.GetUint("organization_id")
-
-	var request struct {
-		Name         string `json:"name"`
-		Type         string `json:"type" binding:"required"`
-		ParticipantIDs []uint `json:"participant_ids" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	uid, oid, ok := requireUserAndOrg(c)
+	if !ok {
 		return
 	}
 
-	// Create thread
+	var request struct {
+		Name           string   `json:"name"`
+		Type           string   `json:"type" binding:"required"`
+		ParticipantIDs []string `json:"participant_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	// De-duplicate participants (excluding the creator, who is added as admin).
+	seen := map[string]bool{uid: true}
+	others := []string{}
+	for _, id := range request.ParticipantIDs {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		others = append(others, id)
+	}
+
+	// All participants must be users in the same organisation.
+	if len(others) > 0 {
+		var found int64
+		h.DB.Model(&models.User{}).Where("id IN ? AND organization_id = ?", others, oid).Count(&found)
+		if int(found) != len(others) {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "One or more participants were not found in your organization"})
+			return
+		}
+	}
+
 	thread := models.MessageThread{
 		Name:           request.Name,
 		Type:           request.Type,
-		CreatedBy:      userID,
-		OrganizationID: orgID,
+		CreatedBy:      uid,
+		OrganizationID: oid,
 		IsActive:       true,
 		LastMessageAt:  nil,
 	}
 
-	if err := h.DB.Create(&thread).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create thread"})
-		return
-	}
-
-	// Add participants
-	participants := []models.MessageParticipant{}
-
-	// Add creator as admin
-	participants = append(participants, models.MessageParticipant{
-		ThreadID:  thread.ID,
-		UserID:    userID,
-		Role:      "admin",
-		IsActive:  true,
-		JoinedAt:  time.Now(),
-	})
-
-	// Add other participants
-	for _, participantID := range request.ParticipantIDs {
-		if participantID != userID {
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&thread).Error; err != nil {
+			return err
+		}
+		now := time.Now()
+		participants := []models.MessageParticipant{{
+			ThreadID: thread.ID,
+			UserID:   uid,
+			Role:     "admin",
+			IsActive: true,
+			JoinedAt: now,
+		}}
+		for _, id := range others {
 			participants = append(participants, models.MessageParticipant{
-				ThreadID:  thread.ID,
-				UserID:    participantID,
-				Role:      "member",
-				IsActive:  true,
-				JoinedAt:  time.Now(),
+				ThreadID: thread.ID,
+				UserID:   id,
+				Role:     "member",
+				IsActive: true,
+				JoinedAt: now,
 			})
 		}
-	}
-
-	if err := h.DB.Create(&participants).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add participants"})
+		return tx.Create(&participants).Error
+	})
+	if err != nil {
+		log.Printf("messaging: failed to create thread: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to create thread"})
 		return
 	}
 
@@ -251,23 +213,31 @@ func (h *Handler) CreateThread(c *gin.Context) {
 
 // Get messages for a thread
 func (h *Handler) GetMessages(c *gin.Context) {
-	threadID, _ := strconv.ParseUint(c.Param("threadId"), 10, 32)
-	userID := c.GetUint("user_id")
-
-	// Verify user is participant in thread
-	var participant models.MessageParticipant
-	if err := h.DB.Where("thread_id = ? AND user_id = ? AND is_active = ?", threadID, userID, true).
-		First(&participant).Error; err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+	uid, oid, ok := requireUserAndOrg(c)
+	if !ok {
+		return
+	}
+	threadID, ok := parseThreadID(c)
+	if !ok {
 		return
 	}
 
-	// Get pagination parameters
+	if !h.isParticipant(threadID, uid, oid) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Access denied"})
+		return
+	}
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 200 {
+		limit = 50
+	}
 	offset := (page - 1) * limit
 
-	var messages []models.Message
+	messages := []models.Message{}
 	err := h.DB.Where("thread_id = ? AND is_deleted = ?", threadID, false).
 		Preload("Sender").
 		Preload("Attachments").
@@ -279,12 +249,13 @@ func (h *Handler) GetMessages(c *gin.Context) {
 		Find(&messages).Error
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch messages"})
+		log.Printf("messaging: failed to fetch messages: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to fetch messages"})
 		return
 	}
 
 	// Mark messages as read
-	go h.markMessagesAsRead(uint(threadID), userID)
+	go h.markMessagesAsRead(threadID, uid)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -299,8 +270,14 @@ func (h *Handler) GetMessages(c *gin.Context) {
 
 // Send a message
 func (h *Handler) SendMessage(c *gin.Context) {
-	threadID, _ := strconv.ParseUint(c.Param("threadId"), 10, 32)
-	userID := c.GetUint("user_id")
+	uid, oid, ok := requireUserAndOrg(c)
+	if !ok {
+		return
+	}
+	threadID, ok := parseThreadID(c)
+	if !ok {
+		return
+	}
 
 	var request struct {
 		Content     string `json:"content" binding:"required"`
@@ -310,26 +287,41 @@ func (h *Handler) SendMessage(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 		return
 	}
 
-	// Verify user is participant in thread
-	var participant models.MessageParticipant
-	if err := h.DB.Where("thread_id = ? AND user_id = ? AND is_active = ?", threadID, userID, true).
-		First(&participant).Error; err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+	if !h.isParticipant(threadID, uid, oid) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Access denied"})
 		return
 	}
 
-	// Create message
+	// A reply must reference a message in the same thread.
+	if request.ReplyToID != nil {
+		var n int64
+		h.DB.Model(&models.Message{}).Where("id = ? AND thread_id = ?", *request.ReplyToID, threadID).Count(&n)
+		if n == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "reply_to_id does not reference a message in this thread"})
+			return
+		}
+	}
+
+	// metadata is stored in a json column; it must be valid JSON.
+	metadata := strings.TrimSpace(request.Metadata)
+	if metadata == "" {
+		metadata = "{}"
+	} else if !json.Valid([]byte(metadata)) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "metadata must be valid JSON"})
+		return
+	}
+
 	message := models.Message{
-		ThreadID:    uint(threadID),
-		SenderID:    userID,
+		ThreadID:    threadID,
+		SenderID:    uid,
 		Content:     request.Content,
 		MessageType: request.MessageType,
 		ReplyToID:   request.ReplyToID,
-		Metadata:    request.Metadata,
+		Metadata:    metadata,
 		IsForwarded: false,
 		IsEdited:    false,
 		IsDeleted:   false,
@@ -340,27 +332,27 @@ func (h *Handler) SendMessage(c *gin.Context) {
 	}
 
 	if err := h.DB.Create(&message).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send message"})
+		log.Printf("messaging: failed to send message: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to send message"})
 		return
 	}
 
-	// Update thread last message time
+	// Update thread last message time and other participants' unread counters.
 	h.DB.Model(&models.MessageThread{}).Where("id = ?", threadID).
-		Updates(map[string]interface{}{
-			"last_message_at": time.Now(),
-		})
+		Update("last_message_at", time.Now())
+	h.DB.Model(&models.MessageParticipant{}).
+		Where("thread_id = ? AND user_id <> ? AND is_active = ?", threadID, uid, true).
+		UpdateColumn("unread_count", gorm.Expr("unread_count + 1"))
 
 	// Load message with sender info
 	h.DB.Preload("Sender").Preload("ReplyTo.Sender").First(&message, message.ID)
 
-	// Broadcast message via WebSocket
-	wsMessage := WebSocketMessage{
+	// Broadcast to thread participants via WebSocket
+	h.broadcastToUsers(WebSocketMessage{
 		Type:     "new_message",
-		ThreadID: uint(threadID),
+		ThreadID: threadID,
 		Data:     message,
-	}
-	messageJSON, _ := json.Marshal(wsMessage)
-	h.hub.broadcast <- messageJSON
+	}, h.threadParticipantIDs(threadID))
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
@@ -369,44 +361,56 @@ func (h *Handler) SendMessage(c *gin.Context) {
 }
 
 // Mark messages as read
-func (h *Handler) markMessagesAsRead(threadID, userID uint) {
-	// Get unread messages for this user in this thread
+func (h *Handler) markMessagesAsRead(threadID uint, uid string) {
 	var messageIDs []uint
 	h.DB.Model(&models.Message{}).
-		Joins("LEFT JOIN message_read_status ON message_read_status.message_id = messages.id AND message_read_status.user_id = ?", userID).
-		Where("messages.thread_id = ? AND message_read_status.id IS NULL AND messages.sender_id != ?", threadID, userID).
+		Joins("LEFT JOIN message_read_statuses ON message_read_statuses.message_id = messages.id AND message_read_statuses.user_id = ? AND message_read_statuses.deleted_at IS NULL", uid).
+		Where("messages.thread_id = ? AND message_read_statuses.id IS NULL AND messages.sender_id <> ?", threadID, uid).
 		Pluck("messages.id", &messageIDs)
 
-	// Create read status records
-	var readStatuses []models.MessageReadStatus
+	now := time.Now()
+	readStatuses := make([]models.MessageReadStatus, 0, len(messageIDs))
 	for _, messageID := range messageIDs {
 		readStatuses = append(readStatuses, models.MessageReadStatus{
 			MessageID: messageID,
-			UserID:    userID,
-			ReadAt:    time.Now(),
+			UserID:    uid,
+			ReadAt:    now,
 		})
 	}
 
 	if len(readStatuses) > 0 {
-		h.DB.Create(&readStatuses)
-
-		// Reset unread count for participant
-		h.DB.Model(&models.MessageParticipant{}).
-			Where("thread_id = ? AND user_id = ?", threadID, userID).
-			Update("unread_count", 0)
+		if err := h.DB.Create(&readStatuses).Error; err != nil {
+			log.Printf("messaging: failed to mark messages read: %v", err)
+			return
+		}
 	}
+
+	// Reset unread count for participant
+	h.DB.Model(&models.MessageParticipant{}).
+		Where("thread_id = ? AND user_id = ?", threadID, uid).
+		Updates(map[string]interface{}{"unread_count": 0, "last_seen_at": now})
 }
 
 // Handle typing indicator
-func (h *Handler) handleTypingIndicator(threadID, userID uint, isTyping bool) {
+func (h *Handler) handleTypingIndicator(threadID uint, uid string, isTyping bool) {
+	if threadID == 0 || uid == "" {
+		return
+	}
+	var n int64
+	h.DB.Model(&models.MessageParticipant{}).
+		Where("thread_id = ? AND user_id = ? AND is_active = ?", threadID, uid, true).
+		Count(&n)
+	if n == 0 {
+		return
+	}
+
 	var indicator models.TypingIndicator
-	result := h.DB.Where("thread_id = ? AND user_id = ?", threadID, userID).First(&indicator)
+	result := h.DB.Where("thread_id = ? AND user_id = ?", threadID, uid).First(&indicator)
 
 	if result.Error != nil {
-		// Create new indicator
 		indicator = models.TypingIndicator{
 			ThreadID: threadID,
-			UserID:   userID,
+			UserID:   uid,
 			IsTyping: isTyping,
 		}
 		if isTyping {
@@ -415,47 +419,57 @@ func (h *Handler) handleTypingIndicator(threadID, userID uint, isTyping bool) {
 		}
 		h.DB.Create(&indicator)
 	} else {
-		// Update existing indicator
 		updates := map[string]interface{}{
 			"is_typing": isTyping,
 		}
 		if isTyping {
-			now := time.Now()
-			updates["started_at"] = &now
+			updates["started_at"] = time.Now()
 		}
 		h.DB.Model(&indicator).Updates(updates)
 	}
 
-	// Broadcast typing indicator
-	wsMessage := WebSocketMessage{
+	recipients := []string{}
+	for _, id := range h.threadParticipantIDs(threadID) {
+		if id != uid {
+			recipients = append(recipients, id)
+		}
+	}
+	h.broadcastToUsers(WebSocketMessage{
 		Type:     "typing_indicator",
 		ThreadID: threadID,
-		UserID:   userID,
+		UserID:   uid,
 		Data: gin.H{
 			"is_typing": isTyping,
-			"user_id":   userID,
+			"user_id":   uid,
 		},
-	}
-	messageJSON, _ := json.Marshal(wsMessage)
-	h.hub.broadcast <- messageJSON
+	}, recipients)
 }
+
+const defaultAllowedFileTypes = `["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "txt"]`
 
 // Get message settings for organization
 func (h *Handler) GetMessageSettings(c *gin.Context) {
-	orgID := c.GetUint("organization_id")
+	oid, ok := requireOrg(c)
+	if !ok {
+		return
+	}
 
 	var settings models.MessageSettings
-	result := h.DB.Where("organization_id = ?", orgID).First(&settings)
+	result := h.DB.Where("organization_id = ?", oid).First(&settings)
 
 	if result.Error != nil {
-		// Create default settings
+		if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			log.Printf("messaging: failed to load settings: %v", result.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to load settings"})
+			return
+		}
 		settings = models.MessageSettings{
-			OrganizationID:         orgID,
+			OrganizationID:         oid,
 			EnableInAppMessaging:   true,
 			EnableGroupChats:       true,
 			EnableFileSharing:      true,
-			MaxFileSize:           10485760, // 10MB
-			AllowedFileTypes:      `["jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "txt"]`,
+			MaxFileSize:            10485760, // 10MB
+			AllowedFileTypes:       defaultAllowedFileTypes,
 			MessageRetentionDays:   365,
 			EnableMessageReactions: true,
 			EnableTypingIndicator:  true,
@@ -465,7 +479,11 @@ func (h *Handler) GetMessageSettings(c *gin.Context) {
 			ModerationEnabled:      false,
 			ProfanityFilterEnabled: false,
 		}
-		h.DB.Create(&settings)
+		if err := h.DB.Create(&settings).Error; err != nil {
+			log.Printf("messaging: failed to create default settings: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to create settings"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -476,31 +494,53 @@ func (h *Handler) GetMessageSettings(c *gin.Context) {
 
 // Update message settings
 func (h *Handler) UpdateMessageSettings(c *gin.Context) {
-	orgID := c.GetUint("organization_id")
+	oid, ok := requireOrg(c)
+	if !ok {
+		return
+	}
 
 	var request models.MessageSettings
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	cols, err := bindWithColumns(c, h.DB, &request)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	// Never let the client move settings to another organisation or row.
+	request.ID = 0
+	request.OrganizationID = oid
+	request.Organization = nil
+	if request.AllowedFileTypes != "" && !json.Valid([]byte(request.AllowedFileTypes)) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "allowed_file_types must be a JSON array"})
 		return
 	}
 
 	var settings models.MessageSettings
-	result := h.DB.Where("organization_id = ?", orgID).First(&settings)
+	result := h.DB.Where("organization_id = ?", oid).First(&settings)
 
 	if result.Error != nil {
-		// Create new settings
-		request.OrganizationID = orgID
+		if request.AllowedFileTypes == "" {
+			request.AllowedFileTypes = defaultAllowedFileTypes
+		}
 		if err := h.DB.Create(&request).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create settings"})
+			log.Printf("messaging: failed to create settings: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to create settings"})
 			return
+		}
+		// Columns with DB defaults skip zero values on insert; re-apply the
+		// fields the client actually sent (e.g. explicit false).
+		if len(cols) > 0 {
+			h.DB.Model(&request).Select(cols).Updates(&request)
 		}
 		settings = request
 	} else {
-		// Update existing settings
-		if err := h.DB.Model(&settings).Updates(&request).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update settings"})
+		if len(cols) == 0 {
+			// Nothing updatable was sent; return the current record.
+		} else if err := h.DB.Model(&settings).Select(cols).Updates(&request).Error; err != nil {
+			log.Printf("messaging: failed to update settings: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to update settings"})
 			return
 		}
+		h.DB.First(&settings, settings.ID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -511,13 +551,15 @@ func (h *Handler) UpdateMessageSettings(c *gin.Context) {
 
 // Get message integrations
 func (h *Handler) GetMessageIntegrations(c *gin.Context) {
-	orgID := c.GetUint("organization_id")
+	oid, ok := requireOrg(c)
+	if !ok {
+		return
+	}
 
-	var integrations []models.MessageIntegration
-	err := h.DB.Where("organization_id = ?", orgID).Find(&integrations).Error
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch integrations"})
+	integrations := []models.MessageIntegration{}
+	if err := h.DB.Where("organization_id = ?", oid).Find(&integrations).Error; err != nil {
+		log.Printf("messaging: failed to fetch integrations: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to fetch integrations"})
 		return
 	}
 
@@ -535,33 +577,52 @@ func (h *Handler) GetMessageIntegrations(c *gin.Context) {
 
 // Create or update message integration
 func (h *Handler) UpdateMessageIntegration(c *gin.Context) {
-	orgID := c.GetUint("organization_id")
+	oid, ok := requireOrg(c)
+	if !ok {
+		return
+	}
 	provider := c.Param("provider")
 
 	var request models.MessageIntegration
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	cols, err := bindWithColumns(c, h.DB, &request)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	request.ID = 0
+	request.OrganizationID = oid
+	request.Organization = nil
+	request.Provider = provider
+	if request.Configuration != "" && !json.Valid([]byte(request.Configuration)) {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "configuration must be valid JSON"})
 		return
 	}
 
 	var integration models.MessageIntegration
-	result := h.DB.Where("organization_id = ? AND provider = ?", orgID, provider).First(&integration)
+	result := h.DB.Where("organization_id = ? AND provider = ?", oid, provider).First(&integration)
 
 	if result.Error != nil {
-		// Create new integration
-		request.OrganizationID = orgID
-		request.Provider = provider
+		if request.Configuration == "" {
+			request.Configuration = "{}"
+		}
 		if err := h.DB.Create(&request).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create integration"})
+			log.Printf("messaging: failed to create integration: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to create integration"})
 			return
+		}
+		if len(cols) > 0 {
+			h.DB.Model(&request).Select(cols).Updates(&request)
 		}
 		integration = request
 	} else {
-		// Update existing integration
-		if err := h.DB.Model(&integration).Updates(&request).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update integration"})
+		if len(cols) == 0 {
+			// Nothing updatable was sent; return the current record.
+		} else if err := h.DB.Model(&integration).Select(cols).Updates(&request).Error; err != nil {
+			log.Printf("messaging: failed to update integration: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to update integration"})
 			return
 		}
+		h.DB.First(&integration, integration.ID)
 	}
 
 	// Remove sensitive data from response
@@ -576,32 +637,41 @@ func (h *Handler) UpdateMessageIntegration(c *gin.Context) {
 
 // Search messages
 func (h *Handler) SearchMessages(c *gin.Context) {
-	userID := c.GetUint("user_id")
-	query := c.Query("q")
+	uid, oid, ok := requireUserAndOrg(c)
+	if !ok {
+		return
+	}
+	query := strings.TrimSpace(c.Query("q"))
 	threadID := c.Query("thread_id")
 
 	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Search query is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Search query is required"})
 		return
 	}
 
 	db := h.DB.Model(&models.Message{}).
-		Joins("JOIN message_participants ON message_participants.thread_id = messages.thread_id").
+		Joins("JOIN message_participants ON message_participants.thread_id = messages.thread_id AND message_participants.deleted_at IS NULL").
+		Joins("JOIN message_threads ON message_threads.id = messages.thread_id AND message_threads.deleted_at IS NULL").
 		Where("message_participants.user_id = ? AND message_participants.is_active = ? AND messages.is_deleted = ?",
-			userID, true, false).
+			uid, true, false).
+		Where("message_threads.organization_id = ?", oid).
 		Where("messages.content ILIKE ?", "%"+query+"%").
 		Preload("Sender").
 		Preload("Thread")
 
 	if threadID != "" {
-		db = db.Where("messages.thread_id = ?", threadID)
+		tid, err := strconv.ParseUint(threadID, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid thread_id"})
+			return
+		}
+		db = db.Where("messages.thread_id = ?", tid)
 	}
 
-	var messages []models.Message
-	err := db.Order("messages.created_at DESC").Limit(100).Find(&messages).Error
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Search failed"})
+	messages := []models.Message{}
+	if err := db.Order("messages.created_at DESC").Limit(100).Find(&messages).Error; err != nil {
+		log.Printf("messaging: search failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Search failed"})
 		return
 	}
 
@@ -615,7 +685,10 @@ func (h *Handler) SearchMessages(c *gin.Context) {
 
 // Send WhatsApp message
 func (h *Handler) SendWhatsAppMessage(c *gin.Context) {
-	orgID := c.GetUint("organization_id")
+	oid, ok := requireOrg(c)
+	if !ok {
+		return
+	}
 
 	var request struct {
 		To      string `json:"to" binding:"required"`
@@ -623,29 +696,26 @@ func (h *Handler) SendWhatsAppMessage(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 		return
 	}
 
-	// Get WhatsApp settings
 	var settings models.MessageSettings
-	if err := h.DB.Where("organization_id = ?", orgID).First(&settings).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "WhatsApp settings not found"})
+	if err := h.DB.Where("organization_id = ?", oid).First(&settings).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "WhatsApp settings not found"})
 		return
 	}
 
 	if settings.WhatsappAPIKey == "" || settings.WhatsappPhoneNumber == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "WhatsApp not configured"})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "WhatsApp not configured"})
 		return
 	}
 
-	// Initialize WhatsApp service
 	whatsapp := NewWhatsAppService(&settings)
 
-	// Send message
 	response, err := whatsapp.SendMessage(request.To, request.Message)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return
 	}
 
@@ -657,7 +727,10 @@ func (h *Handler) SendWhatsAppMessage(c *gin.Context) {
 
 // Send WhatsApp template message
 func (h *Handler) SendWhatsAppTemplate(c *gin.Context) {
-	orgID := c.GetUint("organization_id")
+	oid, ok := requireOrg(c)
+	if !ok {
+		return
+	}
 
 	var request struct {
 		To         string        `json:"to" binding:"required"`
@@ -667,7 +740,7 @@ func (h *Handler) SendWhatsAppTemplate(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 		return
 	}
 
@@ -675,25 +748,22 @@ func (h *Handler) SendWhatsAppTemplate(c *gin.Context) {
 		request.Language = "en_US"
 	}
 
-	// Get WhatsApp settings
 	var settings models.MessageSettings
-	if err := h.DB.Where("organization_id = ?", orgID).First(&settings).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "WhatsApp settings not found"})
+	if err := h.DB.Where("organization_id = ?", oid).First(&settings).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "WhatsApp settings not found"})
 		return
 	}
 
 	if settings.WhatsappAPIKey == "" || settings.WhatsappPhoneNumber == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "WhatsApp not configured"})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "WhatsApp not configured"})
 		return
 	}
 
-	// Initialize WhatsApp service
 	whatsapp := NewWhatsAppService(&settings)
 
-	// Send template
 	response, err := whatsapp.SendTemplate(request.To, request.Template, request.Language, request.Components)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return
 	}
 
@@ -709,9 +779,8 @@ func (h *Handler) VerifyWhatsAppWebhook(c *gin.Context) {
 	token := c.Query("hub.verify_token")
 	challenge := c.Query("hub.challenge")
 
-	// Get WhatsApp settings for verification token
 	var settings models.MessageSettings
-	if err := h.DB.First(&settings).Error; err != nil {
+	if err := h.DB.Where("whatsapp_api_key <> ''").First(&settings).Error; err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Webhook verification failed"})
 		return
 	}
@@ -734,9 +803,8 @@ func (h *Handler) HandleWhatsAppWebhook(c *gin.Context) {
 		return
 	}
 
-	// Get WhatsApp settings
 	var settings models.MessageSettings
-	if err := h.DB.First(&settings).Error; err != nil {
+	if err := h.DB.Where("whatsapp_api_key <> ''").First(&settings).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load settings"})
 		return
 	}
@@ -748,9 +816,7 @@ func (h *Handler) HandleWhatsAppWebhook(c *gin.Context) {
 		return
 	}
 
-	// Process each incoming message
 	for _, msg := range messages {
-		// Find or create thread based on external phone number from metadata
 		var metadata map[string]string
 		if err := json.Unmarshal([]byte(msg.Metadata), &metadata); err != nil {
 			log.Printf("Failed to parse message metadata: %v", err)
@@ -759,33 +825,33 @@ func (h *Handler) HandleWhatsAppWebhook(c *gin.Context) {
 
 		phoneNumber := metadata["phone"]
 		var thread models.MessageThread
-		result := h.DB.Where("name = ? AND type = ?", phoneNumber, "whatsapp").First(&thread)
+		result := h.DB.Where("name = ? AND type = ? AND organization_id = ?", phoneNumber, "whatsapp", settings.OrganizationID).First(&thread)
 
 		if result.Error != nil {
-			// Create new thread for WhatsApp conversation
 			thread = models.MessageThread{
 				Name:           phoneNumber,
 				Type:           "whatsapp",
 				OrganizationID: settings.OrganizationID,
+				IsActive:       true,
 			}
-			h.DB.Create(&thread)
+			if err := h.DB.Create(&thread).Error; err != nil {
+				log.Printf("Failed to create WhatsApp thread: %v", err)
+				continue
+			}
 		}
 
-		// Set thread ID and save message
 		msg.ThreadID = thread.ID
 		if err := h.DB.Create(msg).Error; err != nil {
 			log.Printf("Failed to save WhatsApp message: %v", err)
 			continue
 		}
+		h.DB.Model(&models.MessageThread{}).Where("id = ?", thread.ID).Update("last_message_at", time.Now())
 
-		// Broadcast message via WebSocket
-		wsMessage := WebSocketMessage{
+		h.broadcastToUsers(WebSocketMessage{
 			Type:     "message",
 			ThreadID: thread.ID,
 			Data:     msg,
-		}
-		messageJSON, _ := json.Marshal(wsMessage)
-		h.hub.broadcast <- messageJSON
+		}, h.threadParticipantIDs(thread.ID))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
@@ -793,21 +859,22 @@ func (h *Handler) HandleWhatsAppWebhook(c *gin.Context) {
 
 // Test WhatsApp connection
 func (h *Handler) TestWhatsAppConnection(c *gin.Context) {
-	orgID := c.GetUint("organization_id")
+	oid, ok := requireOrg(c)
+	if !ok {
+		return
+	}
 
-	// Get WhatsApp settings
 	var settings models.MessageSettings
-	if err := h.DB.Where("organization_id = ?", orgID).First(&settings).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "WhatsApp settings not found"})
+	if err := h.DB.Where("organization_id = ?", oid).First(&settings).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "WhatsApp settings not found"})
 		return
 	}
 
 	if settings.WhatsappAPIKey == "" || settings.WhatsappPhoneNumber == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "WhatsApp not configured"})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "WhatsApp not configured"})
 		return
 	}
 
-	// Initialize and test WhatsApp service
 	whatsapp := NewWhatsAppService(&settings)
 	if err := whatsapp.TestConnection(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -823,20 +890,27 @@ func (h *Handler) TestWhatsAppConnection(c *gin.Context) {
 	})
 }
 
-// Get unread message count for user
+// Get unread message count for user: messages in the user's active threads,
+// not sent by the user and without a read receipt from the user.
 func (h *Handler) GetUnreadCount(c *gin.Context) {
-	userID := c.GetUint("user_id")
+	uid, oid, ok := requireUserAndOrg(c)
+	if !ok {
+		return
+	}
 
 	var count int64
-	err := h.DB.Model(&models.MessageReadStatus{}).
-		Joins("JOIN messages ON messages.id = message_read_statuses.message_id").
-		Joins("JOIN message_participants ON message_participants.thread_id = messages.thread_id").
-		Where("message_participants.user_id = ? AND message_participants.is_active = ? AND message_read_statuses.user_id = ? AND message_read_statuses.read_at IS NULL",
-			userID, true, userID).
+	err := h.DB.Model(&models.Message{}).
+		Joins("JOIN message_participants ON message_participants.thread_id = messages.thread_id AND message_participants.deleted_at IS NULL").
+		Joins("JOIN message_threads ON message_threads.id = messages.thread_id AND message_threads.deleted_at IS NULL").
+		Joins("LEFT JOIN message_read_statuses ON message_read_statuses.message_id = messages.id AND message_read_statuses.user_id = ? AND message_read_statuses.deleted_at IS NULL", uid).
+		Where("message_participants.user_id = ? AND message_participants.is_active = ?", uid, true).
+		Where("message_threads.organization_id = ?", oid).
+		Where("messages.is_deleted = ? AND messages.sender_id <> ? AND message_read_statuses.id IS NULL", false, uid).
 		Count(&count).Error
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get unread count"})
+		log.Printf("messaging: failed to get unread count: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to get unread count"})
 		return
 	}
 
@@ -846,4 +920,49 @@ func (h *Handler) GetUnreadCount(c *gin.Context) {
 			"count": count,
 		},
 	})
+}
+
+// protectedColumns can never be changed through an update request.
+var protectedColumns = map[string]bool{
+	"id": true, "organization_id": true, "provider": true,
+	"created_at": true, "updated_at": true, "deleted_at": true,
+}
+
+// bindWithColumns binds the JSON body into dst and returns the DB column names
+// for the fields present in the body, so explicit false/zero values are
+// persisted by Select(cols).Updates(dst).
+func bindWithColumns(c *gin.Context, db *gorm.DB, dst interface{}) ([]string, error) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return nil, err
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil, errors.New("request body is required")
+	}
+	if err := json.Unmarshal(body, dst); err != nil {
+		return nil, err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+
+	stmt := &gorm.Statement{DB: db}
+	if err := stmt.Parse(dst); err != nil {
+		return nil, err
+	}
+	cols := []string{}
+	for _, f := range stmt.Schema.Fields {
+		if f.DBName == "" || protectedColumns[f.DBName] {
+			continue
+		}
+		name := strings.Split(f.Tag.Get("json"), ",")[0]
+		if name == "" {
+			name = f.DBName
+		}
+		if _, ok := raw[name]; ok {
+			cols = append(cols, f.DBName)
+		}
+	}
+	return cols, nil
 }

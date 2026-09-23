@@ -131,6 +131,7 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 					organizations.GET("/:id", h.GetOrganizationById)
 					organizations.POST("", h.CreateOrganization)
 					organizations.PATCH("/:id/status", h.UpdateOrganizationStatus)
+					organizations.PATCH("/:id/modules", h.UpdateOrganizationModules)
 					organizations.DELETE("/:id", h.DeleteOrganization)
 				}
 

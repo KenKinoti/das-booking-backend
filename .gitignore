@@ -57,3 +57,13 @@ tmp/NUL
 nul
 NUL
 src/nul
+# Locally built binaries
+/complete-erp
+/firebase-integration-server
+/modular-monolith
+/org-test
+/production
+/seed-orgs
+/simple-websocket-server
+/test-messaging
+/main

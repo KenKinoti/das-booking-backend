@@ -20,6 +20,11 @@ type Organization struct {
 	Address     Address        `json:"address" gorm:"embedded;embeddedPrefix:address_"`
 	BusinessHours BusinessHours `json:"business_hours" gorm:"embedded;embeddedPrefix:hours_"`
 	BookingSettings BookingSettings `json:"booking_settings" gorm:"embedded;embeddedPrefix:booking_"`
+
+	// Modules Management
+	EnabledModules []string       `json:"enabled_modules" gorm:"type:text;serializer:json"`
+	ModulesConfig  map[string]bool `json:"modules_config" gorm:"type:text;serializer:json"`
+
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`

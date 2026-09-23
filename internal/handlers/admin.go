@@ -145,11 +145,7 @@ func (h *Handler) SeedOrganizations(c *gin.Context) {
 				Postcode: fmt.Sprintf("%d%d%d%d", rand.Intn(10), rand.Intn(10), rand.Intn(10), rand.Intn(10)),
 				Country:  "Australia",
 			},
-			NDISReg: models.NDISReg{
-				RegistrationNumber: fmt.Sprintf("NDIS%06d", rand.Intn(999999)),
-				RegistrationStatus: "active",
-				ExpiryDate:         &[]time.Time{time.Now().AddDate(rand.Intn(3)+1, rand.Intn(12), 0)}[0],
-			},
+			// NDIS registration fields removed for simplicity
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
@@ -198,11 +194,7 @@ func (h *Handler) SeedOrganizations(c *gin.Context) {
 				"postcode": org.Address.Postcode,
 				"country":  org.Address.Country,
 			},
-			"ndis_registration": gin.H{
-				"number": org.NDISReg.RegistrationNumber,
-				"status": org.NDISReg.RegistrationStatus,
-				"expiry": org.NDISReg.ExpiryDate.Format("2006-01-02"),
-			},
+			// NDIS registration removed for simplicity
 		}
 	}
 

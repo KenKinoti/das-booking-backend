@@ -33,8 +33,8 @@ func (h *Handler) GetOrganizationModules(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"modules": modules})
 }
 
-// UpdateOrganizationModules updates the module configuration for the organization
-func (h *Handler) UpdateOrganizationModules(c *gin.Context) {
+// UpdateCurrentOrganizationModules updates the module configuration for the current organization
+func (h *Handler) UpdateCurrentOrganizationModules(c *gin.Context) {
 	orgID := h.getOrganizationID(c)
 	if orgID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Organization ID required"})
