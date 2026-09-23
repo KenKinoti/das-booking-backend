@@ -50,12 +50,15 @@ func main() {
 		}
 	}
 
+	// Open the pool without pinging so the HTTP server can start listening
+	// immediately (Cloud Run kills containers that don't bind $PORT quickly).
+	// The database connection, migrations and first-run bootstrap happen in
+	// the background with retries.
 	db, err := openDatabase()
 	if err != nil {
-		log.Fatal("Failed to connect to database: ", err)
+		log.Fatal("Invalid database configuration: ", err)
 	}
-	migrate(db)
-	bootstrapAdmin(db)
+	go prepareDatabase(db)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -156,8 +159,9 @@ func openDatabase() (*gorm.DB, error) {
 			getEnv("DB_NAME", "das_erp_production"), getEnv("DB_PORT", "5432"), getEnv("DB_SSLMODE", "require"))
 	}
 	db, err := gorm.Open(postgres.Open(dbURL), &gorm.Config{
-		Logger:  logger.Default.LogMode(logger.Warn),
-		NowFunc: func() time.Time { return time.Now().UTC() },
+		DisableAutomaticPing: true,
+		Logger:               logger.Default.LogMode(logger.Warn),
+		NowFunc:              func() time.Time { return time.Now().UTC() },
 		// Many legacy models reference each other loosely; creating FK
 		// constraints during migration breaks on existing data.
 		DisableForeignKeyConstraintWhenMigrating: true,
@@ -173,6 +177,37 @@ func openDatabase() (*gorm.DB, error) {
 	sqlDB.SetMaxOpenConns(25)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 	return db, nil
+}
+
+// prepareDatabase waits for the database, then migrates and bootstraps.
+// Set SKIP_MIGRATIONS=true to skip schema changes on startup.
+func prepareDatabase(db *gorm.DB) {
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Printf("❌ database handle: %v", err)
+		return
+	}
+	for attempt := 1; ; attempt++ {
+		if err := sqlDB.Ping(); err == nil {
+			log.Printf("✅ database connected")
+			break
+		} else {
+			log.Printf("⏳ database not reachable yet (attempt %d): %v", attempt, err)
+		}
+		if attempt >= 60 {
+			log.Printf("❌ giving up on database connection — check DATABASE_URL / Cloud SQL connection")
+			return
+		}
+		time.Sleep(5 * time.Second)
+	}
+	if strings.EqualFold(os.Getenv("SKIP_MIGRATIONS"), "true") {
+		log.Println("SKIP_MIGRATIONS=true — not changing the schema")
+	} else {
+		started := time.Now()
+		migrate(db)
+		log.Printf("✅ migrations finished in %s", time.Since(started).Round(time.Millisecond))
+	}
+	bootstrapAdmin(db)
 }
 
 // migrate creates every table used by the registered handlers. Each group is
