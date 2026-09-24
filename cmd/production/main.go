@@ -181,6 +181,13 @@ func openDatabase() (*gorm.DB, error) {
 	if schema != "" {
 		connCfg.RuntimeParams["search_path"] = schema + ",public"
 	}
+	// Never use server-side prepared statements. Connection poolers in
+	// transaction mode (Supabase :6543, PgBouncer, Neon pooler) hand each
+	// query to a different server connection, so cached statements vanish
+	// and Postgres answers "prepared statement ... does not exist" (26000).
+	connCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	connCfg.StatementCacheCapacity = 0
+	connCfg.DescriptionCacheCapacity = 0
 	sqlDB := stdlib.OpenDB(*connCfg, stdlib.OptionAfterConnect(func(ctx context.Context, conn *pgx.Conn) error {
 		if schema == "" {
 			return nil
@@ -241,6 +248,11 @@ func prepareDatabase(db *gorm.DB) {
 			log.Printf("⚠️  could not create schema %q: %v", schema, err)
 		} else {
 			log.Printf("✅ using database schema %q", schema)
+		}
+		// Make the schema the role's default too, so server connections a
+		// pooler opens without our startup parameters still find ERP tables.
+		if err := db.Exec("ALTER ROLE CURRENT_USER SET search_path TO " + pgx.Identifier{schema}.Sanitize() + ", public").Error; err != nil {
+			log.Printf("⚠️  could not set the role's default search_path: %v", err)
 		}
 	}
 	if strings.EqualFold(os.Getenv("SKIP_MIGRATIONS"), "true") {
