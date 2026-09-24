@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
@@ -158,7 +161,26 @@ func openDatabase() (*gorm.DB, error) {
 			getEnv("DB_HOST", "localhost"), getEnv("DB_USER", "postgres"), getEnv("DB_PASSWORD", ""),
 			getEnv("DB_NAME", "das_erp_production"), getEnv("DB_PORT", "5432"), getEnv("DB_SSLMODE", "require"))
 	}
-	db, err := gorm.Open(postgres.Open(dbURL), &gorm.Config{
+	// All ERP tables live in their own Postgres schema (DB_SCHEMA, default
+	// "erp") so they never clash with tables created by older SQL scripts in
+	// the public schema.
+	schema := dbSchema()
+	connCfg, err := pgx.ParseConfig(dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse DATABASE_URL: %w", err)
+	}
+	if schema != "" {
+		connCfg.RuntimeParams["search_path"] = schema + ",public"
+	}
+	sqlDB := stdlib.OpenDB(*connCfg, stdlib.OptionAfterConnect(func(ctx context.Context, conn *pgx.Conn) error {
+		if schema == "" {
+			return nil
+		}
+		// Re-assert for poolers that ignore startup parameters.
+		_, err := conn.Exec(ctx, "SET search_path TO "+pgx.Identifier{schema}.Sanitize()+", public")
+		return err
+	}))
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{
 		DisableAutomaticPing: true,
 		Logger:               logger.Default.LogMode(logger.Warn),
 		NowFunc:              func() time.Time { return time.Now().UTC() },
@@ -169,14 +191,19 @@ func openDatabase() (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, err
-	}
 	sqlDB.SetMaxIdleConns(5)
 	sqlDB.SetMaxOpenConns(25)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 	return db, nil
+}
+
+// dbSchema returns the Postgres schema for ERP tables ("" = use the default search_path).
+func dbSchema() string {
+	s := strings.TrimSpace(getEnv("DB_SCHEMA", "erp"))
+	if strings.EqualFold(s, "public") || s == "-" {
+		return ""
+	}
+	return s
 }
 
 // prepareDatabase waits for the database, then migrates and bootstraps.
@@ -199,6 +226,13 @@ func prepareDatabase(db *gorm.DB) {
 			return
 		}
 		time.Sleep(5 * time.Second)
+	}
+	if schema := dbSchema(); schema != "" {
+		if err := db.Exec("CREATE SCHEMA IF NOT EXISTS " + pgx.Identifier{schema}.Sanitize()).Error; err != nil {
+			log.Printf("⚠️  could not create schema %q: %v", schema, err)
+		} else {
+			log.Printf("✅ using database schema %q", schema)
+		}
 	}
 	if strings.EqualFold(os.Getenv("SKIP_MIGRATIONS"), "true") {
 		log.Println("SKIP_MIGRATIONS=true — not changing the schema")
