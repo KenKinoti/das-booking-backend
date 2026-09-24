@@ -208,6 +208,7 @@ func prepareDatabase(db *gorm.DB) {
 		log.Printf("✅ migrations finished in %s", time.Since(started).Round(time.Millisecond))
 	}
 	bootstrapAdmin(db)
+	ensureAccounts(db)
 }
 
 // migrate creates every table used by the registered handlers. Each group is
@@ -307,6 +308,64 @@ func bootstrapAdmin(db *gorm.DB) {
 		log.Printf("🔐 Created super admin %s with generated password: %s  (change it after signing in)", email, password)
 	} else {
 		log.Printf("🔐 Created super admin %s", email)
+	}
+}
+
+// ensureAccounts is a recovery tool for lost passwords.
+//
+//   - RESET_ADMIN_EMAIL + RESET_ADMIN_PASSWORD: sets that user's password (and
+//     reactivates them); creates them as a super admin if they don't exist.
+//   - ENSURE_TEST_ACCOUNTS=true: makes sure the four test accounts shown on the
+//     login page exist with password TEST_ACCOUNTS_PASSWORD (default Test123!@#).
+//
+// Remove the variables again once you can sign in.
+func ensureAccounts(db *gorm.DB) {
+	type acct struct{ email, first, last, role, password string }
+	var list []acct
+	if e, p := strings.TrimSpace(os.Getenv("RESET_ADMIN_EMAIL")), os.Getenv("RESET_ADMIN_PASSWORD"); e != "" && p != "" {
+		list = append(list, acct{e, "System", "Admin", "super_admin", p})
+	}
+	if strings.EqualFold(os.Getenv("ENSURE_TEST_ACCOUNTS"), "true") {
+		pw := getEnv("TEST_ACCOUNTS_PASSWORD", "Test123!@#")
+		list = append(list,
+			acct{"kennedy@dasyin.com.au", "Ken", "Kinoti", "super_admin", pw},
+			acct{"Michael.Thomas75@test.com", "Michael", "Thomas", "admin", pw},
+			acct{"David.Jones20@test.com", "David", "Jones", "support_coordinator", pw},
+			acct{"Jane.Jones90@test.com", "Jane", "Jones", "care_worker", pw},
+		)
+	}
+	if len(list) == 0 {
+		return
+	}
+	var org models.Organization
+	if err := db.Order("created_at ASC").First(&org).Error; err != nil {
+		org = models.Organization{ID: uuid.NewString(), Name: getEnv("ADMIN_ORG_NAME", "DASYIN"), BusinessType: "general", ABN: fmt.Sprintf("%011d", time.Now().Unix()%100000000000)}
+		if err := db.Create(&org).Error; err != nil {
+			log.Printf("ensureAccounts: create organisation: %v", err)
+			return
+		}
+	}
+	for _, a := range list {
+		hash, err := bcrypt.GenerateFromPassword([]byte(a.password), bcrypt.DefaultCost)
+		if err != nil {
+			continue
+		}
+		var u models.User
+		err = db.Where("LOWER(email) = LOWER(?)", a.email).First(&u).Error
+		if err == nil {
+			if err := db.Model(&models.User{}).Where("id = ?", u.ID).Updates(map[string]interface{}{"password_hash": string(hash), "is_active": true}).Error; err != nil {
+				log.Printf("ensureAccounts: update %s: %v", a.email, err)
+				continue
+			}
+			log.Printf("🔑 Password reset for %s", a.email)
+			continue
+		}
+		u = models.User{ID: uuid.NewString(), Email: a.email, PasswordHash: string(hash), FirstName: a.first, LastName: a.last, Role: a.role, OrganizationID: org.ID, IsActive: true}
+		if err := db.Create(&u).Error; err != nil {
+			log.Printf("ensureAccounts: create %s: %v", a.email, err)
+			continue
+		}
+		log.Printf("🔑 Created %s (%s)", a.email, a.role)
 	}
 }
 
