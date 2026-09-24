@@ -29,6 +29,22 @@ type Mailer interface {
 	Send(to, subject, body string) error
 }
 
+// LogoURL resolves an organisation's company logo URL (absolute when the
+// origin is known). It is set by the branding module; the organisation logo
+// is the only logo used on documents — billing_settings.logo_url is legacy.
+var LogoURL func(r *http.Request, org string) string
+
+func logoFor(c *gin.Context, org string) string {
+	if LogoURL == nil {
+		return ""
+	}
+	var r *http.Request
+	if c != nil {
+		r = c.Request
+	}
+	return LogoURL(r, org)
+}
+
 // Handler serves the invoicing API.
 type Handler struct {
 	DB        *gorm.DB
@@ -756,7 +772,17 @@ func (h *Handler) Send(c *gin.Context) {
 				return &apiError{http.StatusBadRequest, "NO_EMAIL", "Add the client's email address first"}
 			}
 			var sendErr error
-			if m, isCC := h.Mailer.(CCMailer); isCC {
+			if m, isHTML := h.Mailer.(HTMLMailer); isHTML {
+				// Branded HTML version: company logo (absolute URL) at the top.
+				biz, accent := "", ""
+				if s, serr := h.settingsFor(tx, org, false); serr == nil {
+					biz, accent = s.BusinessName, s.AccentColor
+				}
+				if biz == "" && tx.Migrator().HasTable("organizations") {
+					tx.Raw("SELECT name FROM organizations WHERE id = ?", org).Scan(&biz)
+				}
+				sendErr = m.SendHTML(to, cc, in.Subject, in.Message, EmailHTML(biz, logoFor(c, org), accent, in.Message))
+			} else if m, isCC := h.Mailer.(CCMailer); isCC {
 				sendErr = m.SendWithCC(to, cc, in.Subject, in.Message)
 			} else {
 				if len(cc) > 0 {
@@ -1346,6 +1372,8 @@ func (h *Handler) GetSettings(c *gin.Context) {
 		failErr(c, err)
 		return
 	}
+	// Read-only: the company logo is managed under Settings → Business details.
+	s.LogoURL = logoFor(c, org)
 	ok(c, http.StatusOK, gin.H{"settings": s, "email_enabled": h.Mailer != nil && h.Mailer.Configured()})
 }
 
@@ -1372,20 +1400,21 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Currency must be a 3-letter code, e.g. AUD")
 		return
 	}
-	if len(in.LogoURL) > 700000 {
-		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Logo is too large (max ~500KB)")
-		return
-	}
-	if _, err := h.settingsFor(h.DB, org, false); err != nil {
+	cur, err := h.settingsFor(h.DB, org, false)
+	if err != nil {
 		failErr(c, err)
 		return
 	}
+	// The logo is no longer edited here (PUT /organization/logo); keep
+	// whatever legacy value is stored.
+	in.LogoURL = cur.LogoURL
 	in.OrganizationID = org
 	in.UpdatedAt = h.now()
 	if err := h.DB.Save(&in).Error; err != nil {
 		failErr(c, err)
 		return
 	}
+	in.LogoURL = logoFor(c, org)
 	ok(c, http.StatusOK, gin.H{"settings": in, "email_enabled": h.Mailer != nil && h.Mailer.Configured()})
 }
 
@@ -1649,6 +1678,10 @@ func (h *Handler) PublicView(c *gin.Context) {
 	for i := range inv.Payments {
 		inv.Payments[i].CreatedBy = ""
 		inv.Payments[i].Notes = ""
+	}
+	s.LogoURL = logoFor(c, inv.OrganizationID)
+	if s.BusinessName == "" && h.DB.Migrator().HasTable("organizations") {
+		h.DB.Raw("SELECT name FROM organizations WHERE id = ?", inv.OrganizationID).Scan(&s.BusinessName)
 	}
 	ok(c, http.StatusOK, gin.H{"invoice": inv, "business": s})
 }

@@ -244,6 +244,11 @@ func (h *Handler) PublicPage(c *gin.Context) {
 			return fmt.Sprintf("%s %.2f", e.Currency, v)
 		},
 	}
+	if OrgLogoURL != nil {
+		if u := OrgLogoURL(c.Request, e.OrganizationID); strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+			data["Logo"] = u
+		}
+	}
 	nonce := newNonce()
 	data["Nonce"] = nonce
 	// The global security middleware sends "default-src 'self'", which blocks
@@ -255,6 +260,10 @@ func (h *Handler) PublicPage(c *gin.Context) {
 		_, _ = c.Writer.WriteString("template error")
 	}
 }
+
+// OrgLogoURL resolves the organiser's company logo (set by the branding
+// module); "" when there is none.
+var OrgLogoURL func(r *http.Request, org string) string
 
 func newNonce() string {
 	b := make([]byte, 16)
@@ -298,8 +307,11 @@ button{margin-top:18px;width:100%;padding:12px;border:0;border-radius:10px;backg
 button:disabled{opacity:.6;cursor:wait}
 .ticket{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}.ticket:last-child{border-bottom:0}
 .muted{color:var(--text3);font-size:13px}
+.org{display:flex;align-items:center;margin:0 0 16px}.org img{display:block;max-height:48px;max-width:200px;width:auto;height:auto;object-fit:contain}
+@media (prefers-color-scheme:dark){.org img{background:#f4f5f9;border-radius:8px;padding:4px 8px}}
 .msg{margin-top:14px;padding:12px 14px;border-radius:10px;display:none}.msg.ok{display:block;background:var(--ok-soft);color:var(--ok)}.msg.err{display:block;background:var(--err-soft);color:var(--err)}
 </style></head><body><div class="wrap">
+{{if .Logo}}<div class="org"><img src="{{.Logo}}" alt="Organiser logo"></div>{{end}}
 <div class="cover"{{if .E.CoverImageURL}} style="background-image:url('{{.E.CoverImageURL}}')"{{end}}>{{if not .E.CoverImageURL}}<div class="datebox"><span>{{.Month}}</span><strong>{{.Day}}</strong></div>{{end}}</div>
 <div class="grid"><div class="card">
 <div class="eyebrow">{{if .E.Category}}{{.E.Category}}{{else}}Event{{end}}</div>

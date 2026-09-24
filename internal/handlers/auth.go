@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/branding"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -35,6 +36,19 @@ type UserResponse struct {
 	LastLoginAt    *time.Time `json:"last_login_at,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
+	// Company branding for the signed-in organisation (login and /users/me).
+	OrganizationName string `json:"organization_name,omitempty"`
+	LogoURL          string `json:"logo_url,omitempty"`
+}
+
+// withBranding fills the organisation name and company logo URL.
+func (h *Handler) withBranding(c *gin.Context, u *UserResponse, org string) {
+	if org == "" || org == "<nil>" {
+		return
+	}
+	info := branding.NewService(h.DB).Info(c.Request, org)
+	u.OrganizationName, _ = info["name"].(string)
+	u.LogoURL, _ = info["logo_url"].(string)
 }
 
 type RefreshRequest struct {
@@ -151,6 +165,7 @@ func (h *Handler) Login(c *gin.Context) {
 		CreatedAt:      user.CreatedAt,
 		UpdatedAt:      user.UpdatedAt,
 	}
+	h.withBranding(c, &userResponse, user.OrganizationID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

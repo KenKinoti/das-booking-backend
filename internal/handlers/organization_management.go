@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/branding"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -16,8 +17,9 @@ import (
 // Organization Branding Endpoints
 
 func (h *Handler) GetOrganizationBranding(c *gin.Context) {
-	orgID, exists := c.Get("org_id")
-	if !exists {
+	v, ok := c.Get("org_id")
+	org := fmt.Sprint(v)
+	if !ok || v == nil || org == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
 			"error": gin.H{
@@ -27,24 +29,29 @@ func (h *Handler) GetOrganizationBranding(c *gin.Context) {
 		})
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": h.brandingPayload(c, org)})
+}
 
-	var branding models.OrganizationBranding
-	if err := h.DB.Where("organization_id = ?", orgID).First(&branding).Error; err != nil {
-		// Create default branding if none exists
-		branding = models.OrganizationBranding{
-			OrganizationID: fmt.Sprintf("%v", orgID),
-			PrimaryColor:   "#667eea",
-			SecondaryColor: "#764ba2",
-			AccentColor:    "#10b981",
-			ThemeName:      "professional",
-		}
-		h.DB.Create(&branding)
+// brandingPayload is the organisation's company branding: name, the company
+// logo (the single source of truth, see pkg/branding), trading name and
+// address, plus the legacy colour/theme settings when present.
+func (h *Handler) brandingPayload(c *gin.Context, org string) gin.H {
+	out := gin.H{"primary_color": "#667eea", "secondary_color": "#764ba2", "accent_color": "#10b981", "theme_name": "professional"}
+	var b models.OrganizationBranding
+	if err := h.DB.Where("organization_id = ?", org).Take(&b).Error; err == nil {
+		out["id"] = b.ID
+		out["primary_color"] = b.PrimaryColor
+		out["secondary_color"] = b.SecondaryColor
+		out["accent_color"] = b.AccentColor
+		out["theme_name"] = b.ThemeName
+		out["favicon_url"] = b.FaviconURL
+		out["company_slogan"] = b.CompanySlogan
+		out["footer_text"] = b.FooterText
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    branding,
-	})
+	for k, v := range branding.NewService(h.DB).Info(c.Request, org) {
+		out[k] = v
+	}
+	return out
 }
 
 type UpdateBrandingRequest struct {
@@ -109,9 +116,8 @@ func (h *Handler) UpdateOrganizationBranding(c *gin.Context) {
 
 	// Update fields
 	updates := make(map[string]interface{})
-	if req.LogoURL != nil {
-		updates["logo_url"] = *req.LogoURL
-	}
+	// The logo is managed by PUT /organization/logo (pkg/branding); a
+	// logo_url sent here is ignored.
 	if req.PrimaryColor != nil {
 		updates["primary_color"] = *req.PrimaryColor
 	}
@@ -150,7 +156,7 @@ func (h *Handler) UpdateOrganizationBranding(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    branding,
+		"data":    h.brandingPayload(c, fmt.Sprint(orgID)),
 		"message": "Branding updated successfully",
 	})
 }

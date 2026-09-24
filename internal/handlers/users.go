@@ -18,7 +18,6 @@ import (
 
 func (h *Handler) GetCurrentUser(c *gin.Context) {
 	userID, exists := c.Get("user_id")
-	fmt.Printf("GetCurrentUser - userID: %v, exists: %v\n", userID, exists)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
@@ -56,6 +55,13 @@ func (h *Handler) GetCurrentUser(c *gin.Context) {
 		CreatedAt:      user.CreatedAt,
 		UpdatedAt:      user.UpdatedAt,
 	}
+	// The token's organisation (a super admin signed in as an organisation
+	// gets that organisation's branding).
+	org := user.OrganizationID
+	if v, ok := c.Get("org_id"); ok && v != nil && fmt.Sprint(v) != "" {
+		org = fmt.Sprint(v)
+	}
+	h.withBranding(c, &userResponse, org)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
