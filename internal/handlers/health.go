@@ -5,10 +5,11 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/dbstatus"
 )
 
 // DefaultAppVersion is the release reported by /health when APP_VERSION is not set.
-const DefaultAppVersion = "2.0.0"
+const DefaultAppVersion = "2.1.0"
 
 // AppVersion returns the running release (env APP_VERSION, default DefaultAppVersion).
 func AppVersion() string {
@@ -20,9 +21,10 @@ func AppVersion() string {
 
 func (h *Handler) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"message": "DASYIN ERP API is running",
-		"service": "DASYIN ERP Backend",
-		"version": AppVersion(),
+		"status":   "ok",
+		"message":  "DASYIN ERP API is running",
+		"service":  "DASYIN ERP Backend",
+		"version":  AppVersion(),
+		"database": dbstatus.Get(false),
 	})
 }

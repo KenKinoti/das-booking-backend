@@ -17,4 +17,7 @@ var (
 	extraRoutes []RouteRegistrar
 	// extraMigrations run after the core migrations (log, don't panic, on error).
 	extraMigrations []func(db *gorm.DB)
+	// extraRootRoutes registers routes on the engine root (outside /api/v1),
+	// e.g. /mcp, /oauth/* and /.well-known/*.
+	extraRootRoutes []func(r *gin.Engine, db *gorm.DB, cfg *config.Config)
 )

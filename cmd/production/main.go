@@ -10,6 +10,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/aitools"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/dbstatus"
 	"log"
 	"os"
 	"strings"
@@ -70,7 +72,7 @@ func main() {
 	r.Use(middleware.SecurityHeaders())
 
 	r.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{"service": "DASYIN ERP Backend", "version": "2.0.0", "status": "running", "health": "/health", "api": "/api/v1"})
+		c.JSON(200, gin.H{"service": "DASYIN ERP Backend", "version": handlers.AppVersion(), "status": "running", "health": "/health", "api": "/api/v1"})
 	})
 
 	// Plan entitlements: blocks module APIs the organisation's plan does not
@@ -81,6 +83,9 @@ func main() {
 	// inventory, POS, suppliers, reports, super-admin …
 	internal := handlers.NewHandler(db, cfg)
 	internal.SetupRoutes(r)
+	for _, register := range extraRootRoutes {
+		register(r, db, cfg)
+	}
 
 	// Authenticated module APIs
 	v1 := r.Group("/api/v1")
@@ -158,6 +163,9 @@ func main() {
 
 	port := cfg.Port
 	log.Printf("🚀 DASYIN ERP Backend listening on :%s (%s)", port, cfg.Environment)
+	// AI tools (MCP server + in-app assistant) call the API in-process.
+	aitools.Engine = r
+	aitools.JWTSecret = cfg.JWTSecret
 	if err := r.Run(":" + port); err != nil {
 		log.Fatal("Failed to start server: ", err)
 	}
@@ -180,6 +188,15 @@ func openDatabase() (*gorm.DB, error) {
 	}
 	if schema != "" {
 		connCfg.RuntimeParams["search_path"] = schema + ",public"
+	}
+	// Supabase's transaction pooler (port 6543) cannot keep our schema setting
+	// between statements; its session pooler on port 5432 of the same host can.
+	if strings.HasSuffix(strings.ToLower(connCfg.Host), "pooler.supabase.com") && connCfg.Port == 6543 &&
+		!strings.EqualFold(os.Getenv("DB_ALLOW_TRANSACTION_POOLER"), "true") {
+		connCfg.Port = 5432
+		msg := "DATABASE_URL uses Supabase's transaction pooler (6543); connecting to its session pooler (5432) instead"
+		log.Printf("ℹ️  %s", msg)
+		dbstatus.SetRewrite(msg)
 	}
 	// Never use server-side prepared statements. Connection poolers in
 	// transaction mode (Supabase :6543, PgBouncer, Neon pooler) hand each
@@ -261,6 +278,7 @@ func prepareDatabase(db *gorm.DB) {
 			var sp string
 			if err := db.Raw("SHOW search_path").Scan(&sp).Error; err == nil && !strings.Contains(sp, schema) {
 				log.Printf("🚨 DATABASE_URL looks like a transaction-mode pooler (search_path=%q). ERP data may be read from the wrong tables. Use a direct or SESSION-mode connection string (e.g. Supabase session pooler, port 5432).", sp)
+				dbstatus.SetPoolerWarning("DATABASE_URL looks like a transaction-mode pooler; use a direct or session-mode connection string")
 				break
 			}
 		}
@@ -270,7 +288,8 @@ func prepareDatabase(db *gorm.DB) {
 	} else {
 		started := time.Now()
 		migrate(db)
-		log.Printf("✅ migrations finished in %s", time.Since(started).Round(time.Millisecond))
+		dbstatus.SetMigrated()
+		log.Printf("✅ migrations finished in %s (%d problems)", time.Since(started).Round(time.Millisecond), dbstatus.Get(false).MigrationErrors)
 	}
 	bootstrapAdmin(db)
 	ensureAccounts(db)
@@ -326,15 +345,23 @@ func migrate(db *gorm.DB) {
 		"invoicing": invoicing.Models(),
 	}
 	defer func() {
-		for _, m := range extraMigrations {
-			m(db)
+		for i, m := range extraMigrations {
+			m := m
+			if err := inSchema(db, func(tx *gorm.DB) error { m(tx); return nil }); err != nil {
+				// A statement inside failed and aborted the transaction; run it
+				// again outside one (migrations are idempotent).
+				log.Printf("⚠️  module migration #%d needed a retry: %v", i, err)
+				m(db)
+			}
 		}
 	}()
 	order := []string{"core", "booking", "care", "inventory", "pos", "events", "integrations", "messaging", "video", "finance", "crm", "invoicing"}
 	for _, name := range order {
 		for _, m := range groups[name] {
-			if err := db.AutoMigrate(m); err != nil {
+			m := m
+			if err := inSchema(db, func(tx *gorm.DB) error { return tx.AutoMigrate(m) }); err != nil {
 				log.Printf("⚠️  migration (%s) %T: %v", name, m, err)
+				dbstatus.AddMigrationError(fmt.Sprintf("%s %T: %v", name, m, err))
 			}
 		}
 		log.Printf("✅ migrated %s", name)
@@ -488,8 +515,8 @@ func corsMiddleware() gin.HandlerFunc {
 			c.Header("Vary", "Origin")
 			c.Header("Access-Control-Allow-Credentials", "true")
 			c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-			c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Requested-With,X-Organization-ID")
-			c.Header("Access-Control-Expose-Headers", "Content-Disposition")
+			c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Requested-With,X-Organization-ID,Mcp-Session-Id,MCP-Protocol-Version")
+			c.Header("Access-Control-Expose-Headers", "Content-Disposition,Mcp-Session-Id,WWW-Authenticate")
 			c.Header("Access-Control-Max-Age", "600")
 		}
 		if c.Request.Method == "OPTIONS" {
@@ -505,4 +532,19 @@ func getEnv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// inSchema runs fn in a transaction whose search_path is pinned to the ERP
+// schema. A transaction always stays on one server connection, even behind a
+// transaction-mode pooler, so migrations can never land in the wrong schema.
+func inSchema(db *gorm.DB, fn func(tx *gorm.DB) error) error {
+	schema := dbSchema()
+	return db.Transaction(func(tx *gorm.DB) error {
+		if schema != "" {
+			if err := tx.Exec("SET LOCAL search_path TO " + pgx.Identifier{schema}.Sanitize() + ", public").Error; err != nil {
+				return err
+			}
+		}
+		return fn(tx)
+	})
 }
