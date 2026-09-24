@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -177,10 +178,10 @@ type statRow struct {
 	Overdue        int
 }
 
-func (h *Handler) taskStats(org string, projectIDs []string) (map[string]*ProjectStats, error) {
+func (h *Handler) taskStats(org string, projectIDs []string, today time.Time) (map[string]*ProjectStats, error) {
 	var rows []statRow
 	q := h.DB.Model(&Task{}).
-		Select("project_id, status_category, count(*) as n, sum(case when due_date < ? and status_category <> ? then 1 else 0 end) as overdue", h.today(), CatDone).
+		Select("project_id, status_category, count(*) as n, sum(case when due_date < ? and status_category <> ? then 1 else 0 end) as overdue", today, CatDone).
 		Where("org_id = ?", org)
 	if projectIDs != nil {
 		if len(projectIDs) == 0 {
@@ -217,12 +218,14 @@ func (h *Handler) taskStats(org string, projectIDs []string) (map[string]*Projec
 	return out, nil
 }
 
-func (h *Handler) attachStats(org string, projects []Project) error {
+// attachStats adds task counts; "overdue" uses the caller's calendar date (?tz=).
+func (h *Handler) attachStats(c *gin.Context, org string, projects []Project) error {
 	ids := make([]string, len(projects))
 	for i := range projects {
 		ids[i] = projects[i].ID
 	}
-	st, err := h.taskStats(org, ids)
+	n := h.now().In(reqtz.Location(c))
+	st, err := h.taskStats(org, ids, time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		return err
 	}
@@ -247,7 +250,7 @@ func (h *Handler) Stats(c *gin.Context) {
 		serverErr(c, err)
 		return
 	}
-	if err := h.attachStats(org, projects); err != nil {
+	if err := h.attachStats(c, org, projects); err != nil {
 		serverErr(c, err)
 		return
 	}
@@ -269,7 +272,7 @@ func (h *Handler) Stats(c *gin.Context) {
 	}
 	tasks["open"] = tasks[CatTodo] + tasks[CatInProgress]
 
-	n := h.now()
+	n := h.now().In(reqtz.Location(c)) // the user's calendar month (?tz=)
 	monthStart := time.Date(n.Year(), n.Month(), 1, 0, 0, 0, 0, n.Location())
 	var completedThisMonth int64
 	if err := h.DB.Model(&Task{}).Where("org_id = ? AND status_category = ? AND completed_at >= ?", org, CatDone, monthStart).Count(&completedThisMonth).Error; err != nil {
@@ -323,7 +326,7 @@ func (h *Handler) ListProjects(c *gin.Context) {
 		serverErr(c, err)
 		return
 	}
-	if err := h.attachStats(org, projects); err != nil {
+	if err := h.attachStats(c, org, projects); err != nil {
 		serverErr(c, err)
 		return
 	}
@@ -346,7 +349,7 @@ func (h *Handler) GetProject(c *gin.Context) {
 		return
 	}
 	list := []Project{*p}
-	if err := h.attachStats(org, list); err != nil {
+	if err := h.attachStats(c, org, list); err != nil {
 		serverErr(c, err)
 		return
 	}
@@ -502,7 +505,7 @@ func (h *Handler) UpdateProject(c *gin.Context) {
 		return
 	}
 	list := []Project{*p}
-	_ = h.attachStats(org, list)
+	_ = h.attachStats(c, org, list)
 	ok(c, http.StatusOK, list[0])
 }
 

@@ -77,41 +77,44 @@ func (TaxRate) TableName() string { return "billing_tax_rates" }
 
 // Invoice is an invoice or a quote (DocType).
 type Invoice struct {
-	ID               string     `json:"id" gorm:"type:varchar(64);primaryKey"`
-	OrganizationID   string     `json:"organization_id" gorm:"type:varchar(255);index;not null"`
-	DocType          string     `json:"doc_type" gorm:"type:varchar(20);index;not null;default:'invoice'"`
-	Number           string     `json:"number" gorm:"type:varchar(50);index"`
-	Status           string     `json:"status" gorm:"type:varchar(20);index;not null;default:'draft'"`
-	CustomerID       *string    `json:"customer_id" gorm:"type:varchar(255);index"`
-	ClientName       string     `json:"client_name" gorm:"type:varchar(255)"`
-	ClientEmail      string     `json:"client_email" gorm:"type:varchar(255)"`
-	ClientPhone      string     `json:"client_phone" gorm:"type:varchar(50)"`
-	ClientAddress    string     `json:"client_address" gorm:"type:text"`
-	ClientTaxNumber  string     `json:"client_tax_number" gorm:"type:varchar(100)"`
-	Reference        string     `json:"reference" gorm:"type:varchar(255)"`
-	Title            string     `json:"title" gorm:"type:varchar(255)"`
-	IssueDate        time.Time  `json:"issue_date" gorm:"type:date;index"`
-	DueDate          time.Time  `json:"due_date" gorm:"type:date;index"`
-	Currency         string     `json:"currency" gorm:"type:varchar(3);default:'AUD'"`
-	PricesIncludeTax bool       `json:"prices_include_tax"`
-	DiscountType     string     `json:"discount_type" gorm:"type:varchar(10);default:'percent'"`
-	DiscountValue    float64    `json:"discount_value"`
-	ShippingAmount   float64    `json:"shipping_amount"`
-	Subtotal         float64    `json:"subtotal"`
-	DiscountTotal    float64    `json:"discount_total"`
-	TaxTotal         float64    `json:"tax_total"`
-	Total            float64    `json:"total"`
-	AmountPaid       float64    `json:"amount_paid"`
-	BalanceDue       float64    `json:"balance_due"`
-	Notes            string     `json:"notes" gorm:"type:text"`
-	Terms            string     `json:"terms" gorm:"type:text"`
-	PublicToken      string     `json:"public_token" gorm:"type:varchar(64);uniqueIndex"`
-	SentAt           *time.Time `json:"sent_at"`
-	ViewedAt         *time.Time `json:"viewed_at"`
-	PaidAt           *time.Time `json:"paid_at"`
-	VoidedAt         *time.Time `json:"voided_at"`
-	ConvertedFromID  *string    `json:"converted_from_id" gorm:"type:varchar(64)"`
-	ConvertedToID    *string    `json:"converted_to_id" gorm:"type:varchar(64)"`
+	ID               string    `json:"id" gorm:"type:varchar(64);primaryKey"`
+	OrganizationID   string    `json:"organization_id" gorm:"type:varchar(255);index;not null"`
+	DocType          string    `json:"doc_type" gorm:"type:varchar(20);index;not null;default:'invoice'"`
+	Number           string    `json:"number" gorm:"type:varchar(50);index"`
+	Status           string    `json:"status" gorm:"type:varchar(20);index;not null;default:'draft'"`
+	CustomerID       *string   `json:"customer_id" gorm:"type:varchar(255);index"`
+	ClientName       string    `json:"client_name" gorm:"type:varchar(255)"`
+	ClientEmail      string    `json:"client_email" gorm:"type:varchar(255)"`
+	ClientPhone      string    `json:"client_phone" gorm:"type:varchar(50)"`
+	ClientAddress    string    `json:"client_address" gorm:"type:text"`
+	ClientTaxNumber  string    `json:"client_tax_number" gorm:"type:varchar(100)"`
+	Reference        string    `json:"reference" gorm:"type:varchar(255)"`
+	Title            string    `json:"title" gorm:"type:varchar(255)"`
+	IssueDate        time.Time `json:"issue_date" gorm:"type:date;index"`
+	DueDate          time.Time `json:"due_date" gorm:"type:date;index"`
+	Currency         string    `json:"currency" gorm:"type:varchar(3);default:'AUD'"`
+	PricesIncludeTax bool      `json:"prices_include_tax"`
+	DiscountType     string    `json:"discount_type" gorm:"type:varchar(10);default:'percent'"`
+	DiscountValue    float64   `json:"discount_value"`
+	ShippingAmount   float64   `json:"shipping_amount"`
+	Subtotal         float64   `json:"subtotal"`
+	DiscountTotal    float64   `json:"discount_total"`
+	TaxTotal         float64   `json:"tax_total"`
+	Total            float64   `json:"total"`
+	AmountPaid       float64   `json:"amount_paid"`
+	BalanceDue       float64   `json:"balance_due"`
+	Notes            string    `json:"notes" gorm:"type:text"`
+	Terms            string    `json:"terms" gorm:"type:text"`
+	// CCEmails are copied on every email about this document (sends,
+	// reminders) and carried over to duplicates and recurring copies.
+	CCEmails        []string   `json:"cc_emails" gorm:"type:text;serializer:json"`
+	PublicToken     string     `json:"public_token" gorm:"type:varchar(64);uniqueIndex"`
+	SentAt          *time.Time `json:"sent_at"`
+	ViewedAt        *time.Time `json:"viewed_at"`
+	PaidAt          *time.Time `json:"paid_at"`
+	VoidedAt        *time.Time `json:"voided_at"`
+	ConvertedFromID *string    `json:"converted_from_id" gorm:"type:varchar(64)"`
+	ConvertedToID   *string    `json:"converted_to_id" gorm:"type:varchar(64)"`
 	// Recurring schedule (invoices only). When enabled, a copy of this invoice is
 	// generated every interval starting at NextRecurrenceDate.
 	IsRecurring        bool           `json:"is_recurring"`
@@ -175,13 +178,23 @@ func (Payment) TableName() string { return "billing_payments" }
 
 // Activity is an audit/history entry on an invoice.
 type Activity struct {
-	ID             string    `json:"id" gorm:"type:varchar(64);primaryKey"`
-	InvoiceID      string    `json:"invoice_id" gorm:"type:varchar(64);index;not null"`
-	OrganizationID string    `json:"organization_id" gorm:"type:varchar(255);index"`
-	Type           string    `json:"type" gorm:"type:varchar(30)"`
-	Message        string    `json:"message" gorm:"type:text"`
-	UserID         string    `json:"user_id" gorm:"type:varchar(255)"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             string `json:"id" gorm:"type:varchar(64);primaryKey"`
+	InvoiceID      string `json:"invoice_id" gorm:"type:varchar(64);index;not null"`
+	OrganizationID string `json:"organization_id" gorm:"type:varchar(255);index"`
+	Type           string `json:"type" gorm:"type:varchar(30)"`
+	Message        string `json:"message" gorm:"type:text"`
+	UserID         string `json:"user_id" gorm:"type:varchar(255)"`
+	// Recipients records who an email went to (sent / reminder activities).
+	Recipients *Recipients `json:"recipients,omitempty" gorm:"type:text;serializer:json"`
+	CreatedAt  time.Time   `json:"created_at"`
+}
+
+// Recipients is the To/CC list used for one send.
+type Recipients struct {
+	Kind    string   `json:"kind"` // invoice | quote | reminder
+	To      string   `json:"to"`
+	CC      []string `json:"cc"`
+	Emailed bool     `json:"emailed"` // false when handed to the user's email app
 }
 
 func (Activity) TableName() string { return "billing_activities" }

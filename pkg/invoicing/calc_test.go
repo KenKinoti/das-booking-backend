@@ -94,3 +94,19 @@ func TestNextDate(t *testing.T) {
 		t.Fatal("bad next date")
 	}
 }
+
+func TestRecalculateCurrencyDecimals(t *testing.T) {
+	jpy := &Invoice{Currency: "JPY", Items: []InvoiceItem{{Quantity: 1, UnitPrice: 1234, TaxRate: 10}}}
+	Recalculate(jpy)
+	if jpy.TaxTotal != 123 || jpy.Total != 1357 {
+		t.Fatalf("JPY should round to whole yen: tax=%v total=%v", jpy.TaxTotal, jpy.Total)
+	}
+	kwd := &Invoice{Currency: "KWD", Items: []InvoiceItem{{Quantity: 1, UnitPrice: 1.2346, TaxRate: 5}}}
+	Recalculate(kwd)
+	if kwd.Subtotal != 1.235 || kwd.TaxTotal != 0.062 || kwd.Total != 1.297 {
+		t.Fatalf("KWD should keep 3 decimals: %+v", kwd)
+	}
+	if fmtAmount(1357, "JPY") != "1357" || fmtAmount(1.2965, "KWD") != "1.297" || fmtAmount(3.1, "KES") != "3.10" {
+		t.Fatal("fmtAmount decimals wrong")
+	}
+}

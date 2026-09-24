@@ -3,8 +3,10 @@ package invoicing
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -146,5 +148,93 @@ func TestValidation(t *testing.T) {
 	}
 	if code, _ := call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"client_name": "x", "issue_date": "2026-02-10", "due_date": "2026-02-01", "items": []map[string]interface{}{{"description": "x", "quantity": 1, "unit_price": 1}}}); code != 400 {
 		t.Fatal("due before issue should 400")
+	}
+}
+
+type fakeMailer struct {
+	configured bool
+	to         string
+	cc         []string
+	n          int
+}
+
+func (f *fakeMailer) Configured() bool { return f.configured }
+func (f *fakeMailer) Send(to, subject, body string) error {
+	return f.SendWithCC(to, nil, subject, body)
+}
+func (f *fakeMailer) SendWithCC(to string, cc []string, subject, body string) error {
+	f.to, f.cc, f.n = to, cc, f.n+1
+	return nil
+}
+
+func TestCurrencyAndSendCC(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	org := "test-org-" + uuid.NewString()
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	h := NewHandler(db)
+	fm := &fakeMailer{}
+	h.Mailer = fm
+	h.RegisterRoutes(r.Group("/api", func(c *gin.Context) { c.Set("org_id", c.GetHeader("X-Org")); c.Set("user_id", "u1"); c.Next() }))
+
+	// unsupported currency is rejected; JPY rounds to whole yen
+	item := []map[string]interface{}{{"description": "Work", "quantity": 1, "unit_price": 1234, "tax_rate": 10}}
+	if code, _ := call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"client_name": "X", "currency": "XYZ", "items": item}); code != 400 {
+		t.Fatalf("unsupported currency should 400, got %d", code)
+	}
+	code, res := call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"client_name": "Tanaka", "client_email": "t@jp.test", "currency": "jpy",
+		"cc_emails": []string{"acc@jp.test", "ACC@jp.test", "t@jp.test"}, "items": item})
+	inv := data(res)
+	if code != 201 || inv["currency"] != "JPY" || inv["total"].(float64) != 1357 {
+		t.Fatalf("JPY invoice: %d %v %v", code, inv["currency"], inv["total"])
+	}
+	if cc := inv["cc_emails"].([]interface{}); len(cc) != 1 || cc[0] != "acc@jp.test" {
+		t.Fatalf("cc_emails not deduped: %v", cc)
+	}
+	id := inv["id"].(string)
+	if code, _ := call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"client_name": "X", "cc_emails": []string{"nope"}, "items": item}); code != 400 {
+		t.Fatalf("invalid cc should 400, got %d", code)
+	}
+
+	// SMTP not configured: explicit email mode fails clearly, mailto records recipients
+	code, res = call(t, r, org, "POST", "/api/invoices/"+id+"/send", map[string]interface{}{"mode": "email"})
+	if code != 503 || !strings.Contains(fmt.Sprint(res["error"]), "SMTP_NOT_CONFIGURED") {
+		t.Fatalf("expected SMTP_NOT_CONFIGURED, got %d %v", code, res)
+	}
+	code, res = call(t, r, org, "POST", "/api/invoices/"+id+"/send", map[string]interface{}{"mode": "mailto", "cc": []string{"acc@jp.test", "boss@jp.test"}})
+	if code != 200 || data(res)["emailed"] != false || fm.n != 0 {
+		t.Fatalf("mailto send: %d %v", code, res)
+	}
+
+	// configured: suggested CCs are used and stored recipients logged
+	fm.configured = true
+	code, res = call(t, r, org, "POST", "/api/invoices/"+id+"/send", map[string]interface{}{"kind": "reminder", "subject": "Reminder", "message": "Pay"})
+	if code != 200 || fm.to != "t@jp.test" || strings.Join(fm.cc, ",") != "acc@jp.test,boss@jp.test" {
+		t.Fatalf("reminder send: %d to=%s cc=%v %v", code, fm.to, fm.cc, res)
+	}
+	acts := data(res)["invoice"].(map[string]interface{})["activities"].([]interface{})
+	first := acts[0].(map[string]interface{})
+	rec, _ := first["recipients"].(map[string]interface{})
+	if first["type"] != "reminder" || rec == nil || rec["to"] != "t@jp.test" || rec["emailed"] != true {
+		t.Fatalf("activity should record recipients: %v", first)
+	}
+	code, res = call(t, r, org, "GET", "/api/invoices/"+id+"/recipients?kind=reminder", nil)
+	if code != 200 || len(data(res)["cc"].([]interface{})) != 2 {
+		t.Fatalf("recipients: %d %v", code, res)
+	}
+	// duplicates keep the CC list
+	_, res = call(t, r, org, "POST", "/api/invoices/"+id+"/duplicate", nil)
+	if cc := data(res)["cc_emails"].([]interface{}); len(cc) != 2 {
+		t.Fatalf("duplicate should keep cc_emails: %v", cc)
 	}
 }

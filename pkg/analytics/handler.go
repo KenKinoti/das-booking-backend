@@ -109,14 +109,16 @@ type cashDay struct {
 }
 
 type activity struct {
-	Kind   string     `json:"kind"` // invoice | payment | booking | customer | pos
-	Type   string     `json:"type"`
-	Title  string     `json:"title"`
-	Detail string     `json:"detail"`
-	Amount *float64   `json:"amount,omitempty"`
-	At     time.Time  `json:"at"`
-	Ref    *time.Time `json:"ref_time,omitempty"`
-	Link   string     `json:"link,omitempty"`
+	Kind   string   `json:"kind"` // invoice | payment | booking | customer | pos
+	Type   string   `json:"type"`
+	Title  string   `json:"title"`
+	Detail string   `json:"detail"`
+	Amount *float64 `json:"amount,omitempty"`
+	// Currency of Amount when it differs from the organisation's currency.
+	Currency string     `json:"currency,omitempty"`
+	At       time.Time  `json:"at"`
+	Ref      *time.Time `json:"ref_time,omitempty"`
+	Link     string     `json:"link,omitempty"`
 }
 
 type upcomingBooking struct {
@@ -218,6 +220,10 @@ func (h *Handler) Overview(c *gin.Context) {
 	}
 	interval := pickInterval(c.DefaultQuery("interval", "auto"), cur.Days())
 	tzName := loc.String()
+	// Money is reported in the organisation's currency only; documents in other
+	// currencies are counted separately (other_currencies) instead of being
+	// added to these totals.
+	curCode := h.currency(org)
 
 	// The daily queries span both periods at once.
 	span := cur
@@ -231,12 +237,13 @@ func (h *Handler) Overview(c *gin.Context) {
 	h.scan(&invoiced, `SELECT issue_date::date AS d, COUNT(*) AS n, COALESCE(SUM(total),0) AS v
 		FROM billing_invoices
 		WHERE organization_id = ? AND doc_type = 'invoice' AND status NOT IN ('draft','void') AND deleted_at IS NULL
+		  AND COALESCE(NULLIF(currency,''), ?) = ?
 		  AND issue_date >= ?::date AND issue_date <= ?::date
-		GROUP BY 1`, org, sFrom, sTo)
+		GROUP BY 1`, org, curCode, curCode, sFrom, sTo)
 	h.scan(&collected, `SELECT p.date::date AS d, COUNT(*) AS n, COALESCE(SUM(p.amount),0) AS v
 		FROM billing_payments p JOIN billing_invoices i ON i.id = p.invoice_id AND i.deleted_at IS NULL
-		WHERE p.organization_id = ? AND p.date >= ?::date AND p.date <= ?::date
-		GROUP BY 1`, org, sFrom, sTo)
+		WHERE p.organization_id = ? AND COALESCE(NULLIF(i.currency,''), ?) = ? AND p.date >= ?::date AND p.date <= ?::date
+		GROUP BY 1`, org, curCode, curCode, sFrom, sTo)
 	h.scan(&pos, `SELECT (created_at AT TIME ZONE ?)::date AS d, COUNT(*) AS n, COALESCE(SUM(total_amount),0) AS v
 		FROM pos_transactions
 		WHERE organization_id = ? AND deleted_at IS NULL AND status = 'completed' AND type = 'sale'
@@ -400,7 +407,8 @@ func (h *Handler) Overview(c *gin.Context) {
 	h.scan(&open, `SELECT due_date::date AS due, COUNT(*) AS n, COALESCE(SUM(balance_due),0) AS v
 		FROM billing_invoices
 		WHERE organization_id = ? AND doc_type = 'invoice' AND status IN ('sent','partial') AND deleted_at IS NULL AND balance_due > 0
-		GROUP BY 1`, org)
+		  AND COALESCE(NULLIF(currency,''), ?) = ?
+		GROUP BY 1`, org, curCode, curCode)
 	aging := []agingBucket{
 		{Key: "current", Label: "Not yet due"},
 		{Key: "1_30", Label: "1–30 days"},
@@ -466,8 +474,9 @@ func (h *Handler) Overview(c *gin.Context) {
 		  COUNT(*) AS invoices, COALESCE(SUM(total),0) AS invoiced, COALESCE(SUM(amount_paid),0) AS paid, COALESCE(SUM(balance_due),0) AS balance
 		FROM billing_invoices
 		WHERE organization_id = ? AND doc_type = 'invoice' AND status NOT IN ('draft','void') AND deleted_at IS NULL
+		  AND COALESCE(NULLIF(currency,''), ?) = ?
 		  AND issue_date >= ?::date AND issue_date <= ?::date
-		GROUP BY 1 ORDER BY invoiced DESC LIMIT ?`, org, cFrom, cTo, limit)
+		GROUP BY 1 ORDER BY invoiced DESC LIMIT ?`, org, curCode, curCode, cFrom, cTo, limit)
 	var posCust []struct {
 		ID   string  `gorm:"column:id"`
 		Name string  `gorm:"column:name"`
@@ -519,8 +528,9 @@ func (h *Handler) Overview(c *gin.Context) {
 		  COALESCE(SUM(it.quantity),0) AS q, COALESCE(SUM(it.line_total),0) AS v, COUNT(DISTINCT i.id) AS n
 		FROM billing_invoice_items it JOIN billing_invoices i ON i.id = it.invoice_id
 		WHERE i.organization_id = ? AND i.doc_type = 'invoice' AND i.status NOT IN ('draft','void') AND i.deleted_at IS NULL
+		  AND COALESCE(NULLIF(i.currency,''), ?) = ?
 		  AND i.issue_date >= ?::date AND i.issue_date <= ?::date
-		GROUP BY 1,2 ORDER BY v DESC LIMIT 200`, org, cFrom, cTo)
+		GROUP BY 1,2 ORDER BY v DESC LIMIT 200`, org, curCode, curCode, cFrom, cTo)
 	h.scan(&posItems, `SELECT COALESCE(NULLIF(TRIM(pi.item_name),''),'Unnamed item') AS name, COALESCE(pi.item_type,'product') AS kind,
 		  COALESCE(SUM(pi.quantity),0) AS q, COALESCE(SUM(pi.total_price),0) AS v, COUNT(DISTINCT t.id) AS n
 		FROM pos_items pi JOIN pos_transactions t ON t.id = pi.transaction_id
@@ -610,14 +620,15 @@ func (h *Handler) Overview(c *gin.Context) {
 		  COUNT(*) AS count, COALESCE(SUM(total),0) AS amount, COALESCE(SUM(balance_due),0) AS extra
 		FROM billing_invoices
 		WHERE organization_id = ? AND doc_type = 'invoice' AND deleted_at IS NULL AND issue_date >= ?::date AND issue_date <= ?::date
-		GROUP BY 1 ORDER BY amount DESC`, today.Format(dayFmt), org, cFrom, cTo)
+		  AND COALESCE(NULLIF(currency,''), ?) = ?
+		GROUP BY 1 ORDER BY amount DESC`, today.Format(dayFmt), org, cFrom, cTo, curCode, curCode)
 
 	// Payment methods (invoice payments + POS tenders)
 	payMethods := []named{}
 	h.scan(&payMethods, `SELECT name, SUM(n) AS count, SUM(v) AS amount FROM (
 		  SELECT LOWER(COALESCE(NULLIF(p.method,''),'other')) AS name, COUNT(*) AS n, COALESCE(SUM(p.amount),0) AS v
 		  FROM billing_payments p JOIN billing_invoices i ON i.id = p.invoice_id AND i.deleted_at IS NULL
-		  WHERE p.organization_id = ? AND p.date >= ?::date AND p.date <= ?::date GROUP BY 1
+		  WHERE p.organization_id = ? AND COALESCE(NULLIF(i.currency,''), ?) = ? AND p.date >= ?::date AND p.date <= ?::date GROUP BY 1
 		  UNION ALL
 		  SELECT name, COUNT(*) AS n, COALESCE(SUM(share),0) AS v FROM (
 		    SELECT LOWER(COALESCE(NULLIF(pp.method,''),'other')) AS name,
@@ -626,7 +637,7 @@ func (h *Handler) Overview(c *gin.Context) {
 		    WHERE t.organization_id = ? AND t.deleted_at IS NULL AND t.status = 'completed' AND t.type = 'sale'
 		      AND t.created_at >= ? AND t.created_at < ?
 		  ) pp GROUP BY 1
-		) x GROUP BY name ORDER BY amount DESC`, org, cFrom, cTo, org, cStart, cEnd)
+		) x GROUP BY name ORDER BY amount DESC`, org, curCode, curCode, cFrom, cTo, org, cStart, cEnd)
 
 	for _, l := range [][]named{bookingStatus, invoiceStatus, payMethods} {
 		for i := range l {
@@ -648,7 +659,7 @@ func (h *Handler) Overview(c *gin.Context) {
 		  COALESCE(SUM(GREATEST(current_stock,0) * cost_price),0) AS cost_value,
 		  COALESCE(SUM(GREATEST(current_stock,0) * selling_price),0) AS retail_value,
 		  COALESCE(SUM(GREATEST(current_stock,0)),0) AS units,
-		  COUNT(*) FILTER (WHERE current_stock <= GREATEST(min_stock, reorder_point)) AS low,
+		  COUNT(*) FILTER (WHERE current_stock > 0 AND GREATEST(min_stock, reorder_point) > 0 AND current_stock <= GREATEST(min_stock, reorder_point)) AS low,
 		  COUNT(*) FILTER (WHERE current_stock <= 0) AS out
 		FROM products WHERE organization_id = ? AND deleted_at IS NULL AND is_active = true`, org)
 	lowStock := []lowStockItem{}
@@ -661,7 +672,11 @@ func (h *Handler) Overview(c *gin.Context) {
 	todayStart, todayEnd := Period{From: today, To: today}.Bounds(loc)
 	weekEnd := todayStart.AddDate(0, 0, 7)
 	var bookingsToday, bookingsWeek int64
-	h.DB.Raw(`SELECT COUNT(*) FILTER (WHERE start_time < ?), COUNT(*) FROM bookings
+	// today: every live booking today (as on the Bookings page "Today" card);
+	// week: still-to-do bookings (scheduled/confirmed/in progress) from today
+	// for 7 days (as on the Bookings page "Next 7 days" card).
+	h.DB.Raw(`SELECT COUNT(*) FILTER (WHERE start_time < ?),
+		  COUNT(*) FILTER (WHERE COALESCE(NULLIF(status,''),'scheduled') IN ('scheduled','confirmed','in_progress')) FROM bookings
 		WHERE organization_id = ? AND deleted_at IS NULL AND status NOT IN ('cancelled','no_show') AND start_time >= ? AND start_time < ?`,
 		todayEnd, org, todayStart, weekEnd).Row().Scan(&bookingsToday, &bookingsWeek)
 	upcoming := []upcomingBooking{}
@@ -677,6 +692,28 @@ func (h *Handler) Overview(c *gin.Context) {
 		GROUP BY b.id, c.first_name, c.last_name
 		ORDER BY b.start_time ASC LIMIT ?`, org, now, weekEnd, limit+2)
 
+	// Invoices in other currencies are excluded from the totals above; report
+	// them separately so the UI can say so.
+	type otherCur struct {
+		Currency    string  `json:"currency"`
+		Invoices    int64   `json:"invoices"`
+		Invoiced    float64 `json:"invoiced"`
+		Open        int64   `json:"open"`
+		Outstanding float64 `json:"outstanding"`
+	}
+	others := []otherCur{}
+	h.scan(&others, `SELECT UPPER(currency) AS currency,
+		  COUNT(*) FILTER (WHERE status NOT IN ('draft','void') AND issue_date >= ?::date AND issue_date <= ?::date) AS invoices,
+		  COALESCE(SUM(total) FILTER (WHERE status NOT IN ('draft','void') AND issue_date >= ?::date AND issue_date <= ?::date),0) AS invoiced,
+		  COUNT(*) FILTER (WHERE status IN ('sent','partial') AND balance_due > 0) AS open,
+		  COALESCE(SUM(balance_due) FILTER (WHERE status IN ('sent','partial') AND balance_due > 0),0) AS outstanding
+		FROM billing_invoices
+		WHERE organization_id = ? AND doc_type = 'invoice' AND deleted_at IS NULL AND COALESCE(currency,'') <> '' AND UPPER(currency) <> ?
+		GROUP BY 1 ORDER BY 1`, cFrom, cTo, cFrom, cTo, org, curCode)
+	for i := range others {
+		others[i].Invoiced, others[i].Outstanding = round2(others[i].Invoiced), round2(others[i].Outstanding)
+	}
+
 	// Recent activity
 	acts := h.recentActivity(org)
 
@@ -690,11 +727,12 @@ func (h *Handler) Overview(c *gin.Context) {
 		cmp = gin.H{"from": prev.From.Format(dayFmt), "to": prev.To.Format(dayFmt), "days": prev.Days()}
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
-		"currency":     h.currency(org),
-		"timezone":     tzName,
-		"generated_at": time.Now().UTC(),
-		"range":        gin.H{"from": cFrom, "to": cTo, "days": cur.Days(), "interval": interval},
-		"compare":      cmp,
+		"currency":         curCode,
+		"other_currencies": others,
+		"timezone":         tzName,
+		"generated_at":     time.Now().UTC(),
+		"range":            gin.H{"from": cFrom, "to": cTo, "days": cur.Days(), "interval": interval},
+		"compare":          cmp,
 		"kpis": gin.H{
 			"revenue":            kRevenue,
 			"collected":          kCollectedInv,
@@ -772,10 +810,11 @@ func (h *Handler) recentActivity(org string) []activity {
 		Client  string    `gorm:"column:client"`
 		DocType string    `gorm:"column:doc_type"`
 		Total   float64   `gorm:"column:total"`
+		Cur     string    `gorm:"column:currency"`
 	}
 	// Latest event per invoice, so one invoice's create/send/pay burst shows once.
 	h.scan(&inv, `SELECT * FROM (
-		  SELECT DISTINCT ON (a.invoice_id) a.type, a.message, a.created_at AS at, i.id, i.number, i.client_name AS client, i.doc_type, i.total
+		  SELECT DISTINCT ON (a.invoice_id) a.type, a.message, a.created_at AS at, i.id, i.number, i.client_name AS client, i.doc_type, i.total, UPPER(COALESCE(i.currency,'')) AS currency
 		  FROM billing_activities a JOIN billing_invoices i ON i.id = a.invoice_id AND i.deleted_at IS NULL
 		  WHERE i.organization_id = ? AND a.created_at > now() - interval '180 days'
 		  ORDER BY a.invoice_id, a.created_at DESC
@@ -798,7 +837,7 @@ func (h *Handler) recentActivity(org string) []activity {
 		if kind == "invoice" {
 			amt = amountPtr(a.Total)
 		}
-		out = append(out, activity{Kind: kind, Type: a.Type, Title: title, Detail: msg, At: a.At, Link: link, Amount: amt})
+		out = append(out, activity{Kind: kind, Type: a.Type, Title: title, Detail: msg, At: a.At, Link: link, Amount: amt, Currency: a.Cur})
 	}
 	var bk []struct {
 		ID       string    `gorm:"column:id"`

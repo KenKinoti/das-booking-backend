@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 )
 
 type Handler struct {
@@ -498,7 +499,7 @@ func (h *Handler) GetDashboard(c *gin.Context) {
 	if !ok {
 		return
 	}
-	dashboard, err := h.service.GetDashboard(orgID)
+	dashboard, err := h.service.GetDashboardIn(orgID, reqtz.Location(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Could not load dashboard"})
 		return

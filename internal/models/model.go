@@ -9,32 +9,32 @@ import (
 
 // Organization represents any business organization (garage, salon, retail, etc.)
 type Organization struct {
-	ID          string         `json:"id" gorm:"type:varchar(255);primaryKey"`
-	Name        string         `json:"name" gorm:"type:varchar(255);not null"`
-	BusinessType string        `json:"business_type" gorm:"type:varchar(100);not null;default:'general';index"` // garage, salon, retail, manufacturing, etc.
-	ABN         string         `json:"abn" gorm:"type:varchar(11);unique"`
-	Phone       string         `json:"phone" gorm:"type:varchar(20)"`
-	Email       string         `json:"email" gorm:"type:varchar(255)"`
-	Website     string         `json:"website" gorm:"type:varchar(255)"`
-	Description string         `json:"description" gorm:"type:text"`
-	Address     Address        `json:"address" gorm:"embedded;embeddedPrefix:address_"`
-	BusinessHours BusinessHours `json:"business_hours" gorm:"embedded;embeddedPrefix:hours_"`
+	ID              string          `json:"id" gorm:"type:varchar(255);primaryKey"`
+	Name            string          `json:"name" gorm:"type:varchar(255);not null"`
+	BusinessType    string          `json:"business_type" gorm:"type:varchar(100);not null;default:'general';index"` // garage, salon, retail, manufacturing, etc.
+	ABN             string          `json:"abn" gorm:"type:varchar(11);unique"`
+	Phone           string          `json:"phone" gorm:"type:varchar(20)"`
+	Email           string          `json:"email" gorm:"type:varchar(255)"`
+	Website         string          `json:"website" gorm:"type:varchar(255)"`
+	Description     string          `json:"description" gorm:"type:text"`
+	Address         Address         `json:"address" gorm:"embedded;embeddedPrefix:address_"`
+	BusinessHours   BusinessHours   `json:"business_hours" gorm:"embedded;embeddedPrefix:hours_"`
 	BookingSettings BookingSettings `json:"booking_settings" gorm:"embedded;embeddedPrefix:booking_"`
 
 	// Modules Management
-	EnabledModules []string       `json:"enabled_modules" gorm:"type:text;serializer:json"`
+	EnabledModules []string        `json:"enabled_modules" gorm:"type:text;serializer:json"`
 	ModulesConfig  map[string]bool `json:"modules_config" gorm:"type:text;serializer:json"`
 
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Relationships
-	Users        []User        `json:"users,omitempty" gorm:"foreignKey:OrganizationID"`
-	Customers    []Customer    `json:"customers,omitempty" gorm:"foreignKey:OrganizationID"`
-	Vehicles     []Vehicle     `json:"vehicles,omitempty" gorm:"foreignKey:OrganizationID"`
-	Services     []Service     `json:"services,omitempty" gorm:"foreignKey:OrganizationID"`
-	Bookings     []Booking     `json:"bookings,omitempty" gorm:"foreignKey:OrganizationID"`
+	Users     []User     `json:"users,omitempty" gorm:"foreignKey:OrganizationID"`
+	Customers []Customer `json:"customers,omitempty" gorm:"foreignKey:OrganizationID"`
+	Vehicles  []Vehicle  `json:"vehicles,omitempty" gorm:"foreignKey:OrganizationID"`
+	Services  []Service  `json:"services,omitempty" gorm:"foreignKey:OrganizationID"`
+	Bookings  []Booking  `json:"bookings,omitempty" gorm:"foreignKey:OrganizationID"`
 }
 
 // User represents system users (staff, admins, etc.)
@@ -45,7 +45,7 @@ type User struct {
 	FirstName      string         `json:"first_name" gorm:"type:varchar(100);not null"`
 	LastName       string         `json:"last_name" gorm:"type:varchar(100);not null"`
 	Phone          string         `json:"phone" gorm:"type:varchar(20)"`
-	Role           string         `json:"role" gorm:"type:varchar(50);not null;index"` // admin, manager, care_worker, support_coordinator
+	Role           string         `json:"role" gorm:"type:varchar(50);not null;index"`      // admin, manager, care_worker, support_coordinator
 	RoleID         *string        `json:"role_id,omitempty" gorm:"type:varchar(255);index"` // New role-based system
 	OrganizationID string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
 	IsActive       bool           `json:"is_active" gorm:"default:true;index"`
@@ -64,13 +64,19 @@ type User struct {
 
 // Customer represents business customers (vehicle owners, salon clients, etc.)
 type Customer struct {
-	ID             string         `json:"id" gorm:"type:varchar(255);primaryKey"`
-	FirstName      string         `json:"first_name" gorm:"type:varchar(100);not null"`
-	LastName       string         `json:"last_name" gorm:"type:varchar(100);not null"`
-	Email          string         `json:"email" gorm:"type:varchar(255);index"`
-	Phone          string         `json:"phone" gorm:"type:varchar(20);not null"`
-	DateOfBirth    *time.Time     `json:"date_of_birth,omitempty"`
-	Address        Address        `json:"address" gorm:"embedded;embeddedPrefix:address_"`
+	ID          string     `json:"id" gorm:"type:varchar(255);primaryKey"`
+	FirstName   string     `json:"first_name" gorm:"type:varchar(100);not null"`
+	LastName    string     `json:"last_name" gorm:"type:varchar(100);not null"`
+	Email       string     `json:"email" gorm:"type:varchar(255);index"`
+	Phone       string     `json:"phone" gorm:"type:varchar(20);not null"`
+	DateOfBirth *time.Time `json:"date_of_birth,omitempty"`
+	Address     Address    `json:"address" gorm:"embedded;embeddedPrefix:address_"`
+	// CountryCode is the ISO 3166-1 alpha-2 code of the customer's country
+	// (Address.Country keeps the display name).
+	CountryCode string `json:"country_code" gorm:"type:varchar(2);index"`
+	// Currency is the customer's preferred invoicing currency. Empty means
+	// "automatic": the country's currency, else the organisation default.
+	Currency       string         `json:"currency" gorm:"type:varchar(3)"`
 	Notes          string         `json:"notes" gorm:"type:text"`
 	OrganizationID string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
 	IsActive       bool           `json:"is_active" gorm:"default:true;index"`
@@ -83,6 +89,29 @@ type Customer struct {
 	Vehicles     []Vehicle    `json:"vehicles,omitempty" gorm:"foreignKey:CustomerID"`
 	Bookings     []Booking    `json:"bookings,omitempty" gorm:"foreignKey:CustomerID"`
 }
+
+// CustomerContact is a person at a customer (e.g. accounts staff) who can be
+// kept in the loop on invoices, quotes, reminders and booking emails.
+type CustomerContact struct {
+	ID               string         `json:"id" gorm:"type:varchar(64);primaryKey"`
+	CustomerID       string         `json:"customer_id" gorm:"type:varchar(255);not null;index"`
+	OrganizationID   string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
+	Name             string         `json:"name" gorm:"type:varchar(200)"`
+	Email            string         `json:"email" gorm:"type:varchar(255);not null"`
+	Phone            string         `json:"phone" gorm:"type:varchar(50)"`
+	Role             string         `json:"role" gorm:"type:varchar(120)"`
+	CCInvoices       bool           `json:"cc_invoices" gorm:"not null;default:false"` // handlers default new contacts to true
+	CCQuotes         bool           `json:"cc_quotes" gorm:"not null;default:false"`
+	CCReminders      bool           `json:"cc_reminders" gorm:"not null;default:false"`
+	CCBookings       bool           `json:"cc_bookings" gorm:"not null;default:false"`
+	IsPrimaryBilling bool           `json:"is_primary_billing" gorm:"not null;default:false"`
+	Notes            string         `json:"notes" gorm:"type:text"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	DeletedAt        gorm.DeletedAt `json:"-" gorm:"index"`
+}
+
+func (CustomerContact) TableName() string { return "customer_contacts" }
 
 // Vehicle represents vehicles for garage businesses
 type Vehicle struct {
@@ -103,25 +132,25 @@ type Vehicle struct {
 	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Relationships
-	Customer     Customer      `json:"customer,omitempty" gorm:"foreignKey:CustomerID"`
-	Organization Organization  `json:"organization,omitempty" gorm:"foreignKey:OrganizationID"`
-	Bookings     []Booking     `json:"bookings,omitempty" gorm:"foreignKey:VehicleID"`
+	Customer     Customer     `json:"customer,omitempty" gorm:"foreignKey:CustomerID"`
+	Organization Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID"`
+	Bookings     []Booking    `json:"bookings,omitempty" gorm:"foreignKey:VehicleID"`
 }
 
 // Service represents services offered by the business
 type Service struct {
-	ID             string         `json:"id" gorm:"type:varchar(255);primaryKey"`
-	OrganizationID string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
-	Name           string         `json:"name" gorm:"type:varchar(255);not null"`
-	Description    string         `json:"description" gorm:"type:text"`
-	Category       string         `json:"category" gorm:"type:varchar(100);not null;index"` // maintenance, repair, beauty, etc.
-	Duration       int            `json:"duration" gorm:"not null"` // Duration in minutes
-	Price          float64        `json:"price" gorm:"type:decimal(10,2);not null"`
-	IsActive       bool           `json:"is_active" gorm:"default:true;index"`
-	RequiresVehicle bool          `json:"requires_vehicle" gorm:"default:false"` // For garage services
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
+	ID              string         `json:"id" gorm:"type:varchar(255);primaryKey"`
+	OrganizationID  string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
+	Name            string         `json:"name" gorm:"type:varchar(255);not null"`
+	Description     string         `json:"description" gorm:"type:text"`
+	Category        string         `json:"category" gorm:"type:varchar(100);not null;index"` // maintenance, repair, beauty, etc.
+	Duration        int            `json:"duration" gorm:"not null"`                         // Duration in minutes
+	Price           float64        `json:"price" gorm:"type:decimal(10,2);not null"`
+	IsActive        bool           `json:"is_active" gorm:"default:true;index"`
+	RequiresVehicle bool           `json:"requires_vehicle" gorm:"default:false"` // For garage services
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Relationships
 	Organization Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID"`
@@ -146,11 +175,11 @@ type Booking struct {
 	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Relationships
-	Customer     Customer      `json:"customer,omitempty" gorm:"foreignKey:CustomerID"`
-	Organization Organization  `json:"organization,omitempty" gorm:"foreignKey:OrganizationID"`
-	Vehicle      *Vehicle      `json:"vehicle,omitempty" gorm:"foreignKey:VehicleID"`
-	Staff        *User         `json:"staff,omitempty" gorm:"foreignKey:StaffID"`
-	Services     []Service     `json:"services,omitempty" gorm:"many2many:booking_services"`
+	Customer     Customer     `json:"customer,omitempty" gorm:"foreignKey:CustomerID"`
+	Organization Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID"`
+	Vehicle      *Vehicle     `json:"vehicle,omitempty" gorm:"foreignKey:VehicleID"`
+	Staff        *User        `json:"staff,omitempty" gorm:"foreignKey:StaffID"`
+	Services     []Service    `json:"services,omitempty" gorm:"many2many:booking_services"`
 }
 
 // Participant represents care recipients
@@ -353,18 +382,18 @@ type BusinessHours struct {
 
 // BookingSettings represents booking system configuration
 type BookingSettings struct {
-	EnableOnlineBooking   bool   `json:"enable_online_booking" gorm:"default:true"`
-	BookingWindow         int    `json:"booking_window" gorm:"default:30"` // Days in advance customers can book
-	MinAdvanceBooking     int    `json:"min_advance_booking" gorm:"default:1"` // Hours in advance required
-	MaxAdvanceBooking     int    `json:"max_advance_booking" gorm:"default:720"` // Hours in advance allowed (30 days)
-	DefaultSlotDuration   int    `json:"default_slot_duration" gorm:"default:60"` // Minutes
-	BufferTime           int    `json:"buffer_time" gorm:"default:15"` // Minutes between bookings
-	RequireApproval      bool   `json:"require_approval" gorm:"default:false"`
-	SendConfirmations    bool   `json:"send_confirmations" gorm:"default:true"`
-	SendReminders        bool   `json:"send_reminders" gorm:"default:true"`
-	ReminderHours        int    `json:"reminder_hours" gorm:"default:24"` // Hours before appointment
-	AllowCancellation    bool   `json:"allow_cancellation" gorm:"default:true"`
-	CancellationWindow   int    `json:"cancellation_window" gorm:"default:24"` // Hours before appointment
+	EnableOnlineBooking bool `json:"enable_online_booking" gorm:"default:true"`
+	BookingWindow       int  `json:"booking_window" gorm:"default:30"`        // Days in advance customers can book
+	MinAdvanceBooking   int  `json:"min_advance_booking" gorm:"default:1"`    // Hours in advance required
+	MaxAdvanceBooking   int  `json:"max_advance_booking" gorm:"default:720"`  // Hours in advance allowed (30 days)
+	DefaultSlotDuration int  `json:"default_slot_duration" gorm:"default:60"` // Minutes
+	BufferTime          int  `json:"buffer_time" gorm:"default:15"`           // Minutes between bookings
+	RequireApproval     bool `json:"require_approval" gorm:"default:false"`
+	SendConfirmations   bool `json:"send_confirmations" gorm:"default:true"`
+	SendReminders       bool `json:"send_reminders" gorm:"default:true"`
+	ReminderHours       int  `json:"reminder_hours" gorm:"default:24"` // Hours before appointment
+	AllowCancellation   bool `json:"allow_cancellation" gorm:"default:true"`
+	CancellationWindow  int  `json:"cancellation_window" gorm:"default:24"` // Hours before appointment
 }
 
 // BeforeCreate hooks for generating UUIDs
@@ -546,7 +575,7 @@ func handleCustomMigrations(db *gorm.DB) error {
 			}
 		}
 	}
-	
+
 	// Handle users table
 	if db.Migrator().HasTable(&User{}) {
 		// Handle password_hash column
@@ -561,7 +590,7 @@ func handleCustomMigrations(db *gorm.DB) error {
 				return err
 			}
 		}
-		
+
 		// Handle first_name column
 		if !db.Migrator().HasColumn(&User{}, "first_name") {
 			if err := db.Exec("ALTER TABLE users ADD COLUMN first_name varchar(100) DEFAULT ''").Error; err != nil {
@@ -574,7 +603,7 @@ func handleCustomMigrations(db *gorm.DB) error {
 				return err
 			}
 		}
-		
+
 		// Handle last_name column
 		if !db.Migrator().HasColumn(&User{}, "last_name") {
 			if err := db.Exec("ALTER TABLE users ADD COLUMN last_name varchar(100) DEFAULT ''").Error; err != nil {
@@ -587,7 +616,7 @@ func handleCustomMigrations(db *gorm.DB) error {
 				return err
 			}
 		}
-		
+
 		// Handle role column
 		if !db.Migrator().HasColumn(&User{}, "role") {
 			if err := db.Exec("ALTER TABLE users ADD COLUMN role varchar(50) DEFAULT 'user'").Error; err != nil {
@@ -600,7 +629,7 @@ func handleCustomMigrations(db *gorm.DB) error {
 				return err
 			}
 		}
-		
+
 		// Handle organization_id column
 		if !db.Migrator().HasColumn(&User{}, "organization_id") {
 			if err := db.Exec("ALTER TABLE users ADD COLUMN organization_id varchar(255) DEFAULT ''").Error; err != nil {
@@ -614,7 +643,7 @@ func handleCustomMigrations(db *gorm.DB) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -660,19 +689,19 @@ func SeedDatabase(db *gorm.DB) error {
 			Country:  "Australia",
 		},
 		BusinessHours: BusinessHours{
-			MondayOpen:    "08:00",
-			MondayClose:   "17:00",
-			TuesdayOpen:   "08:00",
-			TuesdayClose:  "17:00",
-			WednesdayOpen: "08:00",
+			MondayOpen:     "08:00",
+			MondayClose:    "17:00",
+			TuesdayOpen:    "08:00",
+			TuesdayClose:   "17:00",
+			WednesdayOpen:  "08:00",
 			WednesdayClose: "17:00",
-			ThursdayOpen:  "08:00",
-			ThursdayClose: "17:00",
-			FridayOpen:    "08:00",
-			FridayClose:   "17:00",
-			SaturdayOpen:  "09:00",
-			SaturdayClose: "14:00",
-			Timezone:      "Australia/Adelaide",
+			ThursdayOpen:   "08:00",
+			ThursdayClose:  "17:00",
+			FridayOpen:     "08:00",
+			FridayClose:    "17:00",
+			SaturdayOpen:   "09:00",
+			SaturdayClose:  "14:00",
+			Timezone:       "Australia/Adelaide",
 		},
 		BookingSettings: BookingSettings{
 			EnableOnlineBooking: true,
@@ -680,13 +709,13 @@ func SeedDatabase(db *gorm.DB) error {
 			MinAdvanceBooking:   2,
 			MaxAdvanceBooking:   720,
 			DefaultSlotDuration: 60,
-			BufferTime:         15,
-			RequireApproval:    false,
-			SendConfirmations:  true,
-			SendReminders:      true,
-			ReminderHours:      24,
-			AllowCancellation:  true,
-			CancellationWindow: 24,
+			BufferTime:          15,
+			RequireApproval:     false,
+			SendConfirmations:   true,
+			SendReminders:       true,
+			ReminderHours:       24,
+			AllowCancellation:   true,
+			CancellationWindow:  24,
 		},
 	}
 
@@ -730,13 +759,13 @@ func SeedDatabase(db *gorm.DB) error {
 			MinAdvanceBooking:   4,
 			MaxAdvanceBooking:   1440,
 			DefaultSlotDuration: 30,
-			BufferTime:         10,
-			RequireApproval:    true,
-			SendConfirmations:  true,
-			SendReminders:      true,
-			ReminderHours:      48,
-			AllowCancellation:  true,
-			CancellationWindow: 48,
+			BufferTime:          10,
+			RequireApproval:     true,
+			SendConfirmations:   true,
+			SendReminders:       true,
+			ReminderHours:       48,
+			AllowCancellation:   true,
+			CancellationWindow:  48,
 		},
 	}
 
@@ -909,19 +938,19 @@ func SeedDatabase(db *gorm.DB) error {
 			InventoryEnabled:     true,
 			SupplierEnabled:      true,
 			PurchaseOrderEnabled: true,
-			POSEnabled:          true,
-			CRMEnabled:          true,
-			ReportsEnabled:      true,
+			POSEnabled:           true,
+			CRMEnabled:           true,
+			ReportsEnabled:       true,
 		}
 		db.FirstOrCreate(&orgModules, "organization_id = ?", orgID)
 
 		// Create default tax rates (Australian GST)
 		gstRate := TaxRate{
 			OrganizationID: orgID,
-			Name:          "GST",
-			Rate:          10.00,
-			IsDefault:     true,
-			IsActive:      true,
+			Name:           "GST",
+			Rate:           10.00,
+			IsDefault:      true,
+			IsActive:       true,
 		}
 		db.FirstOrCreate(&gstRate, "organization_id = ? AND name = ?", orgID, "GST")
 

@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 )
 
 // ---------------------------------------------------------------------------
@@ -542,7 +543,7 @@ func (h *Handler) GetPurchaseOrders(c *gin.Context) {
 		case "open":
 			query = query.Where("purchase_orders.status IN ?", []string{poSent, "confirmed", poPartial})
 		case "overdue":
-			query = query.Where("purchase_orders.status IN ? AND purchase_orders.expected_date < ?", []string{poSent, "confirmed", poPartial}, time.Now().Format("2006-01-02"))
+			query = query.Where("purchase_orders.status IN ? AND purchase_orders.expected_date < ?", []string{poSent, "confirmed", poPartial}, reqtz.DateString(c))
 		default:
 			query = query.Where("purchase_orders.status = ?", status)
 		}
@@ -1105,8 +1106,10 @@ func (h *Handler) GetSupplierReport(c *gin.Context) {
 
 	committed := []string{poSent, "confirmed", poPartial, poReceived}
 	open := []string{poSent, "confirmed", poPartial}
-	now := time.Now()
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	// Calendar dates in the user's time zone (?tz=); order/expected dates are
+	// stored as dates, so compare them as dates.
+	now := reqtz.Now(c)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
 	today := now.Format("2006-01-02")
 
 	h.DB.Model(&models.PurchaseOrder{}).Where("organization_id = ? AND status IN ?", orgID, committed).

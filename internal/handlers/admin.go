@@ -94,7 +94,25 @@ type SeedAdvancedRequest struct {
 }
 
 // SeedOrganizations creates organizations only
+// fakeDataBlocked refuses the random test-data generators outside development
+// (and for anyone but a super admin): they insert made-up organisations,
+// people and phone numbers that would then be counted as real business data.
+func (h *Handler) fakeDataBlocked(c *gin.Context) bool {
+	if h.Config != nil && strings.EqualFold(h.Config.Environment, "production") {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"code": "TEST_DATA_DISABLED", "message": "Generating test data is disabled on this server"}})
+		return true
+	}
+	if c.GetString("user_role") != "super_admin" {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"code": "FORBIDDEN", "message": "Only a super admin can generate test data"}})
+		return true
+	}
+	return false
+}
+
 func (h *Handler) SeedOrganizations(c *gin.Context) {
+	if h.fakeDataBlocked(c) {
+		return
+	}
 	// Verify admin access
 	userRole, exists := c.Get("user_role")
 	if !exists || (userRole != "admin" && userRole != "super_admin") {
@@ -222,6 +240,9 @@ func (h *Handler) SeedOrganizations(c *gin.Context) {
 
 // SeedAdvanced performs advanced database seeding with organization creation
 func (h *Handler) SeedAdvanced(c *gin.Context) {
+	if h.fakeDataBlocked(c) {
+		return
+	}
 	// Verify admin access
 	userRole, exists := c.Get("user_role")
 	if !exists || (userRole != "admin" && userRole != "super_admin") {

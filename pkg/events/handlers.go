@@ -372,12 +372,26 @@ func (h *Handler) Stats(c *gin.Context) {
 	var revenue, paid float64
 	currencies := map[string]int{}
 	for _, v := range views {
-		currencies[v.Currency]++
+		currencies[strings.ToUpper(v.Currency)]++
+	}
+	currency, best := "AUD", 0
+	for k, n := range currencies {
+		if k != "" && (n > best || (n == best && k < currency)) {
+			currency, best = k, n
+		}
+	}
+	// Money is summed in one currency only; other currencies are reported apart.
+	otherRevenue := map[string]float64{}
+	for _, v := range views {
 		regs += v.Stats.Registrations
 		tickets += v.Stats.Tickets
 		checkedIn += v.Stats.CheckedIn
-		revenue += v.Stats.Revenue
-		paid += v.Stats.Paid
+		if vc := strings.ToUpper(v.Currency); vc == "" || vc == currency {
+			revenue += v.Stats.Revenue
+			paid += v.Stats.Paid
+		} else if v.Stats.Revenue != 0 {
+			otherRevenue[vc] = round2(otherRevenue[vc] + v.Stats.Revenue)
+		}
 		switch v.DisplayStatus {
 		case "draft":
 			drafts++
@@ -394,12 +408,6 @@ func (h *Handler) Stats(c *gin.Context) {
 			}
 		}
 	}
-	currency, best := "AUD", 0
-	for k, n := range currencies {
-		if k != "" && n > best {
-			currency, best = k, n
-		}
-	}
 	fill := 0.0
 	if upCapacity > 0 {
 		fill = round2(float64(upTickets) * 100 / float64(upCapacity))
@@ -414,7 +422,7 @@ func (h *Handler) Stats(c *gin.Context) {
 	data := gin.H{
 		"total_events": len(views), "upcoming": upcoming, "live": live, "drafts": drafts, "past": past,
 		"registrations": regs, "tickets": tickets, "checked_in": checkedIn,
-		"revenue": round2(revenue), "paid": round2(paid), "currency": currency,
+		"revenue": round2(revenue), "paid": round2(paid), "currency": currency, "other_currency_revenue": otherRevenue,
 		"capacity_filled": fill, "upcoming_tickets": upTickets, "upcoming_capacity": upCapacity,
 		"generated_at": now,
 	}

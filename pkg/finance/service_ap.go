@@ -162,7 +162,10 @@ type BillInput struct {
 }
 
 // decorateBill fills computed fields.
-func decorateBill(b *Bill, vendorNames map[string]string) {
+func decorateBill(b *Bill, vendorNames map[string]string) { decorateBillOn(b, vendorNames, today()) }
+
+// decorateBillOn derives display fields with t as "today" (the user's calendar date).
+func decorateBillOn(b *Bill, vendorNames map[string]string, t time.Time) {
 	b.VendorName = vendorNames[b.VendorID]
 	b.AmountDue = r2(b.Total - b.PaidAmount)
 	if b.AmountDue < 0 {
@@ -170,7 +173,6 @@ func decorateBill(b *Bill, vendorNames map[string]string) {
 	}
 	b.DisplayStatus = b.Status
 	if b.Status == "unpaid" || b.Status == "partial" {
-		t := today()
 		d := dateOnly(b.DueDate)
 		if d.Before(t) {
 			b.DisplayStatus = "overdue"
@@ -192,6 +194,11 @@ func (s *Service) vendorNames(orgID string) map[string]string {
 
 // GetBills lists bills. status: all, draft, unpaid (unpaid+partial), overdue, paid.
 func (s *Service) GetBills(orgID, status, q, vendorID string) ([]Bill, error) {
+	return s.GetBillsOn(orgID, status, q, vendorID, today())
+}
+
+// GetBillsOn lists bills with t as "today" for the overdue status.
+func (s *Service) GetBillsOn(orgID, status, q, vendorID string, t time.Time) ([]Bill, error) {
 	s.EnsureSetup(orgID)
 	query := s.db.Where("organization_id = ?", orgID)
 	if vendorID != "" {
@@ -212,7 +219,7 @@ func (s *Service) GetBills(orgID, status, q, vendorID string) ([]Bill, error) {
 	out := make([]Bill, 0, len(bills))
 	for i := range bills {
 		b := &bills[i]
-		decorateBill(b, names)
+		decorateBillOn(b, names, t)
 		if status == "overdue" && b.DisplayStatus != "overdue" {
 			continue
 		}

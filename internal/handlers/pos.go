@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 )
 
 // ---------------------------------------------------------------------------
@@ -37,13 +38,14 @@ var posPaymentMethods = map[string]bool{"cash": true, "card": true, "eftpos": tr
 // posDayBounds turns YYYY-MM-DD query values into an inclusive [start, end) range.
 func posDayBounds(c *gin.Context) (*time.Time, *time.Time) {
 	var from, to *time.Time
+	loc := reqtz.Location(c) // calendar days in the user's time zone
 	if s := c.Query("start_date"); s != "" {
-		if t, err := time.ParseInLocation("2006-01-02", s[:min(len(s), 10)], time.Local); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", s[:min(len(s), 10)], loc); err == nil {
 			from = &t
 		}
 	}
 	if s := c.Query("end_date"); s != "" {
-		if t, err := time.ParseInLocation("2006-01-02", s[:min(len(s), 10)], time.Local); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", s[:min(len(s), 10)], loc); err == nil {
 			t = t.AddDate(0, 0, 1)
 			to = &t
 		}
@@ -881,9 +883,10 @@ func (h *Handler) GetPOSReport(c *gin.Context) {
 	}
 	r := report{TopProducts: []map[string]interface{}{}, SalesByPaymentMethod: []map[string]interface{}{}, HourlySales: []map[string]interface{}{}}
 
-	today := time.Now().Format("2006-01-02")
-	start, err1 := time.ParseInLocation("2006-01-02", c.DefaultQuery("start_date", today), time.Local)
-	end, err2 := time.ParseInLocation("2006-01-02", c.DefaultQuery("end_date", today), time.Local)
+	loc := reqtz.Location(c)
+	today := reqtz.DateString(c)
+	start, err1 := time.ParseInLocation("2006-01-02", c.DefaultQuery("start_date", today), loc)
+	end, err2 := time.ParseInLocation("2006-01-02", c.DefaultQuery("end_date", today), loc)
 	if err1 != nil || err2 != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Dates must be YYYY-MM-DD"})
 		return

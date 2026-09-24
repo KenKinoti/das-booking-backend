@@ -299,8 +299,14 @@ func (s *Service) DeleteOpportunity(orgID, id string) error {
 // ---- Dashboard ----
 
 func (s *Service) GetDashboard(orgID string) (*Dashboard, error) {
+	return s.GetDashboardIn(orgID, time.Local)
+}
+
+// GetDashboardIn computes the dashboard with "this month" in the given zone
+// (the user's calendar month).
+func (s *Service) GetDashboardIn(orgID string, loc *time.Location) (*Dashboard, error) {
 	d := Dashboard{LeadsByStatus: map[string]int64{}, Stages: []StageSummary{}, HotLeads: []Lead{}}
-	now := time.Now()
+	now := time.Now().In(loc)
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 
 	s.db.Model(&Lead{}).Where("organization_id = ?", orgID).Count(&d.LeadsCount)

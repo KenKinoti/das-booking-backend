@@ -2,16 +2,31 @@ package invoicing
 
 import (
 	"math"
+	"strconv"
 	"time"
+
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
 )
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
+
+// roundCur rounds to the currency's minor units (JPY/UGX 0, KWD 3, else 2).
+func roundCur(v float64, cur string) float64 {
+	p := math.Pow10(currency.Decimals(cur))
+	return math.Round(v*p) / p
+}
+
+// fmtAmount formats v with the currency's number of decimals.
+func fmtAmount(v float64, cur string) string {
+	return strconv.FormatFloat(roundCur(v, cur), 'f', currency.Decimals(cur), 64)
+}
 
 // Recalculate computes every line and document total. Invoice-level discounts are
 // spread across lines in proportion to their net value so tax is always charged
 // on the discounted amount. When PricesIncludeTax is set, unit prices are treated
 // as tax-inclusive and tax is extracted rather than added.
 func Recalculate(inv *Invoice) {
+	r := func(v float64) float64 { return roundCur(v, inv.Currency) }
 	var net float64
 	for i := range inv.Items {
 		it := &inv.Items[i]
@@ -24,11 +39,11 @@ func Recalculate(inv *Invoice) {
 		if it.DiscountPercent > 100 {
 			it.DiscountPercent = 100
 		}
-		it.LineSubtotal = round2(it.Quantity * it.UnitPrice)
-		it.LineDiscount = round2(it.LineSubtotal * it.DiscountPercent / 100)
+		it.LineSubtotal = r(it.Quantity * it.UnitPrice)
+		it.LineDiscount = r(it.LineSubtotal * it.DiscountPercent / 100)
 		net += it.LineSubtotal - it.LineDiscount
 	}
-	net = round2(net)
+	net = r(net)
 
 	docDiscount := 0.0
 	if inv.DiscountValue > 0 {
@@ -41,7 +56,7 @@ func Recalculate(inv *Invoice) {
 	if docDiscount > net {
 		docDiscount = net
 	}
-	docDiscount = round2(docDiscount)
+	docDiscount = r(docDiscount)
 
 	var subtotal, lineDiscounts, tax, allocated float64
 	lastIdx := -1
@@ -56,19 +71,19 @@ func Recalculate(inv *Invoice) {
 		share := 0.0
 		if docDiscount > 0 && net > 0 {
 			if i == lastIdx {
-				share = round2(docDiscount - allocated)
+				share = r(docDiscount - allocated)
 			} else {
-				share = round2(docDiscount * lineNet / net)
+				share = r(docDiscount * lineNet / net)
 				allocated += share
 			}
 		}
 		taxable := lineNet - share
 		if inv.PricesIncludeTax {
-			it.LineTax = round2(taxable - taxable/(1+it.TaxRate/100))
-			it.LineTotal = round2(lineNet)
+			it.LineTax = r(taxable - taxable/(1+it.TaxRate/100))
+			it.LineTotal = r(lineNet)
 		} else {
-			it.LineTax = round2(taxable * it.TaxRate / 100)
-			it.LineTotal = round2(lineNet)
+			it.LineTax = r(taxable * it.TaxRate / 100)
+			it.LineTotal = r(lineNet)
 		}
 		subtotal += it.LineSubtotal
 		lineDiscounts += it.LineDiscount
@@ -76,34 +91,35 @@ func Recalculate(inv *Invoice) {
 		it.Position = i + 1
 	}
 
-	inv.Subtotal = round2(subtotal)
-	inv.DiscountTotal = round2(lineDiscounts + docDiscount)
-	inv.TaxTotal = round2(tax)
+	inv.Subtotal = r(subtotal)
+	inv.DiscountTotal = r(lineDiscounts + docDiscount)
+	inv.TaxTotal = r(tax)
 	if inv.ShippingAmount < 0 {
 		inv.ShippingAmount = 0
 	}
 	if inv.PricesIncludeTax {
-		inv.Total = round2(inv.Subtotal - inv.DiscountTotal + inv.ShippingAmount)
+		inv.Total = r(inv.Subtotal - inv.DiscountTotal + inv.ShippingAmount)
 	} else {
-		inv.Total = round2(inv.Subtotal - inv.DiscountTotal + inv.TaxTotal + inv.ShippingAmount)
+		inv.Total = r(inv.Subtotal - inv.DiscountTotal + inv.TaxTotal + inv.ShippingAmount)
 	}
-	inv.BalanceDue = round2(inv.Total - inv.AmountPaid)
+	inv.BalanceDue = r(inv.Total - inv.AmountPaid)
 }
 
 // ApplyPayments recomputes AmountPaid/BalanceDue and moves the invoice between
 // sent / partial / paid. Drafts that receive a payment become sent/partial/paid.
 func ApplyPayments(inv *Invoice, now time.Time) {
+	r := func(v float64) float64 { return roundCur(v, inv.Currency) }
 	paid := 0.0
 	for _, p := range inv.Payments {
 		paid += p.Amount
 	}
-	inv.AmountPaid = round2(paid)
-	inv.BalanceDue = round2(inv.Total - inv.AmountPaid)
+	inv.AmountPaid = r(paid)
+	inv.BalanceDue = r(inv.Total - inv.AmountPaid)
 	if inv.DocType != TypeInvoice || inv.Status == StatusVoid {
 		return
 	}
 	switch {
-	case inv.AmountPaid > 0 && inv.BalanceDue <= 0.004:
+	case inv.AmountPaid > 0 && inv.BalanceDue <= 0.4/math.Pow10(currency.Decimals(inv.Currency)):
 		inv.Status = StatusPaid
 		if inv.PaidAt == nil {
 			t := now

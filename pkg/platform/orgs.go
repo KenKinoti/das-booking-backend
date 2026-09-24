@@ -45,6 +45,7 @@ type OrgRow struct {
 	Invoices        int64           `json:"invoices"`
 	LastActive      *time.Time      `json:"last_active"`
 	PlanName        *string         `json:"plan_name"`
+	PlanStatus      *string         `json:"plan_status"`
 	AdminEmail      *string         `json:"admin_email"`
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
@@ -128,6 +129,7 @@ func (h *Handler) ListOrganizations(c *gin.Context) {
 		return
 	}
 	fixModules(rows)
+	h.fillPlans(rows)
 
 	var types []string
 	h.DB.Table("organizations").Where("deleted_at IS NULL").Distinct("business_type").Order("business_type").Pluck("business_type", &types)
@@ -143,7 +145,27 @@ func (h *Handler) loadOrg(id string) (*OrgRow, error) {
 		return nil, gorm.ErrRecordNotFound
 	}
 	fixModules(rows)
+	h.fillPlans(rows)
 	return &rows[0], nil
+}
+
+// fillPlans resolves the effective plan for organisations whose subscription
+// row has not been created yet (it is created lazily on first plan lookup), so
+// the list shows the same plan as Modules & entitlements and Plan & billing.
+func (h *Handler) fillPlans(rows []OrgRow) {
+	var svc *plans.Service
+	for i := range rows {
+		if rows[i].PlanName != nil && *rows[i].PlanName != "" {
+			continue
+		}
+		if svc == nil {
+			svc = plans.NewService(h.DB, nil)
+		}
+		if sub, err := svc.Subscription(rows[i].ID); err == nil && sub.Tier != "" {
+			t, st := sub.Tier, sub.Status
+			rows[i].PlanName, rows[i].PlanStatus = &t, &st
+		}
+	}
 }
 
 // usageTables lists per-organisation record counts shown in the org drawer.
@@ -195,7 +217,7 @@ func (h *Handler) GetOrganization(c *gin.Context) {
 	if hasTable(h.DB, "billing_invoices") {
 		h.DB.Table("billing_invoices").Select("COALESCE(NULLIF(currency,''),'AUD') AS currency, COUNT(*) AS count, COALESCE(SUM(total),0) AS invoiced, COALESCE(SUM(amount_paid),0) AS collected").
 			Where("organization_id = ? AND deleted_at IS NULL AND doc_type = 'invoice' AND status NOT IN ('draft','void')", org.ID).
-			Group("1").Scan(&revenue)
+			Group("COALESCE(NULLIF(currency,''),'AUD')").Scan(&revenue)
 	}
 	ok(c, http.StatusOK, gin.H{"organization": org, "users": users, "usage": usage, "revenue": revenue})
 }

@@ -4,8 +4,10 @@ import (
 	"crypto/rand"
 	"encoding/csv"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -14,6 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -48,6 +52,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/tax-rates/:id", h.UpdateTaxRate)
 	r.DELETE("/tax-rates/:id", h.DeleteTaxRate)
 	r.GET("/clients", h.Clients)
+	r.GET("/customer-defaults/:customerId", h.CustomerDefaults)
 	r.GET("/export", h.ExportCSV)
 	r.POST("/recurring/run", h.RunRecurring)
 
@@ -57,6 +62,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/invoices/:id", h.Update)
 	r.DELETE("/invoices/:id", h.Delete)
 	r.POST("/invoices/:id/send", h.Send)
+	r.GET("/invoices/:id/recipients", h.Recipients)
 	r.POST("/invoices/:id/mark-sent", h.MarkSent)
 	r.POST("/invoices/:id/void", h.Void)
 	r.POST("/invoices/:id/duplicate", h.Duplicate)
@@ -133,6 +139,10 @@ func (h *Handler) now() time.Time {
 	}
 	return time.Now()
 }
+
+// nowFor is the current time in the caller's time zone (?tz=), so "today"
+// (overdue) and "this month" follow the user's calendar.
+func (h *Handler) nowFor(c *gin.Context) time.Time { return h.now().In(reqtz.Location(c)) }
 
 func newToken() string {
 	b := make([]byte, 20)
@@ -282,6 +292,7 @@ type invoiceInput struct {
 	RecurrenceInterval string      `json:"recurrence_interval"`
 	NextRecurrenceDate string      `json:"next_recurrence_date"`
 	RecurrenceEndDate  string      `json:"recurrence_end_date"`
+	CCEmails           *[]string   `json:"cc_emails"`
 	Items              []itemInput `json:"items"`
 }
 
@@ -330,8 +341,21 @@ func (in *invoiceInput) apply(inv *Invoice, s *Settings, now time.Time) error {
 	inv.IssueDate = issue
 	inv.DueDate = due
 	inv.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
-	if len(inv.Currency) != 3 {
-		inv.Currency = s.Currency
+	if inv.Currency == "" {
+		inv.Currency = strings.ToUpper(s.Currency)
+	}
+	if !currency.IsSupported(inv.Currency) {
+		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Currency " + inv.Currency + " is not supported"}
+	}
+	if in.CCEmails != nil {
+		_, cc, skipped := MergeRecipients(inv.ClientEmail, *in.CCEmails)
+		if len(skipped) > 0 {
+			return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Invalid CC email: " + strings.Join(skipped, ", ")}
+		}
+		if len(cc) > 50 {
+			return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Too many CC recipients (max 50)"}
+		}
+		inv.CCEmails = cc
 	}
 	if in.PricesIncludeTax != nil {
 		inv.PricesIncludeTax = *in.PricesIncludeTax
@@ -399,7 +423,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 	h.runRecurring(org, ctxString(c, "user_id"))
-	today := dateOnly(h.now()).Format("2006-01-02")
+	today := dateOnly(h.nowFor(c)).Format("2006-01-02")
 	q := h.DB.Model(&Invoice{}).Where("organization_id = ?", org)
 	docType := c.DefaultQuery("type", TypeInvoice)
 	if docType != "all" {
@@ -411,8 +435,22 @@ func (h *Handler) List(c *gin.Context) {
 		q = q.Where("status IN ? AND due_date < ?", []string{StatusSent, StatusPartial}, today)
 	case "unpaid":
 		q = q.Where("status IN ?", []string{StatusSent, StatusPartial})
+	case "open": // quotes still awaiting a decision or accepted but not invoiced (matches stats.open_quotes)
+		q = q.Where("((status = ? AND (due_date IS NULL OR due_date >= ?)) OR status = ?)", StatusSent, today, StatusAccepted)
 	case StatusExpired:
 		q = q.Where("status IN ? AND due_date < ?", []string{StatusSent, StatusDraft}, today)
+	case "due": // unpaid and not yet past the due date ("Not yet due" in receivables aging)
+		q = q.Where("status IN ? AND (due_date IS NULL OR due_date >= ?)", []string{StatusSent, StatusPartial}, today)
+	case StatusSent, StatusDraft, StatusPartial:
+		// Filters follow the displayed status (see Derive): a sent/part-paid
+		// invoice past its due date is "overdue", a sent/draft quote past its
+		// expiry is "expired" — so they are not listed under sent/partial/draft.
+		derived := (docType == TypeQuote && st != StatusPartial) || (docType != TypeQuote && st != StatusDraft)
+		if derived {
+			q = q.Where("status = ? AND (due_date IS NULL OR due_date >= ?)", st, today)
+		} else {
+			q = q.Where("status = ?", st)
+		}
 	case "recurring":
 		q = q.Where("is_recurring = ?", true)
 	default:
@@ -461,7 +499,7 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 	for i := range list {
-		Derive(&list[i], h.now())
+		Derive(&list[i], h.nowFor(c))
 	}
 	ok(c, http.StatusOK, gin.H{"invoices": list, "total": total, "page": page, "per_page": per})
 }
@@ -499,6 +537,10 @@ func (h *Handler) Create(c *gin.Context) {
 		inv := &Invoice{ID: uuid.NewString(), OrganizationID: org, DocType: TypeInvoice, Status: StatusDraft, PublicToken: newToken(), CreatedBy: user, PricesIncludeTax: s.PricesIncludeTax}
 		if in.DocType == TypeQuote {
 			inv.DocType = TypeQuote
+		}
+		// No currency chosen: invoice the linked customer in their currency.
+		if strings.TrimSpace(in.Currency) == "" && in.CustomerID != nil {
+			in.Currency = h.customerCurrency(tx, org, *in.CustomerID, s.Currency)
 		}
 		if err := in.apply(inv, s, h.now()); err != nil {
 			return err
@@ -645,13 +687,21 @@ func (h *Handler) MarkSent(c *gin.Context) {
 }
 
 type sendInput struct {
-	To      string `json:"to"`
-	Subject string `json:"subject"`
-	Message string `json:"message"`
+	To      string    `json:"to"`
+	CC      *[]string `json:"cc"` // nil: use the suggested CCs; [] sends to To only
+	Subject string    `json:"subject"`
+	Message string    `json:"message"`
+	Kind    string    `json:"kind"` // invoice | quote | reminder
+	// Mode "email" requires server email (SMTP) and fails clearly without it;
+	// "mailto" only records the send (the user's email app sends it). Empty
+	// keeps the old behaviour: email when configured, else mailto.
+	Mode string `json:"mode"`
 }
 
 // Send emails the document when SMTP is configured; otherwise it marks it sent
 // and returns a ready-made mailto payload for the client's own mail app.
+// Customer contacts flagged for this kind of email are copied automatically
+// unless the caller passes an explicit cc list.
 func (h *Handler) Send(c *gin.Context) {
 	org, okk := h.org(c)
 	if !okk {
@@ -660,30 +710,91 @@ func (h *Handler) Send(c *gin.Context) {
 	var in sendInput
 	_ = c.ShouldBindJSON(&in)
 	user := ctxString(c, "user_id")
+	configured := h.Mailer != nil && h.Mailer.Configured()
+	if in.Mode == "email" && !configured {
+		fail(c, http.StatusServiceUnavailable, "SMTP_NOT_CONFIGURED",
+			"Email sending isn't set up on the server (SMTP_HOST / SMTP_FROM are missing). Use “Open in email app” instead, or ask your administrator to configure outgoing email.")
+		return
+	}
+	useEmail := configured && in.Mode != "mailto"
 	var out *Invoice
-	emailed := false
+	var rec Recipients
+	var skipped []string
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		inv, err := h.load(tx, org, c.Param("id"), false)
 		if err != nil {
 			return err
 		}
-		to := strings.TrimSpace(in.To)
-		if to == "" {
-			to = inv.ClientEmail
+		kind := kindFor(inv, in.Kind)
+		if kind == KindReminder && inv.Status != StatusSent && inv.Status != StatusPartial {
+			return &apiError{http.StatusConflict, "NOT_REMINDABLE", "Reminders can only be sent for unpaid invoices"}
 		}
-		msg := "Marked as sent"
-		if h.Mailer != nil && h.Mailer.Configured() {
+		sugTo, sugCC := h.recipientsFor(org, inv, kind)
+		to := strings.TrimSpace(in.To)
+		if to == "" && sugTo != nil {
+			to = sugTo.Email
+		}
+		var ccIn []string
+		if in.CC != nil {
+			ccIn = *in.CC
+		} else {
+			for _, r := range sugCC {
+				ccIn = append(ccIn, r.Email)
+			}
+		}
+		var cc []string
+		to, cc, skipped = MergeRecipients(to, ccIn)
+		if strings.TrimSpace(in.To) != "" && to == "" {
+			return &apiError{http.StatusBadRequest, "INVALID_EMAIL", "“" + strings.TrimSpace(in.To) + "” is not a valid email address"}
+		}
+		if len(cc) > 50 {
+			return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Too many CC recipients (max 50)"}
+		}
+		rec = Recipients{Kind: kind, To: to, CC: cc}
+		if useEmail {
 			if to == "" {
 				return &apiError{http.StatusBadRequest, "NO_EMAIL", "Add the client's email address first"}
 			}
-			if err := h.Mailer.Send(to, in.Subject, in.Message); err != nil {
-				return &apiError{http.StatusBadGateway, "EMAIL_FAILED", "Email could not be sent: " + err.Error()}
+			var sendErr error
+			if m, isCC := h.Mailer.(CCMailer); isCC {
+				sendErr = m.SendWithCC(to, cc, in.Subject, in.Message)
+			} else {
+				if len(cc) > 0 {
+					return &apiError{http.StatusBadRequest, "CC_UNSUPPORTED", "The configured mailer can't copy other recipients"}
+				}
+				sendErr = h.Mailer.Send(to, in.Subject, in.Message)
 			}
-			emailed = true
-			msg = "Emailed to " + to
+			if sendErr != nil {
+				return &apiError{http.StatusBadGateway, "EMAIL_FAILED", "Email could not be sent: " + sendErr.Error()}
+			}
+			rec.Emailed = true
 		}
-		if err := h.markSent(tx, inv, user, msg); err != nil {
-			return err
+		// Remember the CCs so reminders and recurring copies reuse them.
+		if !equalStrings(cc, inv.CCEmails) {
+			if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Update("cc_emails", ccJSON(cc)).Error; err != nil {
+				return err
+			}
+		}
+		msg := recipientsMessage(rec)
+		if kind == KindReminder {
+			t := h.now()
+			if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Update("sent_at", t).Error; err != nil {
+				return err
+			}
+			h.logRecipients(tx, inv, "reminder", msg, user, &rec)
+		} else {
+			if inv.Status == StatusVoid || inv.Status == StatusConverted {
+				return &apiError{http.StatusConflict, "LOCKED", "This document can't be sent"}
+			}
+			t := h.now()
+			updates := map[string]interface{}{"sent_at": t}
+			if inv.Status == StatusDraft {
+				updates["status"] = StatusSent
+			}
+			if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Updates(updates).Error; err != nil {
+				return err
+			}
+			h.logRecipients(tx, inv, "sent", msg, user, &rec)
 		}
 		out, err = h.load(tx, org, inv.ID, true)
 		return err
@@ -692,7 +803,55 @@ func (h *Handler) Send(c *gin.Context) {
 		failErr(c, err)
 		return
 	}
-	ok(c, http.StatusOK, gin.H{"invoice": out, "emailed": emailed})
+	if skipped == nil {
+		skipped = []string{}
+	}
+	ok(c, http.StatusOK, gin.H{"invoice": out, "emailed": rec.Emailed, "to": rec.To, "cc": rec.CC, "kind": rec.Kind, "skipped": skipped})
+}
+
+func (h *Handler) logRecipients(tx *gorm.DB, inv *Invoice, typ, msg, user string, rec *Recipients) {
+	tx.Create(&Activity{ID: uuid.NewString(), InvoiceID: inv.ID, OrganizationID: inv.OrganizationID, Type: typ, Message: msg, UserID: user, Recipients: rec, CreatedAt: h.now()})
+}
+
+func recipientsMessage(r Recipients) string {
+	what := "Sent"
+	if r.Kind == KindReminder {
+		what = "Reminder sent"
+	}
+	var b strings.Builder
+	switch {
+	case r.Emailed:
+		b.WriteString(what + " by email to " + r.To)
+	case r.To != "":
+		b.WriteString(what + " via email app to " + r.To)
+	default:
+		b.WriteString("Marked as sent")
+	}
+	if len(r.CC) > 0 {
+		b.WriteString(" · CC " + strings.Join(r.CC, ", "))
+	}
+	return b.String()
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// ccJSON encodes a CC list for a raw column update (serializer:json column).
+func ccJSON(cc []string) string {
+	if len(cc) == 0 {
+		return "[]"
+	}
+	b, _ := json.Marshal(cc)
+	return string(b)
 }
 
 func (h *Handler) simpleAction(c *gin.Context, fn func(tx *gorm.DB, inv *Invoice, user string) error) {
@@ -793,6 +952,7 @@ func (h *Handler) copyInvoice(tx *gorm.DB, src *Invoice, docType, user string, i
 		IssueDate: dateOnly(issue), DueDate: dateOnly(issue).AddDate(0, 0, days), Currency: src.Currency,
 		PricesIncludeTax: src.PricesIncludeTax, DiscountType: src.DiscountType, DiscountValue: src.DiscountValue,
 		ShippingAmount: src.ShippingAmount, Notes: src.Notes, Terms: src.Terms, PublicToken: newToken(), CreatedBy: user,
+		CCEmails: append([]string(nil), src.CCEmails...),
 	}
 	for _, it := range src.Items {
 		it.ID = uuid.NewString()
@@ -904,12 +1064,12 @@ func (h *Handler) AddPayment(c *gin.Context) {
 		if inv.Status == StatusVoid {
 			return &apiError{http.StatusConflict, "LOCKED", "Void invoices can't take payments"}
 		}
-		amt := round2(in.Amount)
+		amt := roundCur(in.Amount, inv.Currency)
 		if amt <= 0 {
 			return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Payment amount must be greater than zero"}
 		}
-		if amt > inv.BalanceDue+0.004 {
-			return &apiError{http.StatusBadRequest, "OVERPAYMENT", fmt.Sprintf("Payment exceeds the balance due (%.2f)", inv.BalanceDue)}
+		if amt > inv.BalanceDue+0.4/math.Pow10(currency.Decimals(inv.Currency)) {
+			return &apiError{http.StatusBadRequest, "OVERPAYMENT", fmt.Sprintf("Payment exceeds the balance due (%s %s)", inv.Currency, fmtAmount(inv.BalanceDue, inv.Currency))}
 		}
 		d, err := parseDate(in.Date)
 		if err != nil {
@@ -931,7 +1091,7 @@ func (h *Handler) AddPayment(c *gin.Context) {
 		if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Updates(map[string]interface{}{"amount_paid": inv.AmountPaid, "balance_due": inv.BalanceDue, "status": inv.Status, "paid_at": inv.PaidAt}).Error; err != nil {
 			return err
 		}
-		h.log(tx, inv, "payment", fmt.Sprintf("Payment of %s %.2f recorded (%s)", inv.Currency, amt, strings.ReplaceAll(method, "_", " ")), user)
+		h.log(tx, inv, "payment", fmt.Sprintf("Payment of %s %s recorded (%s)", inv.Currency, fmtAmount(amt, inv.Currency), strings.ReplaceAll(method, "_", " ")), user)
 		return nil
 	})
 }
@@ -957,7 +1117,7 @@ func (h *Handler) DeletePayment(c *gin.Context) {
 		if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Updates(map[string]interface{}{"amount_paid": inv.AmountPaid, "balance_due": inv.BalanceDue, "status": inv.Status, "paid_at": inv.PaidAt}).Error; err != nil {
 			return err
 		}
-		h.log(tx, inv, "payment_removed", fmt.Sprintf("Payment of %.2f removed", p.Amount), user)
+		h.log(tx, inv, "payment_removed", fmt.Sprintf("Payment of %s %s removed", inv.Currency, fmtAmount(p.Amount, inv.Currency)), user)
 		return nil
 	})
 }
@@ -1024,19 +1184,35 @@ func (h *Handler) Stats(c *gin.Context) {
 		return
 	}
 	h.runRecurring(org, ctxString(c, "user_id"))
-	now := h.now()
+	now := h.nowFor(c)
 	today := dateOnly(now)
+	s, _ := h.settingsFor(h.DB, org, false)
+	cur := "AUD"
+	if s != nil && s.Currency != "" {
+		cur = strings.ToUpper(s.Currency)
+	}
 	var invs []Invoice
 	if err := h.DB.Select("id, doc_type, status, total, amount_paid, balance_due, issue_date, due_date, client_name, customer_id, currency").
-		Where("organization_id = ? AND status <> ?", org, StatusVoid).Find(&invs).Error; err != nil {
+		Where("organization_id = ?", org).Find(&invs).Error; err != nil {
 		failErr(c, err)
 		return
 	}
 	var payments []Payment
 	h.DB.Where("organization_id = ? AND date >= ?", org, today.AddDate(0, -11, -today.Day()+1)).Find(&payments)
+	// Totals are in the organisation's currency; documents in other currencies
+	// are reported separately (other_currencies) rather than added in.
+	invCur := map[string]string{}
+	type otherTotal struct {
+		Currency    string  `json:"currency"`
+		Open        int     `json:"open"`
+		Outstanding float64 `json:"outstanding"`
+		Overdue     float64 `json:"overdue"`
+	}
+	others := map[string]*otherTotal{}
 
 	aging := map[string]float64{"current": 0, "1_30": 0, "31_60": 0, "61_90": 0, "90_plus": 0}
 	var outstanding, overdue, drafts, paidThisMonth, invoicedThisMonth float64
+	var outstandingN, overdueN, draftsN int
 	counts := map[string]int{}
 	clients := map[string]float64{}
 	months := make([]monthPoint, 12)
@@ -1051,8 +1227,31 @@ func (h *Handler) Stats(c *gin.Context) {
 	openQuotes := 0.0
 	for i := range invs {
 		inv := &invs[i]
+		ic := strings.ToUpper(strings.TrimSpace(inv.Currency))
+		if ic == "" {
+			ic = cur
+		}
+		invCur[inv.ID] = ic
 		Derive(inv, now)
 		counts[inv.DocType+":"+inv.DisplayStatus]++
+		if inv.Status == StatusVoid {
+			continue
+		}
+		if ic != cur {
+			if inv.DocType == TypeInvoice && (inv.Status == StatusSent || inv.Status == StatusPartial) && inv.BalanceDue > 0 {
+				o := others[ic]
+				if o == nil {
+					o = &otherTotal{Currency: ic}
+					others[ic] = o
+				}
+				o.Open++
+				o.Outstanding = round2(o.Outstanding + inv.BalanceDue)
+				if inv.DisplayStatus == StatusOverdue {
+					o.Overdue = round2(o.Overdue + inv.BalanceDue)
+				}
+			}
+			continue
+		}
 		if inv.DocType == TypeQuote {
 			if inv.DisplayStatus == StatusSent || inv.DisplayStatus == StatusAccepted {
 				openQuotes += inv.Total
@@ -1061,6 +1260,7 @@ func (h *Handler) Stats(c *gin.Context) {
 		}
 		if inv.Status == StatusDraft {
 			drafts += inv.Total
+			draftsN++
 			continue
 		}
 		if k, okk := idx[inv.IssueDate.Format("2006-01")]; okk {
@@ -1071,6 +1271,7 @@ func (h *Handler) Stats(c *gin.Context) {
 		}
 		if inv.Status == StatusSent || inv.Status == StatusPartial {
 			outstanding += inv.BalanceDue
+			outstandingN++
 			clients[inv.ClientName] += inv.BalanceDue
 			switch d := inv.DaysOverdue; {
 			case inv.DisplayStatus != StatusOverdue:
@@ -1086,10 +1287,14 @@ func (h *Handler) Stats(c *gin.Context) {
 			}
 			if inv.DisplayStatus == StatusOverdue {
 				overdue += inv.BalanceDue
+				overdueN++
 			}
 		}
 	}
 	for _, p := range payments {
+		if ic, found := invCur[p.InvoiceID]; !found || ic != cur {
+			continue // deleted invoice or another currency
+		}
 		if k, okk := idx[p.Date.Format("2006-01")]; okk {
 			months[k].Paid += p.Amount
 		}
@@ -1116,15 +1321,16 @@ func (h *Handler) Stats(c *gin.Context) {
 	if len(top) > 5 {
 		top = top[:5]
 	}
-	s, _ := h.settingsFor(h.DB, org, false)
-	cur := "AUD"
-	if s != nil {
-		cur = s.Currency
+	otherList := []otherTotal{}
+	for _, o := range others {
+		otherList = append(otherList, *o)
 	}
+	sort.Slice(otherList, func(i, j int) bool { return otherList[i].Currency < otherList[j].Currency })
 	ok(c, http.StatusOK, gin.H{
 		"currency": cur, "outstanding": round2(outstanding), "overdue": round2(overdue), "drafts": round2(drafts),
 		"paid_this_month": round2(paidThisMonth), "invoiced_this_month": round2(invoicedThisMonth), "open_quotes": round2(openQuotes),
-		"aging": aging, "monthly": months, "top_outstanding": top, "counts": counts,
+		"aging": aging, "monthly": months, "top_outstanding": top, "counts": counts, "other_currencies": otherList,
+		"outstanding_count": outstandingN, "overdue_count": overdueN, "drafts_count": draftsN,
 	})
 }
 
@@ -1256,25 +1462,72 @@ func (h *Handler) DeleteTaxRate(c *gin.Context) {
 }
 
 // Clients returns previously invoiced clients (for autocomplete), merged with
-// the organisation's customer records.
+// the organisation's customer records. Each carries the currency a new
+// document for it should use: the linked customer's billing currency, else
+// the currency last used for that client.
 func (h *Handler) Clients(c *gin.Context) {
 	org, okk := h.org(c)
 	if !okk {
 		return
 	}
 	type client struct {
-		CustomerID *string `json:"customer_id"`
-		Name       string  `json:"name"`
-		Email      string  `json:"email"`
-		Phone      string  `json:"phone"`
-		Address    string  `json:"address"`
-		TaxNumber  string  `json:"tax_number"`
-		Source     string  `json:"source"`
+		CustomerID     *string  `json:"customer_id"`
+		Name           string   `json:"name"`
+		Email          string   `json:"email"`
+		Phone          string   `json:"phone"`
+		Address        string   `json:"address"`
+		TaxNumber      string   `json:"tax_number"`
+		Source         string   `json:"source"`
+		Currency       string   `json:"currency"`
+		CurrencySource string   `json:"currency_source"` // customer | country | default | last_used
+		LastCurrency   string   `json:"last_currency,omitempty"`
+		CountryCode    string   `json:"country_code,omitempty"`
+		CountryName    string   `json:"country_name,omitempty"`
+		CCEmails       []string `json:"cc_emails"`
 	}
+	s, err := h.settingsFor(h.DB, org, false)
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	customers := h.loadCustomers(org, nil, 2000)
+	byID := map[string]customerRow{}
+	for _, cu := range customers {
+		byID[cu.ID] = cu
+	}
+	// Contacts copied on invoices, per customer (for the document's CC list).
+	ccBy := map[string][]string{}
+	if h.hasTable("customer_contacts") {
+		var rows []struct {
+			CustomerID string
+			Email      string
+		}
+		h.DB.Table("customer_contacts").Select("customer_id, email").
+			Where("organization_id = ? AND deleted_at IS NULL AND cc_invoices = ? AND is_primary_billing = ?", org, true, false).
+			Order("created_at ASC").Scan(&rows)
+		for _, r := range rows {
+			ccBy[r.CustomerID] = append(ccBy[r.CustomerID], strings.ToLower(r.Email))
+		}
+	}
+	withCustomer := func(cl *client, cu customerRow) {
+		cl.Currency, cl.CurrencySource = currency.ForCustomer(cu.Currency, cu.CountryCode, cu.AddressCountry, s.Currency)
+		cl.CountryCode = cu.CountryCode
+		if cl.CountryCode == "" {
+			cl.CountryCode = currency.CountryCode(cu.AddressCountry)
+		}
+		cl.CountryName = currency.CountryName(cl.CountryCode)
+		if cl.CountryName == "" {
+			cl.CountryName = cu.AddressCountry
+		}
+		if cc := ccBy[cu.ID]; cc != nil {
+			cl.CCEmails = cc
+		}
+	}
+
 	out := []client{}
 	seen := map[string]bool{}
 	var rows []Invoice
-	h.DB.Select("customer_id, client_name, client_email, client_phone, client_address, client_tax_number, created_at").
+	h.DB.Select("customer_id, client_name, client_email, client_phone, client_address, client_tax_number, currency, created_at").
 		Where("organization_id = ?", org).Order("created_at DESC").Limit(1000).Find(&rows)
 	for _, r := range rows {
 		key := strings.ToLower(r.ClientName + "|" + r.ClientEmail)
@@ -1282,34 +1535,30 @@ func (h *Handler) Clients(c *gin.Context) {
 			continue
 		}
 		seen[key] = true
-		out = append(out, client{r.CustomerID, r.ClientName, r.ClientEmail, r.ClientPhone, r.ClientAddress, r.ClientTaxNumber, "invoices"})
-	}
-	type cust struct {
-		ID              string
-		FirstName       string
-		LastName        string
-		Email           string
-		Phone           string
-		AddressStreet   string
-		AddressSuburb   string
-		AddressState    string
-		AddressPostcode string
-	}
-	var customers []cust
-	if h.DB.Migrator().HasTable("customers") {
-		h.DB.Table("customers").Select("id, first_name, last_name, email, phone, address_street, address_suburb, address_state, address_postcode").
-			Where("organization_id = ? AND deleted_at IS NULL", org).Limit(1000).Scan(&customers)
+		last := strings.ToUpper(r.Currency)
+		if last == "" {
+			last = strings.ToUpper(s.Currency)
+		}
+		cl := client{CustomerID: r.CustomerID, Name: r.ClientName, Email: r.ClientEmail, Phone: r.ClientPhone, Address: r.ClientAddress,
+			TaxNumber: r.ClientTaxNumber, Source: "invoices", Currency: last, CurrencySource: "last_used", LastCurrency: last, CCEmails: []string{}}
+		if r.CustomerID != nil {
+			if cu, found := byID[*r.CustomerID]; found {
+				withCustomer(&cl, cu)
+			}
+		}
+		out = append(out, cl)
 	}
 	for _, cu := range customers {
-		name := strings.TrimSpace(cu.FirstName + " " + cu.LastName)
+		name := cu.name()
 		key := strings.ToLower(name + "|" + cu.Email)
 		if seen[key] || name == "" {
 			continue
 		}
 		seen[key] = true
-		addr := strings.TrimSpace(strings.Join(nonEmpty(cu.AddressStreet, strings.TrimSpace(strings.Join(nonEmpty(cu.AddressSuburb, cu.AddressState, cu.AddressPostcode), " "))), "\n"))
 		id := cu.ID
-		out = append(out, client{&id, name, cu.Email, cu.Phone, addr, "", "customers"})
+		cl := client{CustomerID: &id, Name: name, Email: cu.Email, Phone: cu.Phone, Address: cu.address(), Source: "customers", CCEmails: []string{}}
+		withCustomer(&cl, cu)
+		out = append(out, cl)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	ok(c, http.StatusOK, out)

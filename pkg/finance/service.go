@@ -966,6 +966,12 @@ func (s *Service) GetGeneralLedger(orgID, accountID string, startDate, endDate t
 
 // GetSummary returns the KPIs used across the finance pages.
 func (s *Service) GetSummary(orgID string) (*Summary, error) {
+	return s.GetSummaryOn(orgID, today())
+}
+
+// GetSummaryOn computes the summary for the calendar date t (midnight UTC of
+// the user's local date), so "overdue" and "this month" follow the user's calendar.
+func (s *Service) GetSummaryOn(orgID string, t time.Time) (*Summary, error) {
 	s.EnsureSetup(orgID)
 	sum := &Summary{}
 	var banks []BankAccount
@@ -982,7 +988,6 @@ func (s *Service) GetSummary(orgID string) (*Summary, error) {
 
 	var bills []Bill
 	s.db.Where("organization_id = ?", orgID).Find(&bills)
-	t := today()
 	soon := t.AddDate(0, 0, 7)
 	var out, overdue, due int64
 	for _, b := range bills {

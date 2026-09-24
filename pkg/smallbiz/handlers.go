@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 )
 
 // MaxAttachmentBytes caps an uploaded receipt image (decoded size).
@@ -133,6 +134,16 @@ func (h *Handler) today() time.Time {
 		return dateOnly(h.Now())
 	}
 	return dateOnly(time.Now())
+}
+
+// todayFor is today's date in the caller's time zone (?tz=), so "this month",
+// "this quarter" and due reminders follow the user's calendar.
+func (h *Handler) todayFor(c *gin.Context) time.Time {
+	n := time.Now()
+	if h.Now != nil {
+		n = h.Now()
+	}
+	return dateOnly(n.In(reqtz.Location(c)))
 }
 
 // flexAmount accepts a JSON number or string.
@@ -768,7 +779,7 @@ func (h *Handler) parseFilter(c *gin.Context, s *Settings) (entryFilter, error) 
 		return f, invalid(map[string]string{"type": "type must be income or expense"})
 	}
 	key := c.DefaultQuery("period", "all")
-	p, err := ResolvePeriod(key, c.Query("from"), c.Query("to"), h.today(), s.FinancialYearStart)
+	p, err := ResolvePeriod(key, c.Query("from"), c.Query("to"), h.todayFor(c), s.FinancialYearStart)
 	if err != nil {
 		return f, invalid(map[string]string{"period": err.Error()})
 	}
@@ -952,7 +963,7 @@ func (h *Handler) ExportEntries(c *gin.Context) {
 			FormatMinor(bal[e.ID], d), csvSafe(receipt),
 		})
 	}
-	writeCSV(c, fmt.Sprintf("cash-book-%s.csv", h.today().Format("2006-01-02")), out)
+	writeCSV(c, fmt.Sprintf("cash-book-%s.csv", h.todayFor(c).Format("2006-01-02")), out)
 }
 
 // ---------- overview & reports ----------
@@ -982,7 +993,7 @@ func (h *Handler) Overview(c *gin.Context) {
 	if !currency.IsSupported(cur) {
 		cur = s.Currency
 	}
-	today := h.today()
+	today := h.todayFor(c)
 	thisM, _ := ResolvePeriod("this_month", "", "", today, s.FinancialYearStart)
 	lastM, _ := ResolvePeriod("last_month", "", "", today, s.FinancialYearStart)
 	taxP, err := ResolvePeriod(c.DefaultQuery("tax_period", "this_quarter"), c.Query("tax_from"), c.Query("tax_to"), today, s.FinancialYearStart)
@@ -1125,7 +1136,7 @@ func (h *Handler) ProfitAndLoss(c *gin.Context) {
 		failErr(c, invalid(map[string]string{"currency": "Unsupported currency"}), "")
 		return
 	}
-	today := h.today()
+	today := h.todayFor(c)
 	start := FYStartDate(today, s.FinancialYearStart)
 	if fy := c.Query("fy"); fy != "" {
 		y, err := strconv.Atoi(fy)
@@ -1226,7 +1237,7 @@ func (h *Handler) TaxReport(c *gin.Context) {
 		failErr(c, invalid(map[string]string{"currency": "Unsupported currency"}), "")
 		return
 	}
-	p, err := ResolvePeriod(c.DefaultQuery("period", "this_quarter"), c.Query("from"), c.Query("to"), h.today(), s.FinancialYearStart)
+	p, err := ResolvePeriod(c.DefaultQuery("period", "this_quarter"), c.Query("from"), c.Query("to"), h.todayFor(c), s.FinancialYearStart)
 	if err != nil {
 		failErr(c, invalid(map[string]string{"period": err.Error()}), "")
 		return
@@ -1288,14 +1299,14 @@ func (h *Handler) ListReminders(c *gin.Context) {
 	case "done":
 		q = q.Where("done = ?", true)
 	case "overdue":
-		q = q.Where("done = ? AND due_date < ?", false, h.today())
+		q = q.Where("done = ? AND due_date < ?", false, h.todayFor(c))
 	}
 	var rs []Reminder
 	if err := q.Order("done ASC, due_date ASC, created_at ASC").Limit(500).Find(&rs).Error; err != nil {
 		failErr(c, err, "Reminder")
 		return
 	}
-	ok(c, http.StatusOK, gin.H{"reminders": reminderViews(rs, h.today())})
+	ok(c, http.StatusOK, gin.H{"reminders": reminderViews(rs, h.todayFor(c))})
 }
 
 type reminderInput struct {
@@ -1378,7 +1389,7 @@ func (h *Handler) CreateReminder(c *gin.Context) {
 		failErr(c, err, "Reminder")
 		return
 	}
-	ok(c, http.StatusCreated, reminderViews([]Reminder{r}, h.today())[0])
+	ok(c, http.StatusCreated, reminderViews([]Reminder{r}, h.todayFor(c))[0])
 }
 
 func (h *Handler) UpdateReminder(c *gin.Context) {
@@ -1409,7 +1420,7 @@ func (h *Handler) UpdateReminder(c *gin.Context) {
 		failErr(c, err, "Reminder")
 		return
 	}
-	ok(c, http.StatusOK, reminderViews([]Reminder{r}, h.today())[0])
+	ok(c, http.StatusOK, reminderViews([]Reminder{r}, h.todayFor(c))[0])
 }
 
 func (h *Handler) DeleteReminder(c *gin.Context) {
@@ -1463,7 +1474,7 @@ func (h *Handler) ToggleReminder(c *gin.Context) {
 		failErr(c, err, "Reminder")
 		return
 	}
-	today := h.today()
+	today := h.todayFor(c)
 	res := gin.H{"reminder": reminderViews([]Reminder{r}, today)[0]}
 	if next != nil {
 		res["next"] = reminderViews([]Reminder{*next}, today)[0]

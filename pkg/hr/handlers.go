@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 )
 
 // Handler serves /api/v1/hr.
@@ -79,7 +80,8 @@ func (h *Handler) summary(c *gin.Context) {
 	if !okk {
 		return
 	}
-	today := h.now().Format(dateLayout)
+	now := h.now().In(reqtz.Location(c)) // the user's calendar (?tz=)
+	today := now.Format(dateLayout)
 	var active, onLeaveStatus, pendingLeave, pendingTs, depts, onLeaveToday int64
 	h.DB.Model(&Employee{}).Where("org_id = ? AND status = ?", org, "active").Count(&active)
 	h.DB.Model(&Employee{}).Where("org_id = ? AND status = ?", org, "on_leave").Count(&onLeaveStatus)
@@ -89,7 +91,7 @@ func (h *Handler) summary(c *gin.Context) {
 	h.DB.Model(&LeaveRequest{}).Where("org_id = ? AND status = ? AND start_date <= ? AND end_date >= ?", org, "approved", today, today).
 		Distinct("employee_id").Count(&onLeaveToday)
 
-	weekStart := h.now().AddDate(0, 0, -int((h.now().Weekday()+6)%7)).Format(dateLayout)
+	weekStart := now.AddDate(0, 0, -int((now.Weekday()+6)%7)).Format(dateLayout)
 	var hoursWeek float64
 	h.DB.Model(&Timesheet{}).Where("org_id = ? AND status <> ? AND date >= ? AND date <= ?", org, "rejected", weekStart, today).
 		Select("COALESCE(SUM(hours),0)").Scan(&hoursWeek)

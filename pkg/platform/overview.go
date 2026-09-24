@@ -56,9 +56,9 @@ func (h *Handler) Overview(c *gin.Context) {
 	if hasTable(db, "billing_invoices") {
 		base := "deleted_at IS NULL AND doc_type = 'invoice' AND status NOT IN ('draft','void')"
 		db.Table("billing_invoices").Select("COALESCE(NULLIF(currency,''),'AUD') AS currency, COUNT(*) AS count, COALESCE(SUM(total),0) AS invoiced, COALESCE(SUM(amount_paid),0) AS collected").
-			Where(base).Group("1").Order("invoiced DESC").Scan(&totals)
+			Where(base).Group("COALESCE(NULLIF(currency,''),'AUD')").Order("invoiced DESC").Scan(&totals)
 		db.Table("billing_invoices").Select("COALESCE(NULLIF(currency,''),'AUD') AS currency, COUNT(*) AS count, COALESCE(SUM(total),0) AS invoiced, COALESCE(SUM(amount_paid),0) AS collected").
-			Where(base+" AND issue_date >= ?", since30).Group("1").Order("invoiced DESC").Scan(&totals30)
+			Where(base+" AND issue_date >= ?", since30).Group("COALESCE(NULLIF(currency,''),'AUD')").Order("invoiced DESC").Scan(&totals30)
 	}
 	var invoiceCount, draftCount int64
 	if hasTable(db, "billing_invoices") {

@@ -254,6 +254,16 @@ func prepareDatabase(db *gorm.DB) {
 		if err := db.Exec("ALTER ROLE CURRENT_USER SET search_path TO " + pgx.Identifier{schema}.Sanitize() + ", public").Error; err != nil {
 			log.Printf("⚠️  could not set the role's default search_path: %v", err)
 		}
+		// Detect transaction-mode poolers that drop our search_path: sample a
+		// few connections and warn loudly, because queries would then hit the
+		// legacy public tables instead of the ERP ones.
+		for i := 0; i < 5; i++ {
+			var sp string
+			if err := db.Raw("SHOW search_path").Scan(&sp).Error; err == nil && !strings.Contains(sp, schema) {
+				log.Printf("🚨 DATABASE_URL looks like a transaction-mode pooler (search_path=%q). ERP data may be read from the wrong tables. Use a direct or SESSION-mode connection string (e.g. Supabase session pooler, port 5432).", sp)
+				break
+			}
+		}
 	}
 	if strings.EqualFold(os.Getenv("SKIP_MIGRATIONS"), "true") {
 		log.Println("SKIP_MIGRATIONS=true — not changing the schema")

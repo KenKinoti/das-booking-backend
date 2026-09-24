@@ -142,12 +142,18 @@ func (h *Handler) GetUsers(c *gin.Context) {
 	}
 	offset := (page - 1) * limit
 
+	allOrgs := userRole == "super_admin" && c.Query("all_orgs") == "true"
 	query := h.DB.Model(&models.User{})
-	if !(userRole == "super_admin" && c.Query("all_orgs") == "true") {
+	if !allOrgs {
 		query = query.Where("organization_id = ?", orgID)
 	}
 	if role := c.Query("role"); role != "" {
-		query = query.Where("role = ?", role)
+		if role == "admin" {
+			// "Admins" = everyone with full access (matches summary.admins).
+			query = query.Where("role IN ?", []string{"admin", "super_admin"})
+		} else {
+			query = query.Where("role = ?", role)
+		}
 	}
 	if isActive := c.Query("is_active"); isActive != "" {
 		activeFilter, _ := strconv.ParseBool(isActive)
@@ -181,14 +187,19 @@ func (h *Handler) GetUsers(c *gin.Context) {
 		out[i] = toUserResponse(u)
 	}
 
-	// Role/status counts for the whole (unfiltered) organisation.
+	// Role/status counts for the whole (unfiltered) organisation — or for every
+	// organisation when the list itself spans all of them.
 	type roleCount struct {
 		Role     string `json:"role"`
 		IsActive bool   `json:"is_active"`
 		N        int64  `json:"count"`
 	}
 	var counts []roleCount
-	h.DB.Model(&models.User{}).Select("role, is_active, COUNT(*) AS n").Where("organization_id = ?", orgID).Group("role, is_active").Scan(&counts)
+	cq := h.DB.Model(&models.User{}).Select("role, is_active, COUNT(*) AS n")
+	if !allOrgs {
+		cq = cq.Where("organization_id = ?", orgID)
+	}
+	cq.Group("role, is_active").Scan(&counts)
 	summary := gin.H{"total": int64(0), "active": int64(0), "inactive": int64(0), "admins": int64(0)}
 	for _, rc := range counts {
 		summary["total"] = summary["total"].(int64) + rc.N

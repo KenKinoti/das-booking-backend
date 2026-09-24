@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 )
 
 type Handler struct {
@@ -327,7 +328,8 @@ func (h *Handler) GetSummary(c *gin.Context) {
 	if !okk {
 		return
 	}
-	d, err := h.service.GetSummary(orgID)
+	n := reqtz.Now(c) // the user's calendar date (?tz=)
+	d, err := h.service.GetSummaryOn(orgID, time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		fail(c, err)
 		return
@@ -376,7 +378,8 @@ func (h *Handler) GetBills(c *gin.Context) {
 	if !okk {
 		return
 	}
-	bills, err := h.service.GetBills(orgID, c.Query("status"), c.Query("q"), c.Query("vendor_id"))
+	n := reqtz.Now(c) // overdue follows the user's calendar (?tz=), as in the summary
+	bills, err := h.service.GetBillsOn(orgID, c.Query("status"), c.Query("q"), c.Query("vendor_id"), time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		fail(c, err)
 		return
