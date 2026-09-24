@@ -24,6 +24,18 @@ import (
 
 // SeedDatabase runs the database seeder to add test data
 func (h *Handler) SeedDatabase(c *gin.Context) {
+	// The seeder is a separate Go program; it can only run where the Go
+	// toolchain and source tree exist (never inside the production image).
+	if _, err := exec.LookPath("go"); err != nil {
+		c.JSON(http.StatusNotImplemented, gin.H{
+			"success": false,
+			"error": gin.H{
+				"code":    "SEEDER_UNAVAILABLE",
+				"message": "The database seeder is not available on this server",
+			},
+		})
+		return
+	}
 	// Get project root directory
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
@@ -48,7 +60,7 @@ func (h *Handler) SeedDatabase(c *gin.Context) {
 
 	// Capture output
 	output, err := cmd.CombinedOutput()
-	
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -88,7 +100,7 @@ func (h *Handler) SeedOrganizations(c *gin.Context) {
 	if !exists || (userRole != "admin" && userRole != "super_admin") {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
-			"error": "Access denied - requires admin role",
+			"error":   "Access denied - requires admin role",
 		})
 		return
 	}
@@ -109,7 +121,7 @@ func (h *Handler) SeedOrganizations(c *gin.Context) {
 
 	// Initialize random seed
 	rand.Seed(time.Now().UnixNano())
-	
+
 	var createdOrgs []models.Organization
 	tx := h.DB.Begin()
 	defer func() {
@@ -126,14 +138,14 @@ func (h *Handler) SeedOrganizations(c *gin.Context) {
 		suffix := orgSuffixes[rand.Intn(len(orgSuffixes))]
 		state := states[rand.Intn(len(states))]
 		suburb := suburbs[rand.Intn(len(suburbs))]
-		
+
 		abn := fmt.Sprintf("%011d", rand.Int63n(99999999999))
-		
+
 		org := models.Organization{
-			ID:      uuid.New().String(),
-			Name:    fmt.Sprintf("%s %s %d", req.Prefix, suffix, i+1),
-			ABN:     abn,
-			Phone:   fmt.Sprintf("(0%d) %d%d%d-%d%d%d%d", 
+			ID:   uuid.New().String(),
+			Name: fmt.Sprintf("%s %s %d", req.Prefix, suffix, i+1),
+			ABN:  abn,
+			Phone: fmt.Sprintf("(0%d) %d%d%d-%d%d%d%d",
 				rand.Intn(9)+1, rand.Intn(10), rand.Intn(10), rand.Intn(10),
 				rand.Intn(10), rand.Intn(10), rand.Intn(10), rand.Intn(10)),
 			Email:   fmt.Sprintf("info@%s%d.com.au", strings.ToLower(req.Prefix), i+1),
@@ -215,7 +227,7 @@ func (h *Handler) SeedAdvanced(c *gin.Context) {
 	if !exists || (userRole != "admin" && userRole != "super_admin") {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
-			"error": "Access denied - requires admin role",
+			"error":   "Access denied - requires admin role",
 		})
 		return
 	}
@@ -231,7 +243,7 @@ func (h *Handler) SeedAdvanced(c *gin.Context) {
 
 	// Initialize random seed
 	rand.Seed(time.Now().UnixNano())
-	
+
 	var createdOrgs []models.Organization
 	var recordsCreated int64
 
@@ -245,25 +257,25 @@ func (h *Handler) SeedAdvanced(c *gin.Context) {
 	// Step 1: Create organizations if requested
 	if req.CreateOrganizations {
 		orgSuffixes := []string{"Services", "Solutions", "Care Group", "Support Network", "Healthcare", "Assistance", "Community Care", "Wellness"}
-		
+
 		for i := 0; i < req.OrgCount; i++ {
 			suffix := orgSuffixes[rand.Intn(len(orgSuffixes))]
 			org := models.Organization{
-				ID:          uuid.New().String(),
-				Name:        fmt.Sprintf("%s %s %d", req.OrgPrefix, suffix, i+1),
-				Phone:       fmt.Sprintf("(0%d) %d%d%d-%d%d%d%d", 
+				ID:   uuid.New().String(),
+				Name: fmt.Sprintf("%s %s %d", req.OrgPrefix, suffix, i+1),
+				Phone: fmt.Sprintf("(0%d) %d%d%d-%d%d%d%d",
 					rand.Intn(9)+1, rand.Intn(10), rand.Intn(10), rand.Intn(10),
 					rand.Intn(10), rand.Intn(10), rand.Intn(10), rand.Intn(10)),
-				Email:       fmt.Sprintf("info@%s%d.com", "testorg", i+1),
-				Address:     models.Address{
+				Email: fmt.Sprintf("info@%s%d.com", "testorg", i+1),
+				Address: models.Address{
 					Street:   fmt.Sprintf("%d Test Street, Suite %d", rand.Intn(999)+1, rand.Intn(99)+1),
 					Suburb:   []string{"Melbourne", "Sydney", "Brisbane", "Adelaide", "Perth"}[rand.Intn(5)],
 					State:    []string{"VIC", "NSW", "QLD", "SA", "WA"}[rand.Intn(5)],
 					Postcode: fmt.Sprintf("%d%d%d%d", rand.Intn(10), rand.Intn(10), rand.Intn(10), rand.Intn(10)),
 					Country:  "Australia",
 				},
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
 			}
 
 			if err := tx.Create(&org).Error; err != nil {
@@ -290,19 +302,19 @@ func (h *Handler) SeedAdvanced(c *gin.Context) {
 		} else {
 			// Create a default organization
 			org := models.Organization{
-				ID:          uuid.New().String(),
-				Name:        req.Prefix + " Organization",
-				Phone:       "(03) 9123-4567",
-				Email:       "info@test.com",
-				Address:     models.Address{
+				ID:    uuid.New().String(),
+				Name:  req.Prefix + " Organization",
+				Phone: "(03) 9123-4567",
+				Email: "info@test.com",
+				Address: models.Address{
 					Street:   "123 Test Street",
 					Suburb:   "Melbourne",
 					State:    "VIC",
 					Postcode: "3000",
 					Country:  "Australia",
 				},
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
 			}
 			if err := tx.Create(&org).Error; err != nil {
 				tx.Rollback()
@@ -391,7 +403,7 @@ func (h *Handler) seedParticipants(tx *gorm.DB, orgIds []string, prefix string, 
 		orgId := orgIds[rand.Intn(len(orgIds))]
 		firstName := firstNames[rand.Intn(len(firstNames))]
 		lastName := lastNames[rand.Intn(len(lastNames))]
-		
+
 		namePrefix := prefix
 		if autoIncrement {
 			namePrefix = fmt.Sprintf("%s_%03d", prefix, i+1)
@@ -403,20 +415,20 @@ func (h *Handler) seedParticipants(tx *gorm.DB, orgIds []string, prefix string, 
 			FirstName:      firstName,
 			LastName:       lastName,
 			Email:          fmt.Sprintf("%s_%s.%s@test.com", namePrefix, firstName, lastName),
-			Phone:          fmt.Sprintf("04%d%d %d%d%d %d%d%d", 
+			Phone: fmt.Sprintf("04%d%d %d%d%d %d%d%d",
 				rand.Intn(10), rand.Intn(10), rand.Intn(10), rand.Intn(10), rand.Intn(10),
 				rand.Intn(10), rand.Intn(10), rand.Intn(10)),
-			DateOfBirth:    time.Now().AddDate(-rand.Intn(50)-20, 0, 0),
-			Address:        models.Address{
+			DateOfBirth: time.Now().AddDate(-rand.Intn(50)-20, 0, 0),
+			Address: models.Address{
 				Street:   fmt.Sprintf("%d %s Street", rand.Intn(999)+1, namePrefix),
 				Suburb:   []string{"Melbourne", "Sydney", "Brisbane", "Adelaide"}[rand.Intn(4)],
 				State:    []string{"VIC", "NSW", "QLD", "SA"}[rand.Intn(4)],
 				Postcode: fmt.Sprintf("%d%d%d%d", rand.Intn(10), rand.Intn(10), rand.Intn(10), rand.Intn(10)),
 				Country:  "Australia",
 			},
-			IsActive:       rand.Float32() < 0.8, // 80% active
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
+			IsActive:  rand.Float32() < 0.8, // 80% active
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 
 		if err := tx.Create(&participant).Error; err == nil {
@@ -436,7 +448,7 @@ func (h *Handler) seedStaff(tx *gorm.DB, orgIds []string, prefix string, count i
 		orgId := orgIds[rand.Intn(len(orgIds))]
 		firstName := firstNames[rand.Intn(len(firstNames))]
 		lastName := lastNames[rand.Intn(len(lastNames))]
-		
+
 		namePrefix := prefix
 		if autoIncrement {
 			namePrefix = fmt.Sprintf("%s_%03d", prefix, i+1)
@@ -452,12 +464,12 @@ func (h *Handler) seedStaff(tx *gorm.DB, orgIds []string, prefix string, count i
 			Email:          fmt.Sprintf("%s_%s.%s@test.com", namePrefix, firstName, lastName),
 			PasswordHash:   string(hashedPassword),
 			Role:           roles[rand.Intn(len(roles))],
-			Phone:          fmt.Sprintf("04%d%d %d%d%d %d%d%d", 
+			Phone: fmt.Sprintf("04%d%d %d%d%d %d%d%d",
 				rand.Intn(10), rand.Intn(10), rand.Intn(10), rand.Intn(10), rand.Intn(10),
 				rand.Intn(10), rand.Intn(10), rand.Intn(10)),
-			IsActive:       rand.Float32() < 0.9, // 90% active
-			CreatedAt:      time.Now(),
-			UpdatedAt:      time.Now(),
+			IsActive:  rand.Float32() < 0.9, // 90% active
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 
 		if err := tx.Create(&user).Error; err == nil {
@@ -469,14 +481,14 @@ func (h *Handler) seedStaff(tx *gorm.DB, orgIds []string, prefix string, count i
 
 func (h *Handler) seedShifts(tx *gorm.DB, orgIds []string, prefix string, count int) int64 {
 	var created int64
-	
+
 	// Get participants and staff for the target organizations
 	var participants []models.Participant
 	var staff []models.User
-	
+
 	tx.Where("organization_id IN ?", orgIds).Find(&participants)
 	tx.Where("organization_id IN ?", orgIds).Find(&staff)
-	
+
 	if len(participants) == 0 || len(staff) == 0 {
 		return 0
 	}
@@ -487,8 +499,8 @@ func (h *Handler) seedShifts(tx *gorm.DB, orgIds []string, prefix string, count 
 	for i := 0; i < count; i++ {
 		participant := participants[rand.Intn(len(participants))]
 		staffMember := staff[rand.Intn(len(staff))]
-		
-		startTime := time.Now().AddDate(0, 0, rand.Intn(30)-15) // ±15 days from now
+
+		startTime := time.Now().AddDate(0, 0, rand.Intn(30)-15)             // ±15 days from now
 		endTime := startTime.Add(time.Duration(rand.Intn(4)+1) * time.Hour) // 1-4 hours
 
 		shift := models.Shift{
@@ -515,10 +527,10 @@ func (h *Handler) seedShifts(tx *gorm.DB, orgIds []string, prefix string, count 
 
 func (h *Handler) seedCarePlans(tx *gorm.DB, orgIds []string, prefix string, count int) int64 {
 	var created int64
-	
+
 	var participants []models.Participant
 	tx.Where("organization_id IN ?", orgIds).Find(&participants)
-	
+
 	if len(participants) == 0 {
 		return 0
 	}
@@ -528,7 +540,7 @@ func (h *Handler) seedCarePlans(tx *gorm.DB, orgIds []string, prefix string, cou
 
 	for i := 0; i < count; i++ {
 		participant := participants[rand.Intn(len(participants))]
-		
+
 		endDate := time.Now().AddDate(0, rand.Intn(12)+3, 0) // 3-15 months from now
 		carePlan := models.CarePlan{
 			ID:            uuid.New().String(),
@@ -553,20 +565,20 @@ func (h *Handler) seedCarePlans(tx *gorm.DB, orgIds []string, prefix string, cou
 
 func (h *Handler) seedDocuments(tx *gorm.DB, orgIds []string, prefix string, count int) int64 {
 	var created int64
-	
+
 	var participants []models.Participant
 	tx.Where("organization_id IN ?", orgIds).Find(&participants)
-	
+
 	if len(participants) == 0 {
 		return 0
 	}
 
 	categories := []string{"NDIS Plan", "Medical Records", "Assessment", "Agreement", "Report"}
-	
+
 	for i := 0; i < count; i++ {
 		participant := participants[rand.Intn(len(participants))]
 		category := categories[rand.Intn(len(categories))]
-		
+
 		participantId := participant.ID
 		expiryDate := time.Now().AddDate(1, 0, 0) // 1 year from now
 		document := models.Document{
@@ -779,11 +791,11 @@ func (h *Handler) TruncateDatabase(c *gin.Context) {
 	// Truncate all tables (order matters due to foreign keys)
 	tables := []string{
 		"user_permissions",
-		"shifts", 
-		"care_plans", 
-		"emergency_contacts", 
-		"participants", 
-		"users", 
+		"shifts",
+		"care_plans",
+		"emergency_contacts",
+		"participants",
+		"users",
 		"organizations",
 		"roles",
 		"permissions",
@@ -845,16 +857,16 @@ func (h *Handler) GetSystemStats(c *gin.Context) {
 	// Verify admin access (admin or super_admin)
 	userRole, exists := c.Get("user_role")
 	roleStr, _ := userRole.(string)
-	
+
 	// Debug logging
 	fmt.Printf("GetSystemStats - userRole exists: %v, roleStr: %s\n", exists, roleStr)
-	
+
 	if !exists || (roleStr != "admin" && roleStr != "super_admin") {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "Access denied - requires admin role",
 			"debug": gin.H{
 				"exists": exists,
-				"role": roleStr,
+				"role":   roleStr,
 			},
 		})
 		return
@@ -925,7 +937,7 @@ func (h *Handler) DatabaseBackup(c *gin.Context) {
 	if dbURL == "" {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error": "Database URL not configured",
+			"error":   "Database URL not configured",
 		})
 		return
 	}
@@ -940,7 +952,7 @@ func (h *Handler) DatabaseBackup(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error": "Failed to parse database URL: " + err.Error(),
+			"error":   "Failed to parse database URL: " + err.Error(),
 		})
 		return
 	}
@@ -984,7 +996,7 @@ func (h *Handler) DatabaseBackup(c *gin.Context) {
 		log.Printf("pg_dump failed: %v\nSTDOUT: %s\nSTDERR: %s", err, stdout.String(), stderr.String())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error": "Database backup failed: " + err.Error(),
+			"error":   "Database backup failed: " + err.Error(),
 			"details": stderr.String(),
 		})
 		return
@@ -994,7 +1006,7 @@ func (h *Handler) DatabaseBackup(c *gin.Context) {
 	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error": "Backup file was not created",
+			"error":   "Backup file was not created",
 		})
 		return
 	}
@@ -1024,7 +1036,7 @@ func (h *Handler) DatabaseBackup(c *gin.Context) {
 		}
 	}()
 
-	log.Printf("Database backup completed successfully: %s (%.2f MB)", 
+	log.Printf("Database backup completed successfully: %s (%.2f MB)",
 		filename, float64(fileInfo.Size())/(1024*1024))
 }
 
@@ -1042,18 +1054,18 @@ func (h *Handler) DatabaseRestore(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"error": "No backup file provided",
+			"error":   "No backup file provided",
 		})
 		return
 	}
 
 	// Validate file type
-	if !strings.HasSuffix(file.Filename, ".sql") && 
-	   !strings.HasSuffix(file.Filename, ".backup") && 
-	   !strings.HasSuffix(file.Filename, ".dump") {
+	if !strings.HasSuffix(file.Filename, ".sql") &&
+		!strings.HasSuffix(file.Filename, ".backup") &&
+		!strings.HasSuffix(file.Filename, ".dump") {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"error": "Invalid file type. Only .sql, .backup, and .dump files are allowed",
+			"error":   "Invalid file type. Only .sql, .backup, and .dump files are allowed",
 		})
 		return
 	}
@@ -1067,7 +1079,7 @@ func (h *Handler) DatabaseRestore(c *gin.Context) {
 	if err := c.SaveUploadedFile(file, tempPath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error": "Failed to save uploaded file: " + err.Error(),
+			"error":   "Failed to save uploaded file: " + err.Error(),
 		})
 		return
 	}
@@ -1087,7 +1099,7 @@ func (h *Handler) DatabaseRestore(c *gin.Context) {
 	if dbURL == "" {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error": "Database URL not configured",
+			"error":   "Database URL not configured",
 		})
 		return
 	}
@@ -1096,7 +1108,7 @@ func (h *Handler) DatabaseRestore(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error": "Failed to parse database URL: " + err.Error(),
+			"error":   "Failed to parse database URL: " + err.Error(),
 		})
 		return
 	}
@@ -1135,18 +1147,18 @@ func (h *Handler) DatabaseRestore(c *gin.Context) {
 		log.Printf("Database restore failed: %v\nSTDOUT: %s\nSTDERR: %s", err, stdout.String(), stderr.String())
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error": "Database restore failed: " + err.Error(),
+			"error":   "Database restore failed: " + err.Error(),
 			"details": stderr.String(),
 		})
 		return
 	}
 
 	log.Printf("Database restore completed successfully from file: %s", file.Filename)
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Database restored successfully",
-		"output": fmt.Sprintf("Restored from file: %s\nSize: %.2f MB", 
+		"output": fmt.Sprintf("Restored from file: %s\nSize: %.2f MB",
 			file.Filename, float64(file.Size)/(1024*1024)),
 	})
 }
@@ -1160,106 +1172,22 @@ func (h *Handler) DatabaseMaintenance(c *gin.Context) {
 		return
 	}
 
-	// Parse database URL
-	dbURL := h.Config.DatabaseURL
-	if dbURL == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": "Database URL not configured",
-		})
-		return
-	}
-
-	parsed, err := url.Parse(dbURL)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": "Failed to parse database URL: " + err.Error(),
-		})
-		return
-	}
-
-	// Extract connection parameters
-	host := parsed.Hostname()
-	port := parsed.Port()
-	if port == "" {
-		port = "5432"
-	}
-	database := strings.TrimPrefix(parsed.Path, "/")
-	username := parsed.User.Username()
-	password, _ := parsed.User.Password()
-
-	// Set environment variables
-	env := os.Environ()
-	env = append(env, "PGPASSWORD="+password)
-
+	// Run through the existing connection so it works without the psql
+	// binary (e.g. on Cloud Run). VACUUM cannot run inside a transaction and
+	// gorm's Exec does not open one.
 	maintenanceOutput := []string{}
-
-	// 1. Run VACUUM ANALYZE on all tables
-	vacuumCmd := exec.Command("psql",
-		"-h", host,
-		"-p", port,
-		"-U", username,
-		"-d", database,
-		"-c", "VACUUM ANALYZE;",
-	)
-	vacuumCmd.Env = env
-
-	var vacuumOut, vacuumErr bytes.Buffer
-	vacuumCmd.Stdout = &vacuumOut
-	vacuumCmd.Stderr = &vacuumErr
-
-	if err := vacuumCmd.Run(); err != nil {
+	if err := h.DB.Exec("VACUUM ANALYZE").Error; err != nil {
 		log.Printf("VACUUM ANALYZE failed: %v", err)
 		maintenanceOutput = append(maintenanceOutput, "VACUUM ANALYZE: Failed - "+err.Error())
 	} else {
 		maintenanceOutput = append(maintenanceOutput, "VACUUM ANALYZE: Completed successfully")
 	}
 
-	// 2. REINDEX database
-	reindexCmd := exec.Command("psql",
-		"-h", host,
-		"-p", port,
-		"-U", username,
-		"-d", database,
-		"-c", "REINDEX DATABASE "+database+";",
-	)
-	reindexCmd.Env = env
-
-	var reindexOut, reindexErr bytes.Buffer
-	reindexCmd.Stdout = &reindexOut
-	reindexCmd.Stderr = &reindexErr
-
-	if err := reindexCmd.Run(); err != nil {
-		log.Printf("REINDEX failed: %v", err)
-		maintenanceOutput = append(maintenanceOutput, "REINDEX: Failed - "+err.Error())
-	} else {
-		maintenanceOutput = append(maintenanceOutput, "REINDEX: Completed successfully")
-	}
-
-	// 3. Update table statistics
-	statsCmd := exec.Command("psql",
-		"-h", host,
-		"-p", port,
-		"-U", username,
-		"-d", database,
-		"-c", "ANALYZE;",
-	)
-	statsCmd.Env = env
-
-	if err := statsCmd.Run(); err != nil {
-		log.Printf("ANALYZE failed: %v", err)
-		maintenanceOutput = append(maintenanceOutput, "ANALYZE: Failed - "+err.Error())
-	} else {
-		maintenanceOutput = append(maintenanceOutput, "ANALYZE: Completed successfully")
-	}
-
 	outputText := strings.Join(maintenanceOutput, "\n")
 	log.Printf("Database maintenance completed: %s", outputText)
-
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Database maintenance completed successfully",
+		"success": !strings.Contains(outputText, "Failed"),
+		"message": "Database maintenance finished",
 		"output":  outputText,
 	})
 }

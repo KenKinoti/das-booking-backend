@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,79 +17,129 @@ import (
 	"gorm.io/gorm"
 )
 
+// Document storage
+//
+// Cloud Run containers have an ephemeral, per-instance filesystem, so files
+// written to local disk disappear on redeploys and are invisible to other
+// instances. Uploaded document bytes are therefore stored in Postgres in the
+// document_blobs table (one row per document, max 10 MB per file). Documents
+// uploaded by older versions still have a FilePath on disk; downloads fall
+// back to that path when no blob row exists.
+
+// MaxDocumentSize is the largest file accepted by UploadDocument.
+const MaxDocumentSize = 10 << 20
+
+// DocumentBlob holds the bytes of an uploaded document.
+type DocumentBlob struct {
+	DocumentID     string    `gorm:"type:varchar(255);primaryKey"`
+	OrganizationID string    `gorm:"type:varchar(255);index;not null"`
+	Data           []byte    `gorm:"type:bytea;not null"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+func (DocumentBlob) TableName() string { return "document_blobs" }
+
+func docErr(c *gin.Context, status int, code, msg string) {
+	c.JSON(status, gin.H{"success": false, "error": gin.H{"code": code, "message": msg}})
+}
+
+// orgDocuments scopes documents to the caller's organisation (through the
+// uploader, or through the participant for participant documents).
+func (h *Handler) orgDocuments(orgID string) *gorm.DB {
+	return h.DB.Model(&models.Document{}).
+		Where("(documents.uploaded_by IN (SELECT id FROM users WHERE organization_id = ?) OR documents.participant_id IN (SELECT id FROM participants WHERE organization_id = ?))", orgID, orgID)
+}
+
+func (h *Handler) loadDocument(c *gin.Context) (*models.Document, bool) {
+	var doc models.Document
+	if err := h.orgDocuments(c.GetString("org_id")).Where("documents.id = ?", c.Param("id")).First(&doc).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			docErr(c, http.StatusNotFound, "DOCUMENT_NOT_FOUND", "Document not found")
+		} else {
+			docErr(c, http.StatusInternalServerError, "DATABASE_ERROR", "Failed to fetch document")
+		}
+		return nil, false
+	}
+	return &doc, true
+}
+
+func (h *Handler) reloadDocument(id string) models.Document {
+	var doc models.Document
+	h.DB.Preload("Participant").Preload("UploadedByUser").First(&doc, "id = ?", id)
+	return doc
+}
+
+// GetDocuments lists documents. Query: page, limit, category, file_type
+// (pdf|image|word|sheet|other), is_active, search, expiring (days), sort.
 func (h *Handler) GetDocuments(c *gin.Context) {
-	orgID, exists := c.Get("org_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "UNAUTHORIZED",
-				"message": "Organization not found in context",
-			},
-		})
+	orgID := c.GetString("org_id")
+	if orgID == "" {
+		docErr(c, http.StatusUnauthorized, "UNAUTHORIZED", "Organization not found in context")
 		return
 	}
 
-	// Parse query parameters
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	participantID := c.Query("participant_id")
-	category := c.Query("category")
-	fileType := c.Query("file_type")
-	isActive := c.Query("is_active")
-	search := c.Query("search")
-
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "25"))
 	if page < 1 {
 		page = 1
 	}
-	if limit < 1 || limit > 100 {
-		limit = 10
+	if limit < 1 || limit > 200 {
+		limit = 25
 	}
 
-	offset := (page - 1) * limit
-
-	// Build query with organization access control
-	query := h.DB.Joins("LEFT JOIN participants ON documents.participant_id = participants.id").
-		Where("(documents.participant_id IS NULL AND documents.uploaded_by IN (SELECT id FROM users WHERE organization_id = ?)) OR participants.organization_id = ?", orgID, orgID)
-
-	if participantID != "" {
-		query = query.Where("documents.participant_id = ?", participantID)
+	query := h.orgDocuments(orgID)
+	if v := c.Query("participant_id"); v != "" {
+		query = query.Where("documents.participant_id = ?", v)
+	}
+	if v := c.Query("category"); v != "" {
+		query = query.Where("documents.category = ?", v)
+	}
+	switch c.Query("file_type") {
+	case "pdf":
+		query = query.Where("documents.file_type ILIKE ?", "%pdf%")
+	case "image":
+		query = query.Where("documents.file_type ILIKE ?", "image/%")
+	case "word":
+		query = query.Where("(documents.file_type ILIKE ? OR documents.file_type ILIKE ? OR documents.file_type ILIKE ?)", "%word%", "%opendocument.text%", "text/%")
+	case "sheet":
+		query = query.Where("(documents.file_type ILIKE ? OR documents.file_type ILIKE ? OR documents.file_type ILIKE ?)", "%sheet%", "%excel%", "%csv%")
+	}
+	if v := c.Query("is_active"); v != "" {
+		b, _ := strconv.ParseBool(v)
+		query = query.Where("documents.is_active = ?", b)
+	}
+	if v := c.Query("expiring"); v != "" {
+		days, _ := strconv.Atoi(v)
+		if days <= 0 {
+			days = 30
+		}
+		query = query.Where("documents.expiry_date IS NOT NULL AND documents.expiry_date <= ?", time.Now().AddDate(0, 0, days))
+	}
+	if search := strings.TrimSpace(c.Query("search")); search != "" {
+		term := "%" + strings.ToLower(search) + "%"
+		query = query.Where("(LOWER(documents.title) LIKE ? OR LOWER(documents.description) LIKE ? OR LOWER(documents.original_filename) LIKE ?)", term, term, term)
 	}
 
-	if category != "" {
-		query = query.Where("documents.category = ?", category)
-	}
-
-	if fileType != "" {
-		query = query.Where("documents.file_type = ?", fileType)
-	}
-
-	if isActive != "" {
-		activeFilter, _ := strconv.ParseBool(isActive)
-		query = query.Where("documents.is_active = ?", activeFilter)
-	}
-
-	if search != "" {
-		searchTerm := "%" + strings.ToLower(search) + "%"
-		query = query.Where("LOWER(documents.title) LIKE ? OR LOWER(documents.description) LIKE ? OR LOWER(documents.original_filename) LIKE ?", searchTerm, searchTerm, searchTerm)
-	}
-
-	// Get total count
 	var total int64
-	query.Model(&models.Document{}).Count(&total)
+	query.Session(&gorm.Session{}).Count(&total)
 
-	// Get documents with related data
+	order := "documents.created_at DESC"
+	switch c.Query("sort") {
+	case "name":
+		order = "LOWER(documents.title) ASC"
+	case "size":
+		order = "documents.file_size DESC"
+	case "oldest":
+		order = "documents.created_at ASC"
+	case "expiry":
+		order = "documents.expiry_date ASC NULLS LAST"
+	}
+
 	var documents []models.Document
 	if err := query.Preload("Participant").Preload("UploadedByUser").
-		Limit(limit).Offset(offset).Order("documents.created_at DESC").
+		Limit(limit).Offset((page - 1) * limit).Order(order).
 		Find(&documents).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "DATABASE_ERROR",
-				"message": "Failed to fetch documents",
-			},
-		})
+		docErr(c, http.StatusInternalServerError, "DATABASE_ERROR", "Failed to fetch documents")
 		return
 	}
 
@@ -97,477 +148,267 @@ func (h *Handler) GetDocuments(c *gin.Context) {
 		"data": gin.H{
 			"documents": documents,
 			"pagination": gin.H{
-				"page":        page,
-				"limit":       limit,
-				"total":       total,
+				"page": page, "limit": limit, "total": total,
 				"total_pages": (total + int64(limit) - 1) / int64(limit),
 			},
 		},
 	})
 }
 
+// GetDocumentStats returns counts and storage used for the organisation.
+func (h *Handler) GetDocumentStats(c *gin.Context) {
+	orgID := c.GetString("org_id")
+	type catRow struct {
+		Category string `json:"category"`
+		Count    int64  `json:"count"`
+		Size     int64  `json:"size"`
+	}
+	var cats []catRow
+	h.orgDocuments(orgID).Select("documents.category AS category, COUNT(*) AS count, COALESCE(SUM(documents.file_size), 0) AS size").
+		Group("documents.category").Order("count DESC").Scan(&cats)
+	var total, size int64
+	for _, r := range cats {
+		total += r.Count
+		size += r.Size
+	}
+	var expiring, expired, recent int64
+	now := time.Now()
+	h.orgDocuments(orgID).Where("documents.expiry_date IS NOT NULL AND documents.expiry_date > ? AND documents.expiry_date <= ?", now, now.AddDate(0, 0, 30)).Count(&expiring)
+	h.orgDocuments(orgID).Where("documents.expiry_date IS NOT NULL AND documents.expiry_date <= ?", now).Count(&expired)
+	h.orgDocuments(orgID).Where("documents.created_at >= ?", now.AddDate(0, 0, -7)).Count(&recent)
+	if cats == nil {
+		cats = []catRow{}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"total": total, "total_size": size, "expiring_soon": expiring, "expired": expired,
+		"uploaded_this_week": recent, "categories": cats, "max_file_size": MaxDocumentSize,
+	}})
+}
+
 func (h *Handler) GetDocument(c *gin.Context) {
-	documentID := c.Param("id")
-	orgID, exists := c.Get("org_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "UNAUTHORIZED",
-				"message": "Organization not found in context",
-			},
-		})
+	doc, ok := h.loadDocument(c)
+	if !ok {
 		return
 	}
-
-	// Find document with access control
-	var document models.Document
-	query := h.DB.Joins("LEFT JOIN participants ON documents.participant_id = participants.id").
-		Joins("JOIN users ON documents.uploaded_by = users.id").
-		Where("documents.id = ? AND ((documents.participant_id IS NULL AND users.organization_id = ?) OR participants.organization_id = ?)", documentID, orgID, orgID)
-
-	if err := query.Preload("Participant").Preload("UploadedByUser").First(&document).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"error": gin.H{
-					"code":    "DOCUMENT_NOT_FOUND",
-					"message": "Document not found",
-				},
-			})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "DATABASE_ERROR",
-				"message": "Failed to fetch document",
-			},
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    document,
-	})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": h.reloadDocument(doc.ID)})
 }
 
 func (h *Handler) UploadDocument(c *gin.Context) {
-	orgID, exists := c.Get("org_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "UNAUTHORIZED",
-				"message": "Organization not found in context",
-			},
-		})
+	orgID := c.GetString("org_id")
+	userID := c.GetString("user_id")
+	if orgID == "" || userID == "" {
+		docErr(c, http.StatusUnauthorized, "UNAUTHORIZED", "Organization not found in context")
 		return
 	}
 
-	userID, _ := c.Get("user_id")
-
-	// Parse multipart form
-	if err := c.Request.ParseMultipartForm(32 << 20); err != nil { // 32 MB limit
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "FORM_PARSE_ERROR",
-				"message": "Failed to parse multipart form",
-			},
-		})
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MaxDocumentSize+(1<<20))
+	if err := c.Request.ParseMultipartForm(MaxDocumentSize + (1 << 20)); err != nil {
+		docErr(c, http.StatusBadRequest, "FILE_TOO_LARGE", "The file is too large (maximum 10 MB)")
 		return
 	}
 
-	// Get form fields
-	title := c.PostForm("title")
-	description := c.PostForm("description")
-	category := c.PostForm("category")
-	participantID := c.PostForm("participant_id")
-	expiryDateStr := c.PostForm("expiry_date")
-
-	if title == "" || category == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "VALIDATION_ERROR",
-				"message": "Title and category are required",
-			},
-		})
-		return
-	}
-
-	// Validate participant if provided
-	if participantID != "" {
-		var participant models.Participant
-		if err := h.DB.Where("id = ? AND organization_id = ?", participantID, orgID).First(&participant).Error; err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"error": gin.H{
-					"code":    "INVALID_PARTICIPANT",
-					"message": "Participant not found",
-				},
-			})
-			return
-		}
-	}
-
-	// Parse expiry date if provided
-	var expiryDate *time.Time
-	if expiryDateStr != "" {
-		if parsedDate, err := time.Parse("2006-01-02", expiryDateStr); err == nil {
-			expiryDate = &parsedDate
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"error": gin.H{
-					"code":    "INVALID_DATE",
-					"message": "Invalid expiry date format (YYYY-MM-DD expected)",
-				},
-			})
-			return
-		}
-	}
-
-	// Get uploaded file
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "FILE_REQUIRED",
-				"message": "File upload is required",
-			},
-		})
+		docErr(c, http.StatusBadRequest, "FILE_REQUIRED", "Choose a file to upload")
 		return
 	}
 	defer file.Close()
-
-	// Validate file size (10MB limit)
-	if header.Size > 10<<20 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "FILE_TOO_LARGE",
-				"message": "File size exceeds 10MB limit",
-			},
-		})
+	if header.Size > MaxDocumentSize {
+		docErr(c, http.StatusBadRequest, "FILE_TOO_LARGE", "The file is too large (maximum 10 MB)")
 		return
 	}
-
-	// Create uploads directory if it doesn't exist
-	uploadsDir := "uploads/documents"
-	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "DIRECTORY_ERROR",
-				"message": "Failed to create uploads directory",
-			},
-		})
-		return
-	}
-
-	// Generate unique filename
-	fileExt := filepath.Ext(header.Filename)
-	filename := fmt.Sprintf("%s_%s%s", uuid.New().String(), time.Now().Format("20060102_150405"), fileExt)
-	filePath := filepath.Join(uploadsDir, filename)
-
-	// Save file
-	dst, err := os.Create(filePath)
+	data, err := io.ReadAll(io.LimitReader(file, MaxDocumentSize+1))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "FILE_SAVE_ERROR",
-				"message": "Failed to save file",
-			},
-		})
+		docErr(c, http.StatusBadRequest, "UPLOAD_FAILED", "Could not read the uploaded file")
 		return
 	}
-	defer dst.Close()
-
-	if _, err := io.Copy(dst, file); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "FILE_SAVE_ERROR",
-				"message": "Failed to save file",
-			},
-		})
+	if len(data) > MaxDocumentSize {
+		docErr(c, http.StatusBadRequest, "FILE_TOO_LARGE", "The file is too large (maximum 10 MB)")
+		return
+	}
+	if len(data) == 0 {
+		docErr(c, http.StatusBadRequest, "EMPTY_FILE", "The file is empty")
 		return
 	}
 
-	// Create document record
-	document := models.Document{
-		Title:            title,
-		Description:      description,
-		Category:         category,
-		Filename:         filename,
-		OriginalFilename: header.Filename,
-		FileType:         header.Header.Get("Content-Type"),
-		FileSize:         header.Size,
-		FilePath:         filePath,
-		URL:              fmt.Sprintf("/api/v1/documents/%s/download", ""), // Will be updated after ID is generated
-		UploadedBy:       userID.(string),
-		IsActive:         true,
-		ExpiryDate:       expiryDate,
+	title := strings.TrimSpace(c.PostForm("title"))
+	if title == "" {
+		title = strings.TrimSuffix(filepath.Base(header.Filename), filepath.Ext(header.Filename))
 	}
-
+	category := strings.TrimSpace(c.PostForm("category"))
+	if category == "" {
+		category = "general"
+	}
+	participantID := c.PostForm("participant_id")
 	if participantID != "" {
-		document.ParticipantID = &participantID
+		var n int64
+		h.DB.Model(&models.Participant{}).Where("id = ? AND organization_id = ?", participantID, orgID).Count(&n)
+		if n == 0 {
+			docErr(c, http.StatusBadRequest, "INVALID_PARTICIPANT", "Participant not found")
+			return
+		}
+	}
+	var expiry *time.Time
+	if v := strings.TrimSpace(c.PostForm("expiry_date")); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			docErr(c, http.StatusBadRequest, "INVALID_DATE", "Expiry date must be YYYY-MM-DD")
+			return
+		}
+		expiry = &t
 	}
 
-	if err := h.DB.Create(&document).Error; err != nil {
-		// Remove uploaded file if database insertion fails
-		os.Remove(filePath)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "DATABASE_ERROR",
-				"message": "Failed to save document record",
-			},
-		})
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" || contentType == "application/octet-stream" {
+		if t := mime.TypeByExtension(strings.ToLower(filepath.Ext(header.Filename))); t != "" {
+			contentType = t
+		} else {
+			contentType = http.DetectContentType(data)
+		}
+	}
+
+	id := uuid.NewString()
+	doc := models.Document{
+		ID:               id,
+		Title:            title,
+		Description:      strings.TrimSpace(c.PostForm("description")),
+		Category:         category,
+		Filename:         id + strings.ToLower(filepath.Ext(header.Filename)),
+		OriginalFilename: filepath.Base(header.Filename),
+		FileType:         contentType,
+		FileSize:         int64(len(data)),
+		FilePath:         "db:" + id,
+		URL:              fmt.Sprintf("/api/v1/documents/%s/download", id),
+		UploadedBy:       userID,
+		IsActive:         true,
+		ExpiryDate:       expiry,
+	}
+	if participantID != "" {
+		doc.ParticipantID = &participantID
+	}
+
+	err = h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Omit("Participant", "UploadedByUser").Create(&doc).Error; err != nil {
+			return err
+		}
+		return tx.Create(&DocumentBlob{DocumentID: id, OrganizationID: orgID, Data: data}).Error
+	})
+	if err != nil {
+		docErr(c, http.StatusInternalServerError, "DATABASE_ERROR", "Failed to save the document")
 		return
 	}
-
-	// Update URL with document ID
-	document.URL = fmt.Sprintf("/api/v1/documents/%s/download", document.ID)
-	h.DB.Save(&document)
-
-	// Fetch document with related data
-	h.DB.Preload("Participant").Preload("UploadedByUser").First(&document, "id = ?", document.ID)
-
-	c.JSON(http.StatusCreated, gin.H{
-		"success": true,
-		"data":    document,
-		"message": "Document uploaded successfully",
-	})
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": h.reloadDocument(id)})
 }
 
 type UpdateDocumentRequest struct {
-	Title       *string    `json:"title,omitempty"`
-	Description *string    `json:"description,omitempty"`
-	Category    *string    `json:"category,omitempty"`
-	IsActive    *bool      `json:"is_active,omitempty"`
-	ExpiryDate  *time.Time `json:"expiry_date,omitempty"`
+	Title       *string `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Category    *string `json:"category,omitempty"`
+	IsActive    *bool   `json:"is_active,omitempty"`
+	// ExpiryDate accepts "YYYY-MM-DD", an RFC3339 time, or "" to clear.
+	ExpiryDate *string `json:"expiry_date,omitempty"`
 }
 
 func (h *Handler) UpdateDocument(c *gin.Context) {
-	documentID := c.Param("id")
-	orgID, exists := c.Get("org_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "UNAUTHORIZED",
-				"message": "Organization not found in context",
-			},
-		})
-		return
-	}
-
 	var req UpdateDocumentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "VALIDATION_ERROR",
-				"message": "Invalid request parameters",
-				"details": err.Error(),
-			},
-		})
+		docErr(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request: "+err.Error())
 		return
 	}
-
-	// Find document with access control
-	var document models.Document
-	query := h.DB.Joins("LEFT JOIN participants ON documents.participant_id = participants.id").
-		Joins("JOIN users ON documents.uploaded_by = users.id").
-		Where("documents.id = ? AND ((documents.participant_id IS NULL AND users.organization_id = ?) OR participants.organization_id = ?)", documentID, orgID, orgID)
-
-	if err := query.First(&document).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"error": gin.H{
-					"code":    "DOCUMENT_NOT_FOUND",
-					"message": "Document not found",
-				},
-			})
+	doc, ok := h.loadDocument(c)
+	if !ok {
+		return
+	}
+	updates := map[string]interface{}{}
+	if req.Title != nil {
+		if strings.TrimSpace(*req.Title) == "" {
+			docErr(c, http.StatusBadRequest, "VALIDATION_ERROR", "Title is required")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "DATABASE_ERROR",
-				"message": "Failed to fetch document",
-			},
-		})
-		return
-	}
-
-	// Update fields
-	updates := make(map[string]interface{})
-	if req.Title != nil {
-		updates["title"] = *req.Title
+		updates["title"] = strings.TrimSpace(*req.Title)
 	}
 	if req.Description != nil {
 		updates["description"] = *req.Description
 	}
-	if req.Category != nil {
-		updates["category"] = *req.Category
+	if req.Category != nil && strings.TrimSpace(*req.Category) != "" {
+		updates["category"] = strings.TrimSpace(*req.Category)
 	}
 	if req.IsActive != nil {
 		updates["is_active"] = *req.IsActive
 	}
 	if req.ExpiryDate != nil {
-		updates["expiry_date"] = *req.ExpiryDate
+		v := strings.TrimSpace(*req.ExpiryDate)
+		if v == "" {
+			updates["expiry_date"] = nil
+		} else {
+			if len(v) > 10 {
+				v = v[:10]
+			}
+			t, err := time.Parse("2006-01-02", v)
+			if err != nil {
+				docErr(c, http.StatusBadRequest, "INVALID_DATE", "Expiry date must be YYYY-MM-DD")
+				return
+			}
+			updates["expiry_date"] = t
+		}
 	}
-
-	if err := h.DB.Model(&document).Updates(updates).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "DATABASE_ERROR",
-				"message": "Failed to update document",
-			},
-		})
-		return
+	if len(updates) > 0 {
+		if err := h.DB.Model(&models.Document{}).Where("id = ?", doc.ID).Updates(updates).Error; err != nil {
+			docErr(c, http.StatusInternalServerError, "DATABASE_ERROR", "Failed to update document")
+			return
+		}
 	}
-
-	// Fetch updated document
-	h.DB.Preload("Participant").Preload("UploadedByUser").First(&document, "id = ?", documentID)
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    document,
-		"message": "Document updated successfully",
-	})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": h.reloadDocument(doc.ID)})
 }
 
+// DeleteDocument deletes the record and its stored bytes.
 func (h *Handler) DeleteDocument(c *gin.Context) {
-	documentID := c.Param("id")
-	orgID, exists := c.Get("org_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "UNAUTHORIZED",
-				"message": "Organization not found in context",
-			},
-		})
+	doc, ok := h.loadDocument(c)
+	if !ok {
 		return
 	}
-
-	// Find document with access control
-	var document models.Document
-	query := h.DB.Joins("LEFT JOIN participants ON documents.participant_id = participants.id").
-		Joins("JOIN users ON documents.uploaded_by = users.id").
-		Where("documents.id = ? AND ((documents.participant_id IS NULL AND users.organization_id = ?) OR participants.organization_id = ?)", documentID, orgID, orgID)
-
-	if err := query.First(&document).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"error": gin.H{
-					"code":    "DOCUMENT_NOT_FOUND",
-					"message": "Document not found",
-				},
-			})
-			return
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("document_id = ?", doc.ID).Delete(&DocumentBlob{}).Error; err != nil {
+			return err
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "DATABASE_ERROR",
-				"message": "Failed to fetch document",
-			},
-		})
-		return
-	}
-
-	// Soft delete document
-	if err := h.DB.Delete(&document).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "DATABASE_ERROR",
-				"message": "Failed to delete document",
-			},
-		})
-		return
-	}
-
-	// Note: We keep the physical file for data integrity
-	// In a production system, you might want to move files to a "trash" folder
-	// or implement a cleanup job that removes files after a certain period
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Document deleted successfully",
+		return tx.Delete(&models.Document{}, "id = ?", doc.ID).Error
 	})
+	if err != nil {
+		docErr(c, http.StatusInternalServerError, "DATABASE_ERROR", "Failed to delete document")
+		return
+	}
+	if doc.FilePath != "" && !strings.HasPrefix(doc.FilePath, "db:") {
+		os.Remove(doc.FilePath)
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Document deleted"})
 }
 
+// DownloadDocument streams the file. ?inline=1 lets browsers preview it.
 func (h *Handler) DownloadDocument(c *gin.Context) {
-	documentID := c.Param("id")
-	orgID, exists := c.Get("org_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "UNAUTHORIZED",
-				"message": "Organization not found in context",
-			},
-		})
+	doc, ok := h.loadDocument(c)
+	if !ok {
 		return
 	}
+	disposition := "attachment"
+	if c.Query("inline") == "1" {
+		disposition = "inline"
+	}
+	name := strings.NewReplacer(`"`, "", "\n", "", "\r", "").Replace(doc.OriginalFilename)
+	c.Header("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, name))
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
 
-	// Find document with access control
-	var document models.Document
-	query := h.DB.Joins("LEFT JOIN participants ON documents.participant_id = participants.id").
-		Joins("JOIN users ON documents.uploaded_by = users.id").
-		Where("documents.id = ? AND documents.is_active = ? AND ((documents.participant_id IS NULL AND users.organization_id = ?) OR participants.organization_id = ?)", documentID, true, orgID, orgID)
-
-	if err := query.First(&document).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"error": gin.H{
-					"code":    "DOCUMENT_NOT_FOUND",
-					"message": "Document not found or inactive",
-				},
-			})
+	var blob DocumentBlob
+	if err := h.DB.Where("document_id = ?", doc.ID).First(&blob).Error; err == nil {
+		c.Data(http.StatusOK, doc.FileType, blob.Data)
+		return
+	}
+	if doc.FilePath != "" && !strings.HasPrefix(doc.FilePath, "db:") {
+		if _, err := os.Stat(doc.FilePath); err == nil {
+			c.Header("Content-Type", doc.FileType)
+			c.File(doc.FilePath)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "DATABASE_ERROR",
-				"message": "Failed to fetch document",
-			},
-		})
-		return
 	}
-
-	// Check if file exists
-	if _, err := os.Stat(document.FilePath); os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "FILE_NOT_FOUND",
-				"message": "Physical file not found",
-			},
-		})
-		return
-	}
-
-	// Set appropriate headers
-	c.Header("Content-Type", document.FileType)
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", document.OriginalFilename))
-	c.Header("Content-Length", strconv.FormatInt(document.FileSize, 10))
-
-	// Serve file
-	c.File(document.FilePath)
+	docErr(c, http.StatusNotFound, "FILE_NOT_FOUND", "The file for this document is no longer available")
 }

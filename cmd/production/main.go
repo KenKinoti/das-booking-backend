@@ -73,6 +73,10 @@ func main() {
 		c.JSON(200, gin.H{"service": "DASYIN ERP Backend", "version": "2.0.0", "status": "running", "health": "/health", "api": "/api/v1"})
 	})
 
+	// Plan entitlements: blocks module APIs the organisation's plan does not
+	// include (402 MODULE_NOT_IN_PLAN). Must precede every route registration.
+	r.Use(plansEnforcer(db, cfg))
+
 	// Core API: auth, users, organisations, customers, bookings, services,
 	// inventory, POS, suppliers, reports, super-admin …
 	internal := handlers.NewHandler(db, cfg)
@@ -139,6 +143,11 @@ func main() {
 		integ.GET("/logs/integrations", ih.GetIntegrationLogs)
 		integ.GET("/logs/communications", ih.GetCommunicationLogs)
 		integ.GET("/transactions/payments", ih.GetPaymentTransactions)
+
+		// Feature modules register themselves from cmd/production/routes_*.go
+		for _, register := range extraRoutes {
+			register(auth, v1.Group("/public"), db, cfg)
+		}
 
 		auth.GET("/admin/overview", getCompleteAdminOverview)
 		auth.GET("/admin/modules", getCompleteModuleStatus)
@@ -294,6 +303,11 @@ func migrate(db *gorm.DB) {
 		"crm":       {&crm.Lead{}, &crm.CRMCustomer{}, &crm.Opportunity{}},
 		"invoicing": invoicing.Models(),
 	}
+	defer func() {
+		for _, m := range extraMigrations {
+			m(db)
+		}
+	}()
 	order := []string{"core", "booking", "care", "inventory", "pos", "events", "integrations", "messaging", "video", "finance", "crm", "invoicing"}
 	for _, name := range order {
 		for _, m := range groups[name] {

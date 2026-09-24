@@ -488,7 +488,7 @@ func (h *Handler) GetMessageSettings(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    settings,
+		"data":    maskedSettings(settings),
 	})
 }
 
@@ -509,6 +509,17 @@ func (h *Handler) UpdateMessageSettings(c *gin.Context) {
 	request.ID = 0
 	request.OrganizationID = oid
 	request.Organization = nil
+	if strings.HasPrefix(request.WhatsappAPIKey, "••") {
+		// The client echoed back the masked token; keep the stored value.
+		kept := cols[:0]
+		for _, col := range cols {
+			if col != "whatsapp_api_key" {
+				kept = append(kept, col)
+			}
+		}
+		cols = kept
+		request.WhatsappAPIKey = ""
+	}
 	if request.AllowedFileTypes != "" && !json.Valid([]byte(request.AllowedFileTypes)) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "allowed_file_types must be a JSON array"})
 		return
@@ -545,7 +556,7 @@ func (h *Handler) UpdateMessageSettings(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    settings,
+		"data":    maskedSettings(settings),
 	})
 }
 
@@ -965,4 +976,16 @@ func bindWithColumns(c *gin.Context, db *gorm.DB, dst interface{}) ([]string, er
 		}
 	}
 	return cols, nil
+}
+
+// maskedSettings hides the stored WhatsApp access token in API responses.
+func maskedSettings(s models.MessageSettings) models.MessageSettings {
+	if k := s.WhatsappAPIKey; k != "" {
+		if len(k) > 8 {
+			s.WhatsappAPIKey = "••••••••" + k[len(k)-4:]
+		} else {
+			s.WhatsappAPIKey = "••••••••"
+		}
+	}
+	return s
 }

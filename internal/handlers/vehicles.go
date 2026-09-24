@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
 	"gorm.io/gorm"
 )
@@ -22,7 +25,7 @@ func (h *Handler) GetVehicles(c *gin.Context) {
 	// Apply search filter if provided
 	search := c.Query("search")
 	if search != "" {
-		query = query.Where("make ILIKE ? OR model ILIKE ? OR license_plate ILIKE ? OR vin ILIKE ?", 
+		query = query.Where("(make ILIKE ? OR model ILIKE ? OR license_plate ILIKE ? OR vin ILIKE ?)",
 			"%"+search+"%", "%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 
@@ -102,7 +105,63 @@ func (h *Handler) GetCustomerVehicles(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"vehicles": vehicles})
 }
 
-// CreateVehicle creates a new vehicle
+// vehicleInput is the writable part of a vehicle.
+type vehicleInput struct {
+	CustomerID   *string `json:"customer_id"`
+	Make         *string `json:"make"`
+	Model        *string `json:"model"`
+	Year         *int    `json:"year"`
+	LicensePlate *string `json:"license_plate"`
+	VIN          *string `json:"vin"`
+	Color        *string `json:"color"`
+	Mileage      *int    `json:"mileage"`
+	Notes        *string `json:"notes"`
+	IsActive     *bool   `json:"is_active"`
+}
+
+func (in vehicleInput) validate(requireAll bool) string {
+	if requireAll || in.Make != nil {
+		if trimPtr(in.Make) == "" {
+			return "Make is required"
+		}
+	}
+	if requireAll || in.Model != nil {
+		if trimPtr(in.Model) == "" {
+			return "Model is required"
+		}
+	}
+	if requireAll || in.Year != nil {
+		if in.Year == nil || *in.Year < 1900 || *in.Year > time.Now().Year()+1 {
+			return "Enter a valid year"
+		}
+	}
+	if in.Mileage != nil && *in.Mileage < 0 {
+		return "Mileage cannot be negative"
+	}
+	return ""
+}
+
+// vehicleConflict reports a duplicate plate or VIN within the organisation.
+func (h *Handler) vehicleConflict(orgID, excludeID, plate, vin string) string {
+	if plate != "" {
+		var n int64
+		h.DB.Model(&models.Vehicle{}).Where("organization_id = ? AND UPPER(license_plate) = ? AND id <> ?", orgID, strings.ToUpper(plate), excludeID).Count(&n)
+		if n > 0 {
+			return "A vehicle with this licence plate already exists"
+		}
+	}
+	if vin != "" {
+		var n int64
+		// VIN is globally unique in the schema, so check across all organisations.
+		h.DB.Unscoped().Model(&models.Vehicle{}).Where("UPPER(vin) = ? AND id <> ?", strings.ToUpper(vin), excludeID).Count(&n)
+		if n > 0 {
+			return "A vehicle with this VIN is already registered"
+		}
+	}
+	return ""
+}
+
+// CreateVehicle creates a new vehicle for a customer.
 func (h *Handler) CreateVehicle(c *gin.Context) {
 	orgID := h.getOrganizationID(c)
 	if orgID == "" {
@@ -110,56 +169,56 @@ func (h *Handler) CreateVehicle(c *gin.Context) {
 		return
 	}
 
-	var vehicle models.Vehicle
-	if err := c.ShouldBindJSON(&vehicle); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	var in vehicleInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid vehicle data: " + err.Error()})
+		return
+	}
+	if msg := in.validate(true); msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 		return
 	}
 
-	vehicle.OrganizationID = orgID
-	vehicle.IsActive = true
-
-	// Verify customer exists and belongs to organization
 	var customer models.Customer
-	if err := h.DB.Where("id = ? AND organization_id = ?", vehicle.CustomerID, orgID).First(&customer).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid customer ID"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate customer"})
+	if err := h.DB.Where("id = ? AND organization_id = ?", trimPtr(in.CustomerID), orgID).First(&customer).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Choose a valid customer"})
 		return
 	}
 
-	// Check if VIN already exists (if provided)
-	if vehicle.VIN != "" {
-		var existingVehicle models.Vehicle
-		if err := h.DB.Where("vin = ? AND organization_id = ?", vehicle.VIN, orgID).First(&existingVehicle).Error; err == nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "Vehicle with this VIN already exists"})
-			return
-		}
+	vehicle := models.Vehicle{
+		ID:             uuid.NewString(),
+		CustomerID:     customer.ID,
+		OrganizationID: orgID,
+		Make:           trimPtr(in.Make),
+		Model:          trimPtr(in.Model),
+		Year:           *in.Year,
+		LicensePlate:   strings.ToUpper(trimPtr(in.LicensePlate)),
+		VIN:            strings.ToUpper(trimPtr(in.VIN)),
+		Color:          trimPtr(in.Color),
+		Notes:          trimPtr(in.Notes),
+		IsActive:       true,
+	}
+	if in.Mileage != nil {
+		vehicle.Mileage = *in.Mileage
+	}
+	if msg := h.vehicleConflict(orgID, "", vehicle.LicensePlate, vehicle.VIN); msg != "" {
+		c.JSON(http.StatusConflict, gin.H{"error": msg})
+		return
 	}
 
-	// Check if license plate already exists (if provided)
-	if vehicle.LicensePlate != "" {
-		var existingVehicle models.Vehicle
-		if err := h.DB.Where("license_plate = ? AND organization_id = ?", vehicle.LicensePlate, orgID).First(&existingVehicle).Error; err == nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "Vehicle with this license plate already exists"})
-			return
-		}
+	// An empty VIN is stored as NULL so the unique constraint allows many.
+	omit := []string{"Customer", "Organization", "Bookings"}
+	if vehicle.VIN == "" {
+		omit = append(omit, "VIN")
 	}
-
-	if err := h.DB.Create(&vehicle).Error; err != nil {
+	if err := h.DB.Omit(omit...).Create(&vehicle).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create vehicle"})
 		return
 	}
-
-	// Reload with customer info
-	h.DB.Where("id = ?", vehicle.ID).Preload("Customer").First(&vehicle)
-
 	c.JSON(http.StatusCreated, gin.H{"vehicle": vehicle})
 }
 
-// UpdateVehicle updates an existing vehicle
+// UpdateVehicle updates the fields that were sent.
 func (h *Handler) UpdateVehicle(c *gin.Context) {
 	orgID := h.getOrganizationID(c)
 	if orgID == "" {
@@ -178,52 +237,70 @@ func (h *Handler) UpdateVehicle(c *gin.Context) {
 		return
 	}
 
-	var updateData models.Vehicle
-	if err := c.ShouldBindJSON(&updateData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	var in vehicleInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid vehicle data: " + err.Error()})
+		return
+	}
+	if msg := in.validate(false); msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 		return
 	}
 
-	// If customer is being changed, verify the new customer
-	if updateData.CustomerID != "" && updateData.CustomerID != vehicle.CustomerID {
+	updates := map[string]interface{}{}
+	if in.CustomerID != nil && trimPtr(in.CustomerID) != vehicle.CustomerID {
 		var customer models.Customer
-		if err := h.DB.Where("id = ? AND organization_id = ?", updateData.CustomerID, orgID).First(&customer).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid customer ID"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate customer"})
+		if err := h.DB.Where("id = ? AND organization_id = ?", trimPtr(in.CustomerID), orgID).First(&customer).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Choose a valid customer"})
 			return
 		}
+		updates["customer_id"] = customer.ID
 	}
-
-	// Check if VIN is being changed and if it conflicts with another vehicle
-	if updateData.VIN != "" && updateData.VIN != vehicle.VIN {
-		var existingVehicle models.Vehicle
-		if err := h.DB.Where("vin = ? AND organization_id = ? AND id != ?", updateData.VIN, orgID, id).First(&existingVehicle).Error; err == nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "Vehicle with this VIN already exists"})
-			return
+	plate, vin := "", ""
+	if in.LicensePlate != nil {
+		plate = strings.ToUpper(trimPtr(in.LicensePlate))
+		updates["license_plate"] = plate
+	}
+	if in.VIN != nil {
+		vin = strings.ToUpper(trimPtr(in.VIN))
+		if vin == "" {
+			updates["vin"] = nil
+		} else {
+			updates["vin"] = vin
 		}
 	}
-
-	// Check if license plate is being changed and if it conflicts with another vehicle
-	if updateData.LicensePlate != "" && updateData.LicensePlate != vehicle.LicensePlate {
-		var existingVehicle models.Vehicle
-		if err := h.DB.Where("license_plate = ? AND organization_id = ? AND id != ?", updateData.LicensePlate, orgID, id).First(&existingVehicle).Error; err == nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "Vehicle with this license plate already exists"})
-			return
-		}
-	}
-
-	// Update only provided fields
-	if err := h.DB.Model(&vehicle).Updates(updateData).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update vehicle"})
+	if msg := h.vehicleConflict(orgID, id, plate, vin); msg != "" {
+		c.JSON(http.StatusConflict, gin.H{"error": msg})
 		return
 	}
-
-	// Reload with customer info
-	h.DB.Where("id = ?", vehicle.ID).Preload("Customer").First(&vehicle)
-
+	if in.Make != nil {
+		updates["make"] = trimPtr(in.Make)
+	}
+	if in.Model != nil {
+		updates["model"] = trimPtr(in.Model)
+	}
+	if in.Year != nil {
+		updates["year"] = *in.Year
+	}
+	if in.Color != nil {
+		updates["color"] = trimPtr(in.Color)
+	}
+	if in.Mileage != nil {
+		updates["mileage"] = *in.Mileage
+	}
+	if in.Notes != nil {
+		updates["notes"] = *in.Notes
+	}
+	if in.IsActive != nil {
+		updates["is_active"] = *in.IsActive
+	}
+	if len(updates) > 0 {
+		if err := h.DB.Model(&models.Vehicle{}).Where("id = ? AND organization_id = ?", id, orgID).Updates(updates).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update vehicle"})
+			return
+		}
+	}
+	h.DB.Where("id = ?", id).First(&vehicle)
 	c.JSON(http.StatusOK, gin.H{"vehicle": vehicle})
 }
 
@@ -248,9 +325,9 @@ func (h *Handler) DeleteVehicle(c *gin.Context) {
 
 	// Check if vehicle has active bookings
 	var activeBookingsCount int64
-	h.DB.Model(&models.Booking{}).Where("vehicle_id = ? AND status NOT IN ?", 
+	h.DB.Model(&models.Booking{}).Where("vehicle_id = ? AND status NOT IN ?",
 		id, []string{"completed", "cancelled", "no_show"}).Count(&activeBookingsCount)
-	
+
 	if activeBookingsCount > 0 {
 		c.JSON(http.StatusConflict, gin.H{"error": "Cannot delete vehicle with active bookings"})
 		return
@@ -350,10 +427,10 @@ func (h *Handler) GetVehicleStats(c *gin.Context) {
 	}
 
 	var stats struct {
-		TotalVehicles   int64 `json:"total_vehicles"`
-		ActiveVehicles  int64 `json:"active_vehicles"`
+		TotalVehicles    int64 `json:"total_vehicles"`
+		ActiveVehicles   int64 `json:"active_vehicles"`
 		InactiveVehicles int64 `json:"inactive_vehicles"`
-		NewThisMonth    int64 `json:"new_this_month"`
+		NewThisMonth     int64 `json:"new_this_month"`
 	}
 
 	// Total vehicles

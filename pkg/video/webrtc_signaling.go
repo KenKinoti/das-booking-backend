@@ -2,12 +2,18 @@ package video
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"hash/fnv"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"gorm.io/gorm"
@@ -39,15 +45,15 @@ type WebSocketConnection struct {
 
 // Room represents a video call room
 type Room struct {
-	ID           string
-	CallID       string
-	HostID       uint
-	Connections  map[string]*WebSocketConnection
-	IsActive     bool
-	CreatedAt    time.Time
-	MaxPeers     int
-	IsRecording  bool
-	Mutex        sync.RWMutex
+	ID          string
+	CallID      string
+	HostID      uint
+	Connections map[string]*WebSocketConnection
+	IsActive    bool
+	CreatedAt   time.Time
+	MaxPeers    int
+	IsRecording bool
+	Mutex       sync.RWMutex
 }
 
 // SignalingMessage represents a WebRTC signaling message
@@ -62,23 +68,23 @@ type SignalingMessage struct {
 
 // WebRTC message types
 const (
-	MessageTypeOffer          = "offer"
-	MessageTypeAnswer         = "answer"
-	MessageTypeICECandidate   = "ice-candidate"
-	MessageTypeJoinRoom       = "join-room"
-	MessageTypeLeaveRoom      = "leave-room"
-	MessageTypeUserJoined     = "user-joined"
-	MessageTypeUserLeft       = "user-left"
-	MessageTypeMuteAudio      = "mute-audio"
-	MessageTypeMuteVideo      = "mute-video"
-	MessageTypeScreenShare    = "screen-share"
+	MessageTypeOffer           = "offer"
+	MessageTypeAnswer          = "answer"
+	MessageTypeICECandidate    = "ice-candidate"
+	MessageTypeJoinRoom        = "join-room"
+	MessageTypeLeaveRoom       = "leave-room"
+	MessageTypeUserJoined      = "user-joined"
+	MessageTypeUserLeft        = "user-left"
+	MessageTypeMuteAudio       = "mute-audio"
+	MessageTypeMuteVideo       = "mute-video"
+	MessageTypeScreenShare     = "screen-share"
 	MessageTypeStopScreenShare = "stop-screen-share"
-	MessageTypeStartRecording = "start-recording"
-	MessageTypeStopRecording  = "stop-recording"
-	MessageTypeCallEnd        = "call-end"
-	MessageTypeError          = "error"
-	MessageTypePing           = "ping"
-	MessageTypePong           = "pong"
+	MessageTypeStartRecording  = "start-recording"
+	MessageTypeStopRecording   = "stop-recording"
+	MessageTypeCallEnd         = "call-end"
+	MessageTypeError           = "error"
+	MessageTypePing            = "ping"
+	MessageTypePong            = "pong"
 )
 
 // NewWebRTCSignalingServer creates a new WebRTC signaling server
@@ -106,26 +112,14 @@ func NewWebRTCSignalingServer(db *gorm.DB) *WebRTCSignalingServer {
 func (s *WebRTCSignalingServer) HandleWebRTCConnection(c *gin.Context) {
 	// For WebSocket connections, extract token from query parameter
 	token := c.Query("token")
-	log.Printf("WebSocket connection attempt with token: %s", token)
-
 	if token == "" {
-		log.Printf("No token provided")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication token required"})
 		return
 	}
-
-	// For development/testing, accept mock tokens
-	var userID, organizationID uint
-	if token == "mock-jwt-token-for-testing" {
-		userID = 1
-		organizationID = 1
-		log.Printf("Accepted mock token, userID: %d, orgID: %d", userID, organizationID)
-	} else {
-		// TODO: Implement proper JWT token validation here
-		// For now, use mock values for development
-		userID = 1
-		organizationID = 1
-		log.Printf("Using default values for token: %s, userID: %d, orgID: %d", token, userID, organizationID)
+	userID, organizationID, err := signalingIdentity(token)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authentication token"})
+		return
 	}
 
 	if userID == 0 || organizationID == 0 {
@@ -267,9 +261,9 @@ func (s *WebRTCSignalingServer) handleJoinRoom(conn *WebSocketConnection, messag
 		Type:     MessageTypeUserJoined,
 		FromUser: conn.UserID,
 		Data: map[string]interface{}{
-			"user_id":   conn.UserID,
-			"is_host":   conn.IsHost,
-			"room_id":   roomID,
+			"user_id":    conn.UserID,
+			"is_host":    conn.IsHost,
+			"room_id":    roomID,
 			"peer_count": len(room.Connections),
 		},
 	}, conn.ID)
@@ -565,20 +559,65 @@ func (s *WebRTCSignalingServer) GetRoomInfo(roomID string) map[string]interface{
 	participants := make([]map[string]interface{}, 0, len(room.Connections))
 	for _, conn := range room.Connections {
 		participants = append(participants, map[string]interface{}{
-			"user_id":     conn.UserID,
+			"user_id":       conn.UserID,
 			"connection_id": conn.ID,
-			"is_host":     conn.IsHost,
+			"is_host":       conn.IsHost,
 		})
 	}
 
 	return map[string]interface{}{
-		"room_id":      room.ID,
-		"call_id":      room.CallID,
-		"host_id":      room.HostID,
-		"is_active":    room.IsActive,
-		"is_recording": room.IsRecording,
-		"created_at":   room.CreatedAt,
+		"room_id":           room.ID,
+		"call_id":           room.CallID,
+		"host_id":           room.HostID,
+		"is_active":         room.IsActive,
+		"is_recording":      room.IsRecording,
+		"created_at":        room.CreatedAt,
 		"participant_count": len(room.Connections),
-		"participants": participants,
+		"participants":      participants,
 	}
+}
+
+// signalingIdentity validates an access token and maps its (string) user and
+// organisation IDs to stable non-zero numeric IDs used by the signaling layer.
+func signalingIdentity(tokenString string) (uint, uint, error) {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "default-secret-change-me"
+	}
+	tokenString = strings.TrimSpace(strings.TrimPrefix(tokenString, "Bearer "))
+	tok, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(secret), nil
+	})
+	if err != nil || tok == nil || !tok.Valid {
+		return 0, 0, errors.New("invalid token")
+	}
+	claims, ok := tok.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, 0, errors.New("invalid token")
+	}
+	if t, _ := claims["type"].(string); t == "refresh" {
+		return 0, 0, errors.New("invalid token")
+	}
+	uid := fmt.Sprint(claims["user_id"])
+	oid := fmt.Sprint(claims["org_id"])
+	if claims["org_id"] == nil {
+		oid = fmt.Sprint(claims["organization_id"])
+	}
+	if claims["user_id"] == nil || uid == "" {
+		return 0, 0, errors.New("invalid token")
+	}
+	return stableID(uid), stableID(oid), nil
+}
+
+func stableID(s string) uint {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	v := uint(h.Sum32())
+	if v == 0 {
+		v = 1
+	}
+	return v
 }

@@ -319,15 +319,15 @@ func (h *Handler) UpdateOrganizationSettings(c *gin.Context) {
 // Organization Management Endpoints
 
 type CreateOrganizationRequest struct {
-	Name          string            `json:"name" binding:"required"`
-	ABN           string            `json:"abn"`
-	Phone         string            `json:"phone"`
-	Email         string            `json:"email" binding:"required,email"`
-	Website       string            `json:"website"`
-	Address       models.Address    `json:"address"`
+	Name    string         `json:"name" binding:"required"`
+	ABN     string         `json:"abn"`
+	Phone   string         `json:"phone"`
+	Email   string         `json:"email" binding:"required,email"`
+	Website string         `json:"website"`
+	Address models.Address `json:"address"`
 	// NDISReg removed for simplicity
-	AdminUser     CreateAdminUser   `json:"admin_user" binding:"required"`
-	Subscription  SubscriptionPlan  `json:"subscription" binding:"required"`
+	AdminUser    CreateAdminUser  `json:"admin_user" binding:"required"`
+	Subscription SubscriptionPlan `json:"subscription" binding:"required"`
 }
 
 type CreateAdminUser struct {
@@ -376,7 +376,12 @@ func (h *Handler) CreateOrganization(c *gin.Context) {
 		// NDISReg removed for simplicity
 	}
 
-	if err := tx.Create(&org).Error; err != nil {
+	createQ := tx
+	if org.ABN == "" {
+		// Store NULL so the unique ABN index allows many organisations without one.
+		createQ = createQ.Omit("ABN")
+	}
+	if err := createQ.Create(&org).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -428,7 +433,7 @@ func (h *Handler) CreateOrganization(c *gin.Context) {
 
 	// Calculate subscription pricing
 	planRates := map[string]float64{
-		"starter":      49.00,  // AUD per month
+		"starter":      49.00, // AUD per month
 		"professional": 99.00,
 		"enterprise":   199.00,
 	}
@@ -440,7 +445,7 @@ func (h *Handler) CreateOrganization(c *gin.Context) {
 
 	// Create subscription
 	subscription := models.OrganizationSubscription{
-		OrganizationID:      org.ID,
+		OrganizationID:     org.ID,
 		PlanName:           req.Subscription.PlanName,
 		Status:             "active",
 		BillingEmail:       req.Subscription.BillingEmail,
@@ -560,13 +565,13 @@ func (h *Handler) GetOrganizationUsage(c *gin.Context) {
 
 	usage := gin.H{
 		"users": gin.H{
-			"current": userCount,
-			"limit":   subscription.MaxUsers,
+			"current":    userCount,
+			"limit":      subscription.MaxUsers,
 			"percentage": float64(userCount) / float64(subscription.MaxUsers) * 100,
 		},
 		"participants": gin.H{
-			"current": participantCount,
-			"limit":   subscription.MaxParticipants,
+			"current":    participantCount,
+			"limit":      subscription.MaxParticipants,
 			"percentage": float64(participantCount) / float64(subscription.MaxParticipants) * 100,
 		},
 		"storage": gin.H{
@@ -585,12 +590,12 @@ func (h *Handler) GetOrganizationUsage(c *gin.Context) {
 }
 
 type UpdateSubscriptionRequest struct {
-	PlanName       *string `json:"plan_name,omitempty"`
-	MonthlyRate    *float64 `json:"monthly_rate,omitempty"`
-	MaxUsers       *int    `json:"max_users,omitempty"`
-	MaxParticipants *int   `json:"max_participants,omitempty"`
-	MaxStorageGB   *int    `json:"max_storage_gb,omitempty"`
-	BillingCycle   *string `json:"billing_cycle,omitempty"`
+	PlanName        *string  `json:"plan_name,omitempty"`
+	MonthlyRate     *float64 `json:"monthly_rate,omitempty"`
+	MaxUsers        *int     `json:"max_users,omitempty"`
+	MaxParticipants *int     `json:"max_participants,omitempty"`
+	MaxStorageGB    *int     `json:"max_storage_gb,omitempty"`
+	BillingCycle    *string  `json:"billing_cycle,omitempty"`
 }
 
 func (h *Handler) UpdateOrganizationSubscription(c *gin.Context) {
@@ -696,7 +701,7 @@ func (h *Handler) GetAllOrganizations(c *gin.Context) {
 	query := h.DB.Preload("Users", "role = ? AND is_active = ?", "admin", true)
 
 	if search != "" {
-		query = query.Where("LOWER(name) LIKE ? OR LOWER(email) LIKE ? OR abn LIKE ?", 
+		query = query.Where("LOWER(name) LIKE ? OR LOWER(email) LIKE ? OR abn LIKE ?",
 			"%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 
@@ -733,11 +738,11 @@ func (h *Handler) GetAllOrganizations(c *gin.Context) {
 	for _, org := range organizations {
 		var subscription models.OrganizationSubscription
 		response := OrganizationResponse{Organization: org}
-		
+
 		if err := h.DB.Where("organization_id = ?", org.ID).First(&subscription).Error; err == nil {
 			response.Subscription = &subscription
 		}
-		
+
 		organizationResponses = append(organizationResponses, response)
 	}
 
@@ -968,8 +973,8 @@ func (h *Handler) UpdateOrganizationModules(c *gin.Context) {
 
 	// Request body structure
 	type UpdateModulesRequest struct {
-		EnabledModules []string          `json:"enabled_modules" binding:"required"`
-		ModulesConfig  map[string]bool   `json:"modules_config"`
+		EnabledModules []string        `json:"enabled_modules" binding:"required"`
+		ModulesConfig  map[string]bool `json:"modules_config"`
 	}
 
 	var req UpdateModulesRequest

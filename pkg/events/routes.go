@@ -1,60 +1,69 @@
 package events
 
 import (
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+
+	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
 )
 
-// SetupRoutes sets up all event-related routes
-func SetupRoutes(router *gin.RouterGroup, db *gorm.DB) {
-	handler := NewHandler(db)
+// RegisterRoutes mounts the organisation-scoped management API on an
+// authenticated group (JWT middleware must set org_id / user_id).
+func RegisterRoutes(auth *gin.RouterGroup, h *Handler) {
+	g := auth.Group("/events")
+	g.GET("", h.ListEvents)
+	g.POST("", h.CreateEvent)
+	g.GET("/stats", h.Stats)
+	g.GET("/categories", h.Categories)
+	g.GET("/:id", h.GetEvent)
+	g.PUT("/:id", h.UpdateEvent)
+	g.DELETE("/:id", h.DeleteEvent)
+	g.POST("/:id/status", h.SetStatus)
+	g.POST("/:id/duplicate", h.DuplicateEvent)
+	g.GET("/:id/registrations", h.ListRegistrations)
+	g.POST("/:id/registrations", h.CreateRegistration)
+	g.GET("/:id/registrations/export", h.ExportRegistrations)
+	g.PUT("/:id/registrations/:regId", h.UpdateRegistration)
+	g.DELETE("/:id/registrations/:regId", h.DeleteRegistration)
+	g.POST("/:id/registrations/:regId/check-in", h.CheckIn)
+}
 
-	// Public routes - no authentication required
-	public := router.Group("/events")
-	{
-		// Event discovery and search
-		public.GET("", handler.GetEvents)              // GET /api/events?category=&type=&search=&upcoming=true
-		public.GET("/search", handler.SearchEvents)    // GET /api/events/search?q=conference
-		public.GET("/categories", handler.GetEventCategories) // GET /api/events/categories
-		public.GET("/:id", handler.GetEvent)           // GET /api/events/:id
-		public.GET("/:event_id/tickets", handler.GetTicketTypes) // GET /api/events/:event_id/tickets
+// RegisterPublicRoutes mounts the unauthenticated landing page + registration API.
+func RegisterPublicRoutes(public *gin.RouterGroup, h *Handler) {
+	g := public.Group("/events")
+	g.GET("/:id", h.PublicGetEvent)
+	g.GET("/:id/page", h.PublicPage)
+	g.POST("/:id/register", h.PublicRegister)
+}
+
+// Migrate creates/updates the event tables and removes legacy foreign keys
+// (to users/customers/organizations) that older model versions created.
+func Migrate(db *gorm.DB) {
+	for _, m := range []interface{}{&models.Event{}, &models.TicketType{}, &models.EventRegistration{}} {
+		if err := db.AutoMigrate(m); err != nil {
+			log.Printf("⚠️  events migration %T: %v", m, err)
+		}
 	}
-
-	// Protected routes - require authentication
-	protected := router.Group("/events")
-	// TODO: Add authentication middleware here
-	// protected.Use(middleware.AuthRequired())
-	{
-		// Event management (organizers)
-		protected.POST("", handler.CreateEvent)          // POST /api/events
-		protected.PUT("/:id", handler.UpdateEvent)       // PUT /api/events/:id
-		protected.DELETE("/:id", handler.DeleteEvent)    // DELETE /api/events/:id
-
-		// Ticket type management
-		protected.POST("/:event_id/tickets", handler.CreateTicketType) // POST /api/events/:event_id/tickets
-
-		// Registration management
-		protected.POST("/:event_id/register", handler.RegisterForEvent) // POST /api/events/:event_id/register
-		protected.GET("/:event_id/registrations", handler.GetRegistrations) // GET /api/events/:event_id/registrations
-
-		// Check-in functionality
-		protected.POST("/checkin", handler.CheckInRegistration) // POST /api/events/checkin
-
-		// Analytics
-		protected.GET("/:event_id/analytics", handler.GetEventAnalytics) // GET /api/events/:event_id/analytics
+	stmts := []string{
+		`ALTER TABLE events DROP CONSTRAINT IF EXISTS fk_events_organization`,
+		`ALTER TABLE events DROP CONSTRAINT IF EXISTS fk_events_creator`,
+		`ALTER TABLE event_registrations DROP CONSTRAINT IF EXISTS fk_event_registrations_ticket_type`,
+		`ALTER TABLE event_registrations DROP CONSTRAINT IF EXISTS fk_ticket_types_registrations`,
+		`ALTER TABLE event_registrations DROP CONSTRAINT IF EXISTS fk_event_registrations_user`,
+		`ALTER TABLE event_registrations DROP CONSTRAINT IF EXISTS fk_event_registrations_customer`,
+		`ALTER TABLE event_registrations DROP CONSTRAINT IF EXISTS fk_event_registrations_event`,
+		`ALTER TABLE ticket_types DROP CONSTRAINT IF EXISTS fk_ticket_types_event`,
+		`ALTER TABLE event_reviews DROP CONSTRAINT IF EXISTS fk_event_reviews_user`,
+		`ALTER TABLE event_reviews DROP CONSTRAINT IF EXISTS fk_event_reviews_registration`,
+		`ALTER TABLE event_registrations ALTER COLUMN ticket_type_id DROP NOT NULL`,
+		`ALTER TABLE events ALTER COLUMN created_by DROP NOT NULL`,
+		`ALTER TABLE events ALTER COLUMN category DROP NOT NULL`,
 	}
-
-	// Organizer-specific routes
-	organizer := router.Group("/organizer/events")
-	// TODO: Add organizer authentication middleware
-	// organizer.Use(middleware.OrganizerRequired())
-	{
-		// These routes will be filtered by the organizer's organization
-		organizer.GET("", handler.GetEvents)              // GET /api/organizer/events (filtered by org)
-		organizer.POST("", handler.CreateEvent)           // POST /api/organizer/events
-		organizer.GET("/:id", handler.GetEvent)           // GET /api/organizer/events/:id
-		organizer.PUT("/:id", handler.UpdateEvent)        // PUT /api/organizer/events/:id
-		organizer.DELETE("/:id", handler.DeleteEvent)     // DELETE /api/organizer/events/:id
-		organizer.GET("/:event_id/analytics", handler.GetEventAnalytics) // GET /api/organizer/events/:event_id/analytics
+	for _, s := range stmts {
+		if err := db.Exec(s).Error; err != nil {
+			log.Printf("⚠️  events migration: %v", err)
+		}
 	}
 }
