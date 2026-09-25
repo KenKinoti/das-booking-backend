@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"sort"
@@ -17,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -188,6 +190,7 @@ func (h *Handler) settingsFor(tx *gorm.DB, org string, lock bool) (*Settings, er
 	err := q.Where("organization_id = ?", org).First(&s).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		s = defaultSettings(org)
+		s.Currency = orgprefs.Currency(tx, org)
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&s).Error; err != nil {
 			return nil, err
 		}
@@ -196,9 +199,13 @@ func (h *Handler) settingsFor(tx *gorm.DB, org string, lock bool) (*Settings, er
 				return nil, err
 			}
 		}
-		return &s, nil
+	} else if err != nil {
+		return &s, err
 	}
-	return &s, err
+	// The default currency for new documents is always the organisation's
+	// home currency (pkg/orgprefs); the stored copy is only a mirror.
+	s.Currency = orgprefs.Currency(tx, org)
+	return &s, nil
 }
 
 func defaultSettings(org string) Settings {
@@ -310,6 +317,9 @@ type invoiceInput struct {
 	RecurrenceEndDate  string      `json:"recurrence_end_date"`
 	CCEmails           *[]string   `json:"cc_emails"`
 	Items              []itemInput `json:"items"`
+	// Deposit is money already received for this invoice (optional). It is
+	// recorded as a real payment when the invoice is saved.
+	Deposit *paymentInput `json:"deposit"`
 }
 
 func (in *invoiceInput) apply(inv *Invoice, s *Settings, now time.Time) error {
@@ -485,6 +495,20 @@ func (h *Handler) List(c *gin.Context) {
 	if to, err := parseDate(c.Query("to")); err == nil && !to.IsZero() {
 		q = q.Where("issue_date <= ?", to)
 	}
+	// paid_from / paid_to: invoices with a payment dated in the range (the
+	// cash-basis drill-down from the Profit & loss report).
+	pf, errF := parseDate(c.Query("paid_from"))
+	pt, errT := parseDate(c.Query("paid_to"))
+	if (errF == nil && !pf.IsZero()) || (errT == nil && !pt.IsZero()) {
+		sub := h.DB.Model(&Payment{}).Select("invoice_id").Where("organization_id = ?", org)
+		if errF == nil && !pf.IsZero() {
+			sub = sub.Where("date >= ?", pf)
+		}
+		if errT == nil && !pt.IsZero() {
+			sub = sub.Where("date <= ?", pt)
+		}
+		q = q.Where("id IN (?)", sub)
+	}
 	var total int64
 	q.Count(&total)
 
@@ -553,6 +577,9 @@ func (h *Handler) Create(c *gin.Context) {
 		inv := &Invoice{ID: uuid.NewString(), OrganizationID: org, DocType: TypeInvoice, Status: StatusDraft, PublicToken: newToken(), CreatedBy: user, PricesIncludeTax: s.PricesIncludeTax}
 		if in.DocType == TypeQuote {
 			inv.DocType = TypeQuote
+			if in.Deposit != nil && in.Deposit.Amount != 0 {
+				return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Deposits can only be recorded on invoices — convert the quote first"}
+			}
 		}
 		// No currency chosen: invoice the linked customer in their currency.
 		if strings.TrimSpace(in.Currency) == "" && in.CustomerID != nil {
@@ -586,6 +613,11 @@ func (h *Handler) Create(c *gin.Context) {
 				return err
 			}
 			h.log(tx, inv, "sent", "Marked as sent", user)
+		}
+		if in.Deposit != nil && inv.DocType == TypeInvoice {
+			if err := h.recordPayment(tx, inv, *in.Deposit, user, true); err != nil {
+				return err
+			}
 		}
 		created, err = h.load(tx, org, inv.ID, true)
 		return err
@@ -643,6 +675,15 @@ func (h *Handler) Update(c *gin.Context) {
 			return err
 		}
 		h.log(tx, inv, "updated", "Details updated", user)
+		if in.Deposit != nil && in.Deposit.Amount != 0 {
+			fresh, err := h.load(tx, org, inv.ID, false)
+			if err != nil {
+				return err
+			}
+			if err := h.recordPayment(tx, fresh, *in.Deposit, user, true); err != nil {
+				return err
+			}
+		}
 		out, err = h.load(tx, org, inv.ID, true)
 		return err
 	})
@@ -1038,6 +1079,16 @@ func (h *Handler) Convert(c *gin.Context) {
 		return
 	}
 	user := ctxString(c, "user_id")
+	// Optional body: {"deposit": {amount, date, method, reference}}
+	var body struct {
+		Deposit *paymentInput `json:"deposit"`
+	}
+	if c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+			fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request: "+err.Error())
+			return
+		}
+	}
 	var out *Invoice
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		src, err := h.load(tx, org, c.Param("id"), false)
@@ -1059,6 +1110,15 @@ func (h *Handler) Convert(c *gin.Context) {
 		tx.Model(&Invoice{}).Where("id = ?", src.ID).Updates(map[string]interface{}{"status": StatusConverted, "converted_to_id": n.ID})
 		h.log(tx, src, "converted", "Converted to invoice "+n.Number, user)
 		h.log(tx, n, "created", "Created from quote "+src.Number, user)
+		if body.Deposit != nil && body.Deposit.Amount != 0 {
+			fresh, err := h.load(tx, org, n.ID, false)
+			if err != nil {
+				return err
+			}
+			if err := h.recordPayment(tx, fresh, *body.Deposit, user, true); err != nil {
+				return err
+			}
+		}
 		out, err = h.load(tx, org, n.ID, true)
 		return err
 	})
@@ -1084,42 +1144,101 @@ func (h *Handler) AddPayment(c *gin.Context) {
 		return
 	}
 	h.simpleAction(c, func(tx *gorm.DB, inv *Invoice, user string) error {
-		if inv.DocType != TypeInvoice {
-			return &apiError{http.StatusBadRequest, "NOT_INVOICE", "Payments can only be recorded on invoices"}
-		}
-		if inv.Status == StatusVoid {
-			return &apiError{http.StatusConflict, "LOCKED", "Void invoices can't take payments"}
-		}
-		amt := roundCur(in.Amount, inv.Currency)
-		if amt <= 0 {
-			return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Payment amount must be greater than zero"}
-		}
-		if amt > inv.BalanceDue+0.4/math.Pow10(currency.Decimals(inv.Currency)) {
-			return &apiError{http.StatusBadRequest, "OVERPAYMENT", fmt.Sprintf("Payment exceeds the balance due (%s %s)", inv.Currency, fmtAmount(inv.BalanceDue, inv.Currency))}
-		}
-		d, err := parseDate(in.Date)
-		if err != nil {
-			return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Invalid payment date"}
-		}
-		if d.IsZero() {
-			d = dateOnly(h.now())
-		}
-		method := in.Method
-		if method == "" {
-			method = "bank_transfer"
-		}
-		p := Payment{ID: uuid.NewString(), InvoiceID: inv.ID, OrganizationID: inv.OrganizationID, Amount: amt, Date: d, Method: method, Reference: in.Reference, Notes: in.Notes, CreatedBy: user, CreatedAt: h.now()}
-		if err := tx.Create(&p).Error; err != nil {
-			return err
-		}
-		inv.Payments = append(inv.Payments, p)
-		ApplyPayments(inv, h.now())
-		if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Updates(map[string]interface{}{"amount_paid": inv.AmountPaid, "balance_due": inv.BalanceDue, "status": inv.Status, "paid_at": inv.PaidAt}).Error; err != nil {
-			return err
-		}
-		h.log(tx, inv, "payment", fmt.Sprintf("Payment of %s %s recorded (%s)", inv.Currency, fmtAmount(amt, inv.Currency), strings.ReplaceAll(method, "_", " ")), user)
-		return nil
+		return h.recordPayment(tx, inv, in, user, false)
 	})
+}
+
+// PaymentMethods are the accepted payment methods.
+var PaymentMethods = []string{"bank_transfer", "card", "cash", "mobile_money", "cheque", "paypal", "stripe", "other"}
+
+func validMethod(m string) bool {
+	for _, x := range PaymentMethods {
+		if x == m {
+			return true
+		}
+	}
+	return false
+}
+
+// recordPayment validates and records a payment (or a deposit taken when the
+// invoice was written) on inv, updates paid / balance / status and logs it.
+// inv must be loaded with its payments.
+func (h *Handler) recordPayment(tx *gorm.DB, inv *Invoice, in paymentInput, user string, deposit bool) error {
+	what := "Payment"
+	if deposit {
+		what = "Deposit"
+	}
+	if inv.DocType != TypeInvoice {
+		return &apiError{http.StatusBadRequest, "NOT_INVOICE", "Payments can only be recorded on invoices"}
+	}
+	if inv.Status == StatusVoid {
+		return &apiError{http.StatusConflict, "LOCKED", "Void invoices can't take payments"}
+	}
+	amt := roundCur(in.Amount, inv.Currency)
+	if amt <= 0 {
+		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", what + " amount must be greater than zero"}
+	}
+	if deposit && math.Abs(amt-in.Amount) > 1e-9 {
+		d := currency.Decimals(inv.Currency)
+		msg := fmt.Sprintf("%s amounts can have at most %d decimal places", inv.Currency, d)
+		if d == 0 {
+			msg = inv.Currency + " amounts can't have decimals"
+		}
+		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", msg}
+	}
+	if amt > inv.BalanceDue+0.4/math.Pow10(currency.Decimals(inv.Currency)) {
+		if deposit {
+			return &apiError{http.StatusBadRequest, "OVERPAYMENT", fmt.Sprintf("The amount already paid can't be more than the invoice total (%s %s)", inv.Currency, fmtAmount(inv.BalanceDue, inv.Currency))}
+		}
+		return &apiError{http.StatusBadRequest, "OVERPAYMENT", fmt.Sprintf("Payment exceeds the balance due (%s %s)", inv.Currency, fmtAmount(inv.BalanceDue, inv.Currency))}
+	}
+	d, err := parseDate(in.Date)
+	if err != nil {
+		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Invalid " + strings.ToLower(what) + " date"}
+	}
+	if d.IsZero() {
+		d = dateOnly(h.now())
+	}
+	if deposit && d.After(dateOnly(h.now()).AddDate(0, 0, 1)) {
+		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", what + " date can't be in the future"}
+	}
+	method := strings.ToLower(strings.TrimSpace(in.Method))
+	method = strings.NewReplacer(" ", "_", "-", "_").Replace(method)
+	switch method {
+	case "":
+		method = "bank_transfer"
+		if deposit {
+			method = "cash"
+		}
+	case "mpesa", "m_pesa", "mobile", "mobilemoney":
+		method = "mobile_money"
+	case "bank", "transfer", "eft":
+		method = "bank_transfer"
+	case "credit_card", "debit_card":
+		method = "card"
+	}
+	if deposit && !validMethod(method) {
+		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Choose a payment method: " + strings.ReplaceAll(strings.Join(PaymentMethods, ", "), "_", " ")}
+	}
+	if len(in.Reference) > 255 {
+		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Reference is too long (255 characters max)"}
+	}
+	p := Payment{ID: uuid.NewString(), InvoiceID: inv.ID, OrganizationID: inv.OrganizationID, Amount: amt, Date: d, Method: method,
+		Reference: strings.TrimSpace(in.Reference), Notes: in.Notes, IsDeposit: deposit, CreatedBy: user, CreatedAt: h.now()}
+	if err := tx.Create(&p).Error; err != nil {
+		return err
+	}
+	inv.Payments = append(inv.Payments, p)
+	ApplyPayments(inv, h.now())
+	if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Updates(map[string]interface{}{"amount_paid": inv.AmountPaid, "balance_due": inv.BalanceDue, "status": inv.Status, "paid_at": inv.PaidAt}).Error; err != nil {
+		return err
+	}
+	label := "Payment of"
+	if deposit {
+		label = "Deposit of"
+	}
+	h.log(tx, inv, "payment", fmt.Sprintf("%s %s %s recorded (%s)", label, inv.Currency, fmtAmount(amt, inv.Currency), strings.ReplaceAll(method, "_", " ")), user)
+	return nil
 }
 
 func (h *Handler) DeletePayment(c *gin.Context) {
@@ -1396,14 +1515,26 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		return
 	}
 	in.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
-	if len(in.Currency) != 3 {
-		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Currency must be a 3-letter code, e.g. AUD")
-		return
-	}
 	cur, err := h.settingsFor(h.DB, org, false)
 	if err != nil {
 		failErr(c, err)
 		return
+	}
+	// The currency here is the organisation's home currency: changing it
+	// changes the default for new records in every module (existing
+	// documents keep theirs).
+	if in.Currency == "" {
+		in.Currency = cur.Currency
+	}
+	if !currency.IsSupported(in.Currency) {
+		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Currency "+in.Currency+" is not supported")
+		return
+	}
+	if in.Currency != cur.Currency {
+		if _, err := orgprefs.Set(h.DB, org, orgprefs.Input{Currency: in.Currency}, orgprefs.SourceUser); err != nil {
+			fail(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+			return
+		}
 	}
 	// The logo is no longer edited here (PUT /organization/logo); keep
 	// whatever legacy value is stored.

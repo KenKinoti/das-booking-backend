@@ -3,6 +3,7 @@ package plans
 import (
 	"errors"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"log"
 	"sort"
 	"strings"
@@ -12,8 +13,6 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-
-	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
 )
 
 // Service owns the catalogue, subscriptions and entitlement cache.
@@ -227,21 +226,7 @@ func (s *Service) defaultSubscription(org string) Subscription {
 }
 
 // orgCurrency guesses the organisation's currency from existing settings.
-func (s *Service) orgCurrency(org string) string {
-	for _, q := range []string{
-		"SELECT currency FROM organization_settings WHERE organization_id = ? LIMIT 1",
-		"SELECT currency FROM billing_settings WHERE organization_id = ? LIMIT 1",
-	} {
-		var cur string
-		if err := s.DB.Raw(q, org).Row().Scan(&cur); err == nil {
-			cur = strings.ToUpper(strings.TrimSpace(cur))
-			if currency.IsSupported(cur) {
-				return cur
-			}
-		}
-	}
-	return "AUD"
-}
+func (s *Service) orgCurrency(org string) string { return orgprefs.Currency(s.DB, org) }
 
 func (s *Service) quoteFor(sub *Subscription) (*Quote, error) {
 	cat, err := s.Catalog()
@@ -355,13 +340,13 @@ func (s *Service) Save(sub *Subscription, by string) (*Quote, error) {
 	return q, nil
 }
 
-// SyncDefaultCurrency mirrors the default currency into organisation settings
-// (best effort) so modules that read settings pick it up too.
+// SyncDefaultCurrency makes cur the organisation's home currency (the single
+// source every module reads, see pkg/orgprefs), best effort.
 func (s *Service) SyncDefaultCurrency(org, cur string) {
 	if cur == "" {
 		return
 	}
-	if err := s.DB.Exec("UPDATE organization_settings SET currency = ? WHERE organization_id = ?", cur, org).Error; err != nil {
+	if _, err := orgprefs.Set(s.DB, org, orgprefs.Input{Currency: cur}, orgprefs.SourceUser); err != nil {
 		log.Printf("plans: sync default currency: %v", err)
 	}
 }

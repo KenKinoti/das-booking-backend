@@ -3,6 +3,7 @@ package finance
 import (
 	"errors"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"sort"
 	"strconv"
 	"strings"
@@ -156,7 +157,7 @@ func cleanBankInput(in *BankAccountInput) error {
 	}
 	in.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
 	if in.Currency == "" {
-		in.Currency = "AUD"
+		in.Currency = orgprefs.DefaultCurrency
 	}
 	if len(in.Currency) != 3 {
 		return invalid("currency must be a 3-letter code")
@@ -167,6 +168,9 @@ func cleanBankInput(in *BankAccountInput) error {
 // CreateBankAccount adds a bank account, its ledger account and any opening balance.
 func (s *Service) CreateBankAccount(orgID, userID string, in BankAccountInput) (*BankAccount, error) {
 	s.EnsureSetup(orgID)
+	if strings.TrimSpace(in.Currency) == "" {
+		in.Currency = orgprefs.Currency(s.db, orgID)
+	}
 	if err := cleanBankInput(&in); err != nil {
 		return nil, err
 	}
@@ -219,6 +223,9 @@ func (s *Service) UpdateBankAccount(orgID, id string, in BankAccountInput) (*Ban
 	b, err := s.bankInOrg(s.db, orgID, id)
 	if err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(in.Currency) == "" {
+		in.Currency = b.Currency
 	}
 	if err := cleanBankInput(&in); err != nil {
 		return nil, err

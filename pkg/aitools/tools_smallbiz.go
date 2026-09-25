@@ -107,10 +107,10 @@ func init() {
 		Handler:     remindersComplete,
 	})
 	Register(Tool{
-		Name:  "profit_and_loss",
-		Title: "Profit & loss",
-		Description: "Profit and loss for a financial year from the cash book: income and expenses by category and month, " +
-			"totals, tax and net profit.",
+		Name:  "cashbook_profit_and_loss",
+		Title: "Cash book profit & loss",
+		Description: "Cash-book-only profit and loss for a financial year (Business hub → Reports → Cash book P&L): money in and out " +
+			"by category and month. It does NOT include invoices, POS, bills or payroll — for the business's profit use profit_and_loss.",
 		InputSchema: tObj(map[string]any{
 			"fy":       tInt("Financial year start year, e.g. 2025 (default current)", 1970, 2200),
 			"currency": tStr("Currency (default the business currency)"),
@@ -337,5 +337,6 @@ func profitAndLoss(c *Ctx, a map[string]any) (any, error) {
 	}
 	out["by_month"] = months // months with activity only
 	out["url"] = tURL("/business?tab=reports")
+	out["note"] = "Cash book only. The whole-business profit (invoices, POS, bills, payroll, cash book) comes from profit_and_loss."
 	return out, nil
 }

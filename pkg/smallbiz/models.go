@@ -57,26 +57,31 @@ func (Category) TableName() string { return "smallbiz_categories" }
 
 // Entry is one line in the cash book. Amount is the tax-inclusive total.
 type Entry struct {
-	ID             string         `json:"id" gorm:"type:varchar(36);primaryKey"`
-	OrganizationID string         `json:"-" gorm:"type:varchar(64);index:idx_smb_entries_org_date;not null"`
-	Type           string         `json:"type" gorm:"type:varchar(10);not null"`
-	Date           time.Time      `json:"date" gorm:"type:date;index:idx_smb_entries_org_date;not null"`
-	Amount         int64          `json:"amount_minor" gorm:"not null"`
-	Currency       string         `json:"currency" gorm:"type:varchar(3);not null"`
-	TaxRate        float64        `json:"tax_rate"`
-	Tax            int64          `json:"tax_minor"`
-	CategoryID     string         `json:"category_id" gorm:"type:varchar(36);index"`
-	PaymentMethod  string         `json:"payment_method" gorm:"type:varchar(40)"`
-	Description    string         `json:"description" gorm:"type:varchar(500)"`
-	Reference      string         `json:"reference" gorm:"type:varchar(120)"`
-	AttachmentURL  string         `json:"attachment_url" gorm:"type:varchar(1000)"`
-	AttachmentName string         `json:"attachment_name" gorm:"type:varchar(200)"`
-	AttachmentData string         `json:"attachment_data,omitempty" gorm:"type:text"`
-	HasAttachment  bool           `json:"has_attachment"`
-	CreatedBy      string         `json:"created_by" gorm:"type:varchar(64)"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
+	ID             string    `json:"id" gorm:"type:varchar(36);primaryKey"`
+	OrganizationID string    `json:"-" gorm:"type:varchar(64);index:idx_smb_entries_org_date;not null"`
+	Type           string    `json:"type" gorm:"type:varchar(10);not null"`
+	Date           time.Time `json:"date" gorm:"type:date;index:idx_smb_entries_org_date;not null"`
+	Amount         int64     `json:"amount_minor" gorm:"not null"`
+	Currency       string    `json:"currency" gorm:"type:varchar(3);not null"`
+	TaxRate        float64   `json:"tax_rate"`
+	Tax            int64     `json:"tax_minor"`
+	CategoryID     string    `json:"category_id" gorm:"type:varchar(36);index"`
+	PaymentMethod  string    `json:"payment_method" gorm:"type:varchar(40)"`
+	Description    string    `json:"description" gorm:"type:varchar(500)"`
+	Reference      string    `json:"reference" gorm:"type:varchar(120)"`
+	AttachmentURL  string    `json:"attachment_url" gorm:"type:varchar(1000)"`
+	AttachmentName string    `json:"attachment_name" gorm:"type:varchar(200)"`
+	AttachmentData string    `json:"attachment_data,omitempty" gorm:"type:text"`
+	HasAttachment  bool      `json:"has_attachment"`
+	// LinkType marks an entry that records money already counted elsewhere in
+	// the ERP (an invoice payment, a supplier bill, a POS sale, a pay run …) or
+	// money that isn't profit at all (a transfer, loan or owner's money). The
+	// Profit & loss report leaves linked entries out so nothing counts twice.
+	LinkType  string         `json:"link_type" gorm:"type:varchar(20);default:''"`
+	CreatedBy string         `json:"created_by" gorm:"type:varchar(64)"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Derived
 	CategoryName string `json:"category_name" gorm:"-"`
@@ -84,6 +89,17 @@ type Entry struct {
 }
 
 func (Entry) TableName() string { return "smallbiz_entries" }
+
+// Link types for Entry.LinkType.
+var LinkTypes = map[string]string{
+	"invoice":        "Invoice payment",
+	"bill":           "Supplier bill",
+	"pos":            "POS sale",
+	"payroll":        "Pay run",
+	"purchase_order": "Purchase order",
+	"event":          "Event ticket",
+	"transfer":       "Transfer, loan or owner money",
+}
 
 // Reminder is a to-do with an optional amount and recurrence.
 type Reminder struct {

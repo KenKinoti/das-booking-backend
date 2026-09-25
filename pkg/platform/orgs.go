@@ -18,6 +18,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/plans"
 )
 
@@ -36,6 +38,9 @@ type OrgRow struct {
 	AddressState    string          `json:"address_state"`
 	AddressPostcode string          `json:"address_postcode"`
 	AddressCountry  string          `json:"address_country"`
+	CountryCode     string          `json:"country_code"`
+	Currency        string          `json:"currency"`
+	RegionSource    string          `json:"region_source"`
 	EnabledModules  json.RawMessage `json:"enabled_modules" gorm:"-"`
 	RawModules      *string         `json:"-" gorm:"column:enabled_modules"`
 	Status          string          `json:"status"`
@@ -52,6 +57,10 @@ type OrgRow struct {
 }
 
 func (h *Handler) orgSelect() string {
+	region := "'' AS country_code, '' AS currency, '' AS region_source,"
+	if h.DB.Migrator().HasColumn("organizations", "country_code") {
+		region = "COALESCE(o.country_code,'') AS country_code, COALESCE(o.currency,'') AS currency, COALESCE(o.region_source,'') AS region_source,"
+	}
 	inv := "0"
 	if hasTable(h.DB, "billing_invoices") {
 		inv = "(SELECT COUNT(*) FROM billing_invoices i WHERE i.organization_id = o.id AND i.deleted_at IS NULL AND i.doc_type = 'invoice')"
@@ -62,7 +71,7 @@ func (h *Handler) orgSelect() string {
 		planStatus = "(SELECT ps.status FROM plan_subscriptions ps WHERE ps.organization_id = o.id LIMIT 1)"
 	}
 	return `o.id, o.name, o.email, o.phone, o.website, o.abn, o.business_type, o.description,
-		o.address_street, o.address_suburb, o.address_state, o.address_postcode, o.address_country,
+		o.address_street, o.address_suburb, o.address_state, o.address_postcode, o.address_country, ` + region + `
 		o.enabled_modules AS raw_modules, o.created_at, o.updated_at,
 		COALESCE(s.status, 'active') AS status, COALESCE(s.reason, '') AS status_reason,
 		(SELECT COUNT(*) FROM users u WHERE u.organization_id = o.id AND u.deleted_at IS NULL) AS users,
@@ -230,6 +239,8 @@ type orgInput struct {
 	ABN          string `json:"abn"`
 	BusinessType string `json:"business_type"`
 	Description  string `json:"description"`
+	CountryCode  string `json:"country_code"`
+	Currency     string `json:"currency"`
 	Address      struct {
 		Street   string `json:"street"`
 		Suburb   string `json:"suburb"`
@@ -270,6 +281,17 @@ func (in *orgInput) normalise() string {
 	}
 	if len(in.Address.Postcode) > 10 {
 		return "Postcode is too long"
+	}
+	in.CountryCode = strings.ToUpper(strings.TrimSpace(in.CountryCode))
+	if in.CountryCode != "" && !currency.IsCountry(in.CountryCode) {
+		return "Choose a country from the list"
+	}
+	in.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
+	if in.Currency != "" && !currency.IsSupported(in.Currency) {
+		return "Unsupported currency " + in.Currency
+	}
+	if in.CountryCode != "" {
+		in.Address.Country = currency.CountryName(in.CountryCode)
 	}
 	return ""
 }
@@ -350,9 +372,7 @@ func (h *Handler) CreateOrganization(c *gin.Context) {
 		EnabledModules: []string{},
 		ModulesConfig:  map[string]bool{},
 	}
-	if org.Address.Country == "" {
-		org.Address.Country = "Australia"
-	}
+
 	user := models.User{
 		Email: a.Email, PasswordHash: string(hash), FirstName: a.FirstName, LastName: a.LastName,
 		Phone: strings.TrimSpace(a.Phone), Role: "admin", IsActive: true,
@@ -377,6 +397,13 @@ func (h *Handler) CreateOrganization(c *gin.Context) {
 	if err != nil {
 		fail(c, http.StatusInternalServerError, "DATABASE_ERROR", "Failed to create the organisation: "+err.Error())
 		return
+	}
+	// Where the business is based: its country and home currency. Without a
+	// country its admin is asked on first sign-in.
+	if req.CountryCode != "" {
+		if _, err := orgprefs.Set(h.DB, org.ID, orgprefs.Input{CountryCode: req.CountryCode, Currency: req.Currency}, orgprefs.SourceUser); err != nil {
+			fmt.Printf("platform: region for %s: %v\n", org.ID, err)
+		}
 	}
 	// Start the organisation on its default plan straight away (same rules the
 	// entitlement middleware applies on first use).
@@ -426,6 +453,12 @@ func (h *Handler) UpdateOrganization(c *gin.Context) {
 	if err := h.DB.Table("organizations").Where("id = ?", id).Updates(upd).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "DATABASE_ERROR", "Failed to update the organisation")
 		return
+	}
+	if in.CountryCode != "" && (in.CountryCode != before.CountryCode || (in.Currency != "" && in.Currency != before.Currency)) {
+		if _, err := orgprefs.Set(h.DB, id, orgprefs.Input{CountryCode: in.CountryCode, Currency: in.Currency}, orgprefs.SourceUser); err != nil {
+			fail(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+			return
+		}
 	}
 	after, _ := h.loadOrg(id)
 	Audit(h.DB, c, id, "organization.update", "organization", id,

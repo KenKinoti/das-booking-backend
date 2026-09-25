@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"net/http"
 	"strconv"
 	"time"
@@ -181,10 +182,10 @@ func (h *Handler) GetOrganizationSettings(c *gin.Context) {
 		// Create default settings if none exist
 		settings = models.OrganizationSettings{
 			OrganizationID:           fmt.Sprintf("%v", orgID),
-			Timezone:                 "Australia/Adelaide",
+			Timezone:                 orgprefs.Get(h.DB, fmt.Sprint(orgID)).Timezone,
 			DateFormat:               "DD/MM/YYYY",
 			TimeFormat:               "24h",
-			Currency:                 "AUD",
+			Currency:                 orgprefs.Currency(h.DB, fmt.Sprint(orgID)),
 			Language:                 "en-AU",
 			DefaultShiftDuration:     120,
 			MaxShiftDuration:         720,

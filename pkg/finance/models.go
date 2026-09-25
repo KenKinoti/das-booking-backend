@@ -108,31 +108,38 @@ type InvoiceLineItem struct {
 
 // Bill represents vendor bills for Accounts Payable.
 type Bill struct {
-	ID             string         `json:"id" gorm:"primaryKey"`
-	OrganizationID string         `json:"organization_id" gorm:"not null;index:idx_bill_org_number,priority:1"`
-	BillNumber     string         `json:"bill_number" gorm:"not null;index:idx_bill_org_number,priority:2"`
-	VendorID       string         `json:"vendor_id" gorm:"not null;index"`
-	Reference      string         `json:"reference"` // supplier's invoice number
-	BillDate       time.Time      `json:"bill_date" gorm:"not null"`
-	DueDate        time.Time      `json:"due_date" gorm:"not null"`
-	Status         string         `json:"status" gorm:"default:'unpaid'"` // draft, unpaid, partial, paid
-	SubTotal       float64        `json:"subtotal" gorm:"not null"`
-	TaxAmount      float64        `json:"tax_amount" gorm:"default:0"`
-	Total          float64        `json:"total" gorm:"not null"`
-	PaidAmount     float64        `json:"paid_amount" gorm:"default:0"`
-	Notes          string         `json:"notes"`
-	JournalEntryID string         `json:"journal_entry_id"`
-	PaidAt         *time.Time     `json:"paid_at"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	LineItems      []BillLineItem `json:"line_items" gorm:"foreignKey:BillID"`
-	Payments       []Payment      `json:"payments,omitempty" gorm:"foreignKey:BillID"`
+	ID             string    `json:"id" gorm:"primaryKey"`
+	OrganizationID string    `json:"organization_id" gorm:"not null;index:idx_bill_org_number,priority:1"`
+	BillNumber     string    `json:"bill_number" gorm:"not null;index:idx_bill_org_number,priority:2"`
+	VendorID       string    `json:"vendor_id" gorm:"not null;index"`
+	Reference      string    `json:"reference"` // supplier's invoice number
+	BillDate       time.Time `json:"bill_date" gorm:"not null"`
+	DueDate        time.Time `json:"due_date" gorm:"not null"`
+	Status         string    `json:"status" gorm:"default:'unpaid'"` // draft, unpaid, partial, paid
+	SubTotal       float64   `json:"subtotal" gorm:"not null"`
+	TaxAmount      float64   `json:"tax_amount" gorm:"default:0"`
+	Total          float64   `json:"total" gorm:"not null"`
+	PaidAmount     float64   `json:"paid_amount" gorm:"default:0"`
+	// Currency of the bill (defaults to the organisation's home currency).
+	Currency       string `json:"currency" gorm:"type:varchar(3)"`
+	Notes          string `json:"notes"`
+	JournalEntryID string `json:"journal_entry_id"`
+	// PurchaseOrderID links a supplier bill to the purchase order it charges
+	// for, so the Profit & loss report counts that stock purchase once (the
+	// bill) instead of twice (the received order and the bill).
+	PurchaseOrderID string         `json:"purchase_order_id" gorm:"type:varchar(255);index"`
+	PaidAt          *time.Time     `json:"paid_at"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	LineItems       []BillLineItem `json:"line_items" gorm:"foreignKey:BillID"`
+	Payments        []Payment      `json:"payments,omitempty" gorm:"foreignKey:BillID"`
 
 	// Computed
-	VendorName    string  `json:"vendor_name" gorm:"-"`
-	AmountDue     float64 `json:"amount_due" gorm:"-"`
-	DisplayStatus string  `json:"display_status" gorm:"-"`
-	DaysOverdue   int     `json:"days_overdue" gorm:"-"`
+	VendorName          string  `json:"vendor_name" gorm:"-"`
+	PurchaseOrderNumber string  `json:"purchase_order_number,omitempty" gorm:"-"`
+	AmountDue           float64 `json:"amount_due" gorm:"-"`
+	DisplayStatus       string  `json:"display_status" gorm:"-"`
+	DaysOverdue         int     `json:"days_overdue" gorm:"-"`
 }
 
 // BillLineItem represents individual line items in a bill.

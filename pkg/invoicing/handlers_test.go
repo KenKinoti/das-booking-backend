@@ -238,3 +238,85 @@ func TestCurrencyAndSendCC(t *testing.T) {
 		t.Fatalf("duplicate should keep cc_emails: %v", cc)
 	}
 }
+
+func TestDepositOnCreateUpdateAndConvert(t *testing.T) {
+	r, org := setup(t)
+	items := []map[string]interface{}{{"description": "Work", "quantity": 2, "unit_price": 100, "tax_rate": 10}} // total 220
+	// Deposit recorded as a real payment: partially paid, balance due.
+	code, res := call(t, r, org, "POST", "/api/invoices", map[string]interface{}{
+		"client_name": "Deposit Co", "items": items,
+		"deposit": map[string]interface{}{"amount": 50, "date": "2026-01-05", "method": "M-Pesa", "reference": "QK12AB"},
+	})
+	if code != 201 {
+		t.Fatalf("create with deposit: %d %v", code, res)
+	}
+	inv := data(res)
+	if inv["status"] != "partial" || inv["amount_paid"].(float64) != 50 || inv["balance_due"].(float64) != 170 {
+		t.Fatalf("status %v paid %v due %v", inv["status"], inv["amount_paid"], inv["balance_due"])
+	}
+	pays := inv["payments"].([]interface{})
+	p := pays[0].(map[string]interface{})
+	if len(pays) != 1 || p["is_deposit"] != true || p["method"] != "mobile_money" || p["reference"] != "QK12AB" || !strings.HasPrefix(p["date"].(string), "2026-01-05") {
+		t.Fatalf("payment %v", p)
+	}
+	logged := false
+	for _, a := range inv["activities"].([]interface{}) {
+		if strings.HasPrefix(a.(map[string]interface{})["message"].(string), "Deposit of AUD 50.00") {
+			logged = true
+		}
+	}
+	if !logged {
+		t.Fatal("deposit not in activity log")
+	}
+
+	// Validation: more than the total, zero, bad method, future date
+	for _, dep := range []map[string]interface{}{
+		{"amount": 221}, {"amount": 0.001}, {"amount": 10, "method": "barter"}, {"amount": 10, "date": "2999-01-01"},
+	} {
+		code, _ = call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"client_name": "X", "items": items, "deposit": dep})
+		if code != 400 {
+			t.Errorf("deposit %v accepted: %d", dep, code)
+		}
+	}
+	// JPY has no decimals
+	code, _ = call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"client_name": "JP", "currency": "JPY",
+		"items": []map[string]interface{}{{"description": "x", "quantity": 1, "unit_price": 1000}}, "deposit": map[string]interface{}{"amount": 100.5}})
+	if code != 400 {
+		t.Errorf("JPY deposit with decimals accepted: %d", code)
+	}
+
+	// Save & send with the whole amount paid → paid
+	code, res = call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"client_name": "Full", "status": "sent", "items": items, "deposit": map[string]interface{}{"amount": 220, "method": "cash"}})
+	if code != 201 || data(res)["status"] != "paid" || data(res)["balance_due"].(float64) != 0 {
+		t.Fatalf("full deposit: %d %v %v", code, data(res)["status"], data(res)["balance_due"])
+	}
+
+	// Adding a deposit when editing a draft
+	code, res = call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"client_name": "Later", "items": items})
+	id := data(res)["id"].(string)
+	code, res = call(t, r, org, "PUT", "/api/invoices/"+id, map[string]interface{}{"client_name": "Later", "items": items, "deposit": map[string]interface{}{"amount": 20, "method": "card"}})
+	if code != 200 || data(res)["status"] != "partial" || data(res)["amount_paid"].(float64) != 20 {
+		t.Fatalf("update deposit: %d %v", code, res)
+	}
+
+	// Quotes can't take a deposit; converting one can.
+	code, _ = call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"doc_type": "quote", "client_name": "Q", "items": items, "deposit": map[string]interface{}{"amount": 10}})
+	if code != 400 {
+		t.Fatalf("deposit on quote: %d", code)
+	}
+	code, res = call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"doc_type": "quote", "client_name": "Q", "items": items})
+	qid := data(res)["id"].(string)
+	code, res = call(t, r, org, "POST", "/api/invoices/"+qid+"/convert", map[string]interface{}{"deposit": map[string]interface{}{"amount": 100, "method": "bank_transfer"}})
+	if code != 201 || data(res)["doc_type"] != "invoice" || data(res)["status"] != "partial" || data(res)["amount_paid"].(float64) != 100 {
+		t.Fatalf("convert with deposit: %d %v", code, res)
+	}
+	// Convert without a body still works.
+	_, res = call(t, r, org, "POST", "/api/invoices", map[string]interface{}{"doc_type": "quote", "client_name": "Q2", "items": items})
+	req := httptest.NewRequest("POST", "/api/invoices/"+data(res)["id"].(string)+"/convert", nil)
+	req.Header.Set("X-Org", org)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != 201 {
+		t.Fatalf("convert without body: %d %s", w.Code, w.Body.String())
+	}
+}

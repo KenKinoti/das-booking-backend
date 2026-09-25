@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"net/http"
 	"sort"
 	"strconv"
@@ -364,7 +365,7 @@ func (h *Handler) applyEmployee(c *gin.Context, org string, e *Employee) bool {
 	e.PayRate = *in.PayRate
 	cur := strings.ToUpper(strings.TrimSpace(in.Currency))
 	if cur == "" {
-		cur = "AUD"
+		cur = orgprefs.Currency(h.DB, org)
 	}
 	if !currency.IsSupported(cur) {
 		fail(c, http.StatusBadRequest, "Unsupported currency "+cur)
@@ -903,7 +904,7 @@ func (h *Handler) plan(org string, in payRunInput, existingID string) (*payRunPl
 	}
 	cur := strings.ToUpper(strings.TrimSpace(in.Currency))
 	if cur == "" {
-		cur = "AUD"
+		cur = orgprefs.Currency(h.DB, org)
 	}
 	if !currency.IsSupported(cur) {
 		return nil, http.StatusBadRequest, errors.New("Unsupported currency " + cur)

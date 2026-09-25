@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"math"
 	"net/http"
 	"net/mail"
@@ -77,19 +78,7 @@ func parseDOB(s string) (*time.Time, bool) {
 
 // orgDefaultCurrency is the organisation's invoicing currency (invoicing
 // settings, else the plan's default currency, else AUD).
-func (h *Handler) orgDefaultCurrency(orgID string) string {
-	var cur string
-	h.DB.Raw("SELECT UPPER(currency) FROM billing_settings WHERE organization_id = ? AND currency <> '' LIMIT 1", orgID).Row().Scan(&cur)
-	if currency.IsSupported(cur) {
-		return cur
-	}
-	cur = ""
-	h.DB.Raw("SELECT UPPER(COALESCE(NULLIF(default_currency,''), currency)) FROM plan_subscriptions WHERE organization_id = ? LIMIT 1", orgID).Row().Scan(&cur)
-	if currency.IsSupported(cur) {
-		return cur
-	}
-	return "AUD"
-}
+func (h *Handler) orgDefaultCurrency(orgID string) string { return orgprefs.Currency(h.DB, orgID) }
 
 // billingCurrency resolves the currency to invoice a customer in.
 func billingCurrency(cu models.Customer, orgDefault string) (string, string) {
@@ -181,17 +170,18 @@ func (h *Handler) summariseCustomers(orgID string, customers []models.Customer) 
 		CustomerID string
 		V          float64
 	}
+	home := h.orgDefaultCurrency(orgID)
 	var srows []srow
 	h.DB.Raw(`SELECT customer_id, SUM(v) AS v FROM (
 			SELECT i.customer_id, COALESCE(SUM(i.amount_paid),0) AS v FROM billing_invoices i
 			WHERE i.organization_id = ? AND i.customer_id IN ? AND i.deleted_at IS NULL AND i.doc_type = 'invoice' AND i.status <> 'void'
-			  AND UPPER(COALESCE(NULLIF(i.currency,''),'AUD')) = COALESCE((SELECT UPPER(currency) FROM billing_settings WHERE organization_id = ? AND currency <> '' LIMIT 1),'AUD')
+			  AND UPPER(COALESCE(NULLIF(i.currency,''), ?)) = ?
 			GROUP BY 1
 			UNION ALL
 			SELECT t.customer_id, COALESCE(SUM(t.total_amount),0) FROM pos_transactions t
 			WHERE t.organization_id = ? AND t.customer_id IN ? AND t.deleted_at IS NULL AND t.status = 'completed' AND t.type = 'sale'
 			GROUP BY 1
-		) x GROUP BY customer_id`, orgID, ids, orgID, orgID, ids).Scan(&srows)
+		) x GROUP BY customer_id`, orgID, ids, home, home, orgID, ids).Scan(&srows)
 
 	idx := map[string]int{}
 	for i, id := range ids {

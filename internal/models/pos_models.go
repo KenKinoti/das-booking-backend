@@ -33,29 +33,31 @@ func (POSCustomerRef) TableName() string { return "customers" }
 
 // POSTransaction represents a point of sale transaction
 type POSTransaction struct {
-	ID                string         `json:"id" gorm:"type:varchar(255);primaryKey"`
-	OrganizationID    string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
-	CustomerID        *string        `json:"customer_id,omitempty" gorm:"type:varchar(255);index"`
-	CashierID         string         `json:"cashier_id" gorm:"type:varchar(255);not null;index"`
-	CashDrawerID      *string        `json:"cash_drawer_id,omitempty" gorm:"type:varchar(255);index"`
-	TransactionNumber string         `json:"transaction_number" gorm:"type:varchar(50);uniqueIndex"`
-	Type              string         `json:"type" gorm:"type:varchar(20);default:'sale';index"`        // sale, return, exchange
-	Status            string         `json:"status" gorm:"type:varchar(20);default:'completed';index"` // completed, voided
-	SubTotal          float64        `json:"sub_total" gorm:"type:decimal(10,2);not null"`
-	TaxAmount         float64        `json:"tax_amount" gorm:"type:decimal(10,2);default:0"`
-	TaxInclusive      bool           `json:"tax_inclusive" gorm:"default:false"`
-	DiscountAmount    float64        `json:"discount_amount" gorm:"type:decimal(10,2);default:0"`
-	TotalAmount       float64        `json:"total_amount" gorm:"type:decimal(10,2);not null"`
-	TenderAmount      float64        `json:"tender_amount" gorm:"type:decimal(10,2);not null"`
-	ChangeAmount      float64        `json:"change_amount" gorm:"type:decimal(10,2);default:0"`
-	Notes             string         `json:"notes" gorm:"type:text"`
-	ReceiptPrinted    bool           `json:"receipt_printed" gorm:"default:false"`
-	VoidReason        string         `json:"void_reason,omitempty" gorm:"type:text"`
-	VoidedAt          *time.Time     `json:"voided_at,omitempty"`
-	VoidedBy          *string        `json:"voided_by,omitempty" gorm:"type:varchar(255)"`
-	CreatedAt         time.Time      `json:"created_at"`
-	UpdatedAt         time.Time      `json:"updated_at"`
-	DeletedAt         gorm.DeletedAt `json:"-" gorm:"index"`
+	ID                string  `json:"id" gorm:"type:varchar(255);primaryKey"`
+	OrganizationID    string  `json:"organization_id" gorm:"type:varchar(255);not null;index"`
+	CustomerID        *string `json:"customer_id,omitempty" gorm:"type:varchar(255);index"`
+	CashierID         string  `json:"cashier_id" gorm:"type:varchar(255);not null;index"`
+	CashDrawerID      *string `json:"cash_drawer_id,omitempty" gorm:"type:varchar(255);index"`
+	TransactionNumber string  `json:"transaction_number" gorm:"type:varchar(50);uniqueIndex"`
+	Type              string  `json:"type" gorm:"type:varchar(20);default:'sale';index"`        // sale, return, exchange
+	Status            string  `json:"status" gorm:"type:varchar(20);default:'completed';index"` // completed, voided
+	SubTotal          float64 `json:"sub_total" gorm:"type:decimal(10,2);not null"`
+	TaxAmount         float64 `json:"tax_amount" gorm:"type:decimal(10,2);default:0"`
+	TaxInclusive      bool    `json:"tax_inclusive" gorm:"default:false"`
+	DiscountAmount    float64 `json:"discount_amount" gorm:"type:decimal(10,2);default:0"`
+	TotalAmount       float64 `json:"total_amount" gorm:"type:decimal(10,2);not null"`
+	TenderAmount      float64 `json:"tender_amount" gorm:"type:decimal(10,2);not null"`
+	ChangeAmount      float64 `json:"change_amount" gorm:"type:decimal(10,2);default:0"`
+	// Currency the sale was made in (the organisation's home currency then).
+	Currency       string         `json:"currency" gorm:"type:varchar(3)"`
+	Notes          string         `json:"notes" gorm:"type:text"`
+	ReceiptPrinted bool           `json:"receipt_printed" gorm:"default:false"`
+	VoidReason     string         `json:"void_reason,omitempty" gorm:"type:text"`
+	VoidedAt       *time.Time     `json:"voided_at,omitempty"`
+	VoidedBy       *string        `json:"voided_by,omitempty" gorm:"type:varchar(255)"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Relationships
 	Customer *POSCustomerRef `json:"customer,omitempty" gorm:"foreignKey:CustomerID"`

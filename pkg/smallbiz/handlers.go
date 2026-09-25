@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"net/http"
 	"strconv"
 	"strings"
@@ -183,15 +184,8 @@ var taxDefaults = map[string]struct {
 var fyDefaults = map[string]int{"AUD": 7, "EGP": 7, "KES": 7, "UGX": 7, "TZS": 7, "NZD": 4, "GBP": 4, "INR": 4, "JPY": 4, "HKD": 4, "ZAR": 3}
 
 func (h *Handler) orgCurrency(org string) string {
-	cur := ""
-	if h.DB.Migrator().HasTable("organization_settings") {
-		h.DB.Raw("SELECT currency FROM organization_settings WHERE organization_id = ? LIMIT 1", org).Scan(&cur)
-	}
-	cur = strings.ToUpper(strings.TrimSpace(cur))
-	if !currency.IsSupported(cur) {
-		cur = "AUD"
-	}
-	return cur
+	// The organisation's home currency (Settings → Business details).
+	return orgprefs.Currency(h.DB, org)
 }
 
 func (h *Handler) defaults(org string) Settings {
@@ -531,6 +525,7 @@ type entryInput struct {
 	AttachmentURL  string     `json:"attachment_url"`
 	AttachmentName string     `json:"attachment_name"`
 	AttachmentData *string    `json:"attachment_data"`
+	LinkType       *string    `json:"link_type"`
 }
 
 var allowedAttachmentTypes = []string{"image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"}
@@ -637,9 +632,17 @@ func (h *Handler) applyEntry(org string, s *Settings, in *entryInput, e *Entry) 
 			fields["attachment_data"] = err.Error()
 		}
 	}
+	link := e.LinkType
+	if in.LinkType != nil {
+		link = strings.ToLower(strings.TrimSpace(*in.LinkType))
+		if _, known := LinkTypes[link]; link != "" && !known {
+			fields["link_type"] = "Choose where this money is already recorded"
+		}
+	}
 	if len(fields) > 0 {
 		return invalid(fields)
 	}
+	e.LinkType = link
 	e.Type, e.Date, e.Amount, e.Currency, e.TaxRate, e.Tax = in.Type, d, amount, cur, float64(rateBP(rate))/100, tax
 	e.CategoryID, e.PaymentMethod, e.Description = catID, strings.TrimSpace(in.PaymentMethod), desc
 	e.Reference, e.AttachmentURL = strings.TrimSpace(in.Reference), url
@@ -759,7 +762,7 @@ func (h *Handler) DeleteEntry(c *gin.Context) {
 }
 
 // light columns: everything but the attachment payload.
-const entryCols = "id, type, date, amount, currency, tax_rate, tax, category_id, payment_method, description, reference, attachment_url, attachment_name, has_attachment, created_by, created_at, updated_at"
+const entryCols = "id, type, date, amount, currency, tax_rate, tax, category_id, payment_method, description, reference, attachment_url, attachment_name, has_attachment, link_type, created_by, created_at, updated_at"
 
 type entryFilter struct {
 	period   Period

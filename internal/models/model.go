@@ -21,6 +21,13 @@ type Organization struct {
 	BusinessHours   BusinessHours   `json:"business_hours" gorm:"embedded;embeddedPrefix:hours_"`
 	BookingSettings BookingSettings `json:"booking_settings" gorm:"embedded;embeddedPrefix:booking_"`
 
+	// Regional preferences — the single source for the organisation's home
+	// currency (see pkg/orgprefs). Empty until set or backfilled.
+	CountryCode  string `json:"country_code" gorm:"type:varchar(2)"`
+	Currency     string `json:"currency" gorm:"type:varchar(3)"`
+	Timezone     string `json:"timezone" gorm:"type:varchar(64)"`
+	RegionSource string `json:"region_source" gorm:"type:varchar(16)"`
+
 	// Modules Management
 	EnabledModules []string        `json:"enabled_modules" gorm:"type:text;serializer:json"`
 	ModulesConfig  map[string]bool `json:"modules_config" gorm:"type:text;serializer:json"`

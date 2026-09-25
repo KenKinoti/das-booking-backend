@@ -384,6 +384,9 @@ func (h *Handler) GetBills(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// Optional date filters (drill-down from the Profit & loss report):
+	// from/to = bill date, paid_from/paid_to = a payment dated in the range.
+	bills = h.service.FilterBillsByDate(orgID, bills, c.Query("from"), c.Query("to"), c.Query("paid_from"), c.Query("paid_to"))
 	ok(c, http.StatusOK, bills)
 }
 

@@ -449,6 +449,21 @@ func TestToolsEndToEnd(t *testing.T) {
 		t.Fatalf("payment %v", paid)
 	}
 
+	// A deposit already received is recorded as a payment.
+	dep := e.tool(tok, "invoices_create", map[string]any{"customer_id": cid, "items": []any{map[string]any{"description": "Deposit job", "quantity": 1, "unit_price": 100, "tax_rate": 0}},
+		"amount_paid": 40, "payment_method": "mobile_money", "payment_reference": "QK1"})
+	if dep["status"] != "partial" || dep["amount_paid"].(float64) != 40 || dep["balance_due"].(float64) != 60 {
+		t.Fatalf("invoice with deposit %v", dep)
+	}
+	if ps, _ := dep["payments"].([]any); len(ps) != 1 || ps[0].(map[string]any)["is_deposit"] != true {
+		t.Fatalf("deposit payment %v", dep["payments"])
+	}
+	q := e.tool(tok, "quotes_create", map[string]any{"customer_id": cid, "items": []any{map[string]any{"description": "Quoted", "quantity": 1, "unit_price": 300, "tax_rate": 0}}})
+	conv := e.tool(tok, "quotes_convert", map[string]any{"quote_id": q["id"], "amount_paid": 100, "payment_method": "cash"})
+	if conv["status"] != "partial" || conv["balance_due"].(float64) != 200 {
+		t.Fatalf("converted with deposit %v", conv)
+	}
+
 	bk := e.tool(tok, "bookings_create", map[string]any{"customer_id": cid, "start_time": "2030-01-15T10:00", "notes": "via mcp"})
 	if bk["status"] != "scheduled" || !strings.Contains(bk["url"].(string), "/bookings?booking=") {
 		t.Fatalf("booking %v", bk)

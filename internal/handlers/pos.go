@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"math"
 	"net/http"
 	"strconv"
@@ -94,6 +95,8 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 		return
 	}
 	userID := c.GetString("user_id")
+	// Sales are rung up in the organisation's home currency.
+	saleCurrency := orgprefs.Currency(h.DB, orgID)
 
 	var req struct {
 		CustomerID      *string           `json:"customer_id"`
@@ -311,6 +314,7 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 			TenderAmount:   paid,
 			ChangeAmount:   change,
 			Notes:          strings.TrimSpace(req.Notes),
+			Currency:       saleCurrency,
 		}
 		if err := tx.Omit("Customer", "Cashier", "Items", "Payments").Create(&txn).Error; err != nil {
 			return err

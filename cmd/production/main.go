@@ -291,8 +291,7 @@ func prepareDatabase(db *gorm.DB) {
 		dbstatus.SetMigrated()
 		log.Printf("✅ migrations finished in %s (%d problems)", time.Since(started).Round(time.Millisecond), dbstatus.Get(false).MigrationErrors)
 	}
-	bootstrapAdmin(db)
-	ensureAccounts(db)
+	bootstrap(db)
 }
 
 // migrate creates every table used by the registered handlers. Each group is
@@ -368,13 +367,82 @@ func migrate(db *gorm.DB) {
 	}
 }
 
+// bootstrapLockKey is the Postgres advisory lock that serialises first-run
+// bootstrap across instances (Cloud Run may start several at once).
+const bootstrapLockKey = 727_001_2026
+
+// bootstrap runs bootstrapAdmin and ensureAccounts in ONE transaction that is
+// pinned to the ERP schema and holds an advisory lock, so two instances that
+// start together can never both create the first organisation, and a query
+// can never land on a legacy public table behind a transaction pooler.
+func bootstrap(db *gorm.DB) {
+	err := inSchema(db, func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", bootstrapLockKey).Error; err != nil {
+			return fmt.Errorf("advisory lock: %w", err)
+		}
+		bootstrapAdmin(tx)
+		ensureAccounts(tx)
+		return nil
+	})
+	if err != nil {
+		log.Printf("❌ bootstrap: %v", err)
+	}
+}
+
+// qualified returns a table name qualified with the ERP schema.
+func qualified(table string) string {
+	if s := dbSchema(); s != "" {
+		return pgx.Identifier{s, table}.Sanitize()
+	}
+	return pgx.Identifier{table}.Sanitize()
+}
+
+// bootstrapOrganization returns the organisation start-up code should attach
+// accounts to. It NEVER creates one when any organisation (even a deleted one)
+// exists in the ERP schema: it prefers the oldest live organisation named
+// ADMIN_ORG_NAME, then the oldest live organisation. Only a completely empty
+// organisations table gets a new one. tx must hold the bootstrap lock.
+func bootstrapOrganization(tx *gorm.DB, purpose string) (*models.Organization, error) {
+	name := getEnv("ADMIN_ORG_NAME", "DASYIN")
+	var total, live int64
+	if err := tx.Raw("SELECT COUNT(*), COUNT(*) FILTER (WHERE deleted_at IS NULL) FROM "+qualified("organizations")).Row().Scan(&total, &live); err != nil {
+		return nil, fmt.Errorf("count organisations: %w", err)
+	}
+	var org models.Organization
+	if live > 0 {
+		q := "SELECT id, name FROM " + qualified("organizations") + " WHERE deleted_at IS NULL"
+		err := tx.Raw(q+" AND LOWER(TRIM(name)) = LOWER(TRIM(?)) ORDER BY created_at ASC, id ASC LIMIT 1", name).Scan(&org).Error
+		if err != nil || org.ID == "" {
+			err = tx.Raw(q + " ORDER BY created_at ASC, id ASC LIMIT 1").Scan(&org).Error
+		}
+		if err != nil || org.ID == "" {
+			return nil, fmt.Errorf("find organisation: %v", err)
+		}
+		log.Printf("🏢 %s: using existing organisation %q (%s) — %d organisation(s) in schema %q, none created", purpose, org.Name, org.ID, live, dbSchema())
+		return &org, nil
+	}
+	if total > 0 {
+		return nil, fmt.Errorf("%s: every organisation in schema %q is deleted; refusing to create another — restore one first", purpose, dbSchema())
+	}
+	org = models.Organization{ID: uuid.NewString(), Name: name, BusinessType: "general", EnabledModules: []string{}, ModulesConfig: map[string]bool{}}
+	if err := tx.Omit("Users", "Customers", "Vehicles", "Services", "Bookings", "ABN").Create(&org).Error; err != nil {
+		return nil, fmt.Errorf("create organisation: %w", err)
+	}
+	log.Printf("🏢 %s: organisations table in schema %q was empty — created organisation %q (%s)", purpose, dbSchema(), org.Name, org.ID)
+	return &org, nil
+}
+
 // bootstrapAdmin creates a first organisation and super admin when the users
 // table is empty so a fresh deployment is usable. Credentials come from
 // ADMIN_EMAIL / ADMIN_PASSWORD; if no password is supplied a random one is
-// generated and printed once to the logs.
-func bootstrapAdmin(db *gorm.DB) {
+// generated and printed once to the logs. tx holds the bootstrap lock.
+func bootstrapAdmin(tx *gorm.DB) {
 	var n int64
-	if err := db.Model(&models.User{}).Count(&n).Error; err != nil || n > 0 {
+	if err := tx.Raw("SELECT COUNT(*) FROM " + qualified("users")).Row().Scan(&n); err != nil {
+		log.Printf("bootstrap: count users: %v", err)
+		return
+	}
+	if n > 0 {
 		return
 	}
 	email := getEnv("ADMIN_EMAIL", "admin@dasyin.com")
@@ -391,13 +459,13 @@ func bootstrapAdmin(db *gorm.DB) {
 		log.Printf("bootstrap: %v", err)
 		return
 	}
-	org := models.Organization{ID: uuid.NewString(), Name: getEnv("ADMIN_ORG_NAME", "DASYIN"), BusinessType: "general", ABN: fmt.Sprintf("%011d", time.Now().Unix()%100000000000)}
-	if err := db.Create(&org).Error; err != nil {
-		log.Printf("bootstrap organisation: %v", err)
+	org, err := bootstrapOrganization(tx, "bootstrap")
+	if err != nil {
+		log.Printf("bootstrap: %v", err)
 		return
 	}
 	user := models.User{ID: uuid.NewString(), Email: email, PasswordHash: string(hash), FirstName: "System", LastName: "Admin", Role: "super_admin", OrganizationID: org.ID, IsActive: true}
-	if err := db.Create(&user).Error; err != nil {
+	if err := tx.Omit("Organization").Create(&user).Error; err != nil {
 		log.Printf("bootstrap user: %v", err)
 		return
 	}
@@ -415,8 +483,8 @@ func bootstrapAdmin(db *gorm.DB) {
 //   - ENSURE_TEST_ACCOUNTS=true: makes sure the four test accounts shown on the
 //     login page exist with password TEST_ACCOUNTS_PASSWORD (default Test123!@#).
 //
-// Remove the variables again once you can sign in.
-func ensureAccounts(db *gorm.DB) {
+// Remove the variables again once you can sign in. tx holds the bootstrap lock.
+func ensureAccounts(tx *gorm.DB) {
 	type acct struct{ email, first, last, role, password string }
 	var list []acct
 	if e, p := strings.TrimSpace(os.Getenv("RESET_ADMIN_EMAIL")), os.Getenv("RESET_ADMIN_PASSWORD"); e != "" && p != "" {
@@ -434,35 +502,42 @@ func ensureAccounts(db *gorm.DB) {
 	if len(list) == 0 {
 		return
 	}
-	var org models.Organization
-	if err := db.Order("created_at ASC").First(&org).Error; err != nil {
-		org = models.Organization{ID: uuid.NewString(), Name: getEnv("ADMIN_ORG_NAME", "DASYIN"), BusinessType: "general", ABN: fmt.Sprintf("%011d", time.Now().Unix()%100000000000)}
-		if err := db.Create(&org).Error; err != nil {
-			log.Printf("ensureAccounts: create organisation: %v", err)
-			return
-		}
-	}
+	var org *models.Organization
 	for _, a := range list {
 		hash, err := bcrypt.GenerateFromPassword([]byte(a.password), bcrypt.DefaultCost)
 		if err != nil {
 			continue
 		}
-		var u models.User
-		err = db.Where("LOWER(email) = LOWER(?)", a.email).First(&u).Error
-		if err == nil {
-			if err := db.Model(&models.User{}).Where("id = ?", u.ID).Updates(map[string]interface{}{"password_hash": string(hash), "is_active": true}).Error; err != nil {
+		var existing struct {
+			ID      string
+			Deleted bool
+		}
+		// Soft-deleted users are found too: their email is still taken.
+		tx.Raw("SELECT id, deleted_at IS NOT NULL AS deleted FROM "+qualified("users")+" WHERE LOWER(email) = LOWER(?) ORDER BY deleted_at DESC NULLS FIRST LIMIT 1", a.email).Scan(&existing)
+		if existing.ID != "" && existing.Deleted {
+			log.Printf("ensureAccounts: %s was deleted; not recreating it", a.email)
+			continue
+		}
+		if id := existing.ID; id != "" {
+			if err := tx.Exec("UPDATE "+qualified("users")+" SET password_hash = ?, is_active = true, updated_at = ? WHERE id = ?", string(hash), time.Now().UTC(), id).Error; err != nil {
 				log.Printf("ensureAccounts: update %s: %v", a.email, err)
 				continue
 			}
 			log.Printf("🔑 Password reset for %s", a.email)
 			continue
 		}
-		u = models.User{ID: uuid.NewString(), Email: a.email, PasswordHash: string(hash), FirstName: a.first, LastName: a.last, Role: a.role, OrganizationID: org.ID, IsActive: true}
-		if err := db.Create(&u).Error; err != nil {
-			log.Printf("ensureAccounts: create %s: %v", a.email, err)
-			continue
+		if org == nil {
+			if org, err = bootstrapOrganization(tx, "ensureAccounts"); err != nil {
+				log.Printf("ensureAccounts: %v", err)
+				return
+			}
 		}
-		log.Printf("🔑 Created %s (%s)", a.email, a.role)
+		u := models.User{ID: uuid.NewString(), Email: a.email, PasswordHash: string(hash), FirstName: a.first, LastName: a.last, Role: a.role, OrganizationID: org.ID, IsActive: true}
+		if err := tx.Omit("Organization").Create(&u).Error; err != nil {
+			log.Printf("ensureAccounts: create %s: %v", a.email, err)
+			return // the transaction is aborted now
+		}
+		log.Printf("🔑 Created %s (%s) in organisation %q", a.email, a.role, org.Name)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"math"
 	"net/http"
 	"regexp"
@@ -246,10 +247,8 @@ func (h *Handler) planView(org string) (gin.H, error) {
 		}
 		trial = gin.H{"active": left > 0, "ends_at": sub.TrialEndsAt, "days_left": left, "expired": left == 0}
 	}
-	def := sub.DefaultCurrency
-	if def == "" {
-		def = sub.Currency
-	}
+	// The organisation's home currency (single source: pkg/orgprefs).
+	def := orgprefs.Currency(h.Svc.DB, org)
 	var orgName string
 	h.Svc.DB.Raw("SELECT name FROM organizations WHERE id = ?", org).Row().Scan(&orgName)
 	out := gin.H{

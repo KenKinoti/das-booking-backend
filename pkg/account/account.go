@@ -17,6 +17,7 @@ import (
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 )
 
 // Handler serves /api/v1/account.
@@ -201,12 +202,16 @@ func (h *Handler) orgPayload(c *gin.Context, orgID string) (gin.H, bool) {
 	}
 	var st models.OrganizationSettings
 	if err := h.DB.Omit("Organization").Where("organization_id = ?", orgID).First(&st).Error; err != nil {
-		st = models.OrganizationSettings{Timezone: "Australia/Sydney", DateFormat: "DD/MM/YYYY", TimeFormat: "24h", Currency: "AUD", Language: "en-AU", EnableEmailNotifications: true}
+		st = models.OrganizationSettings{DateFormat: "DD/MM/YYYY", TimeFormat: "24h", Language: "en-AU", EnableEmailNotifications: true}
 	}
+	// Country, currency and time zone come from the single source.
+	p := orgprefs.Get(h.DB, orgID)
+	st.Currency, st.Timezone = p.Currency, p.Timezone
 	return gin.H{
 		"organization": gin.H{
 			"id": org.ID, "name": org.Name, "abn": org.ABN, "phone": org.Phone, "email": org.Email,
 			"website": org.Website, "description": org.Description, "address": org.Address, "business_type": org.BusinessType,
+			"country_code": p.CountryCode, "country_name": p.CountryName, "region_source": p.Source, "needs_setup": p.NeedsSetup,
 		},
 		"settings": gin.H{
 			"timezone": st.Timezone, "date_format": st.DateFormat, "time_format": st.TimeFormat, "currency": st.Currency,
@@ -228,6 +233,7 @@ func (h *Handler) getOrganization(c *gin.Context) {
 }
 
 type orgInput struct {
+	CountryCode string         `json:"country_code"`
 	Name        string         `json:"name"`
 	ABN         string         `json:"abn"`
 	Phone       string         `json:"phone"`
@@ -288,8 +294,12 @@ func ValidateOrg(in *orgInput) string {
 		return "Unknown time zone " + st.Timezone
 	}
 	st.Currency = strings.ToUpper(strings.TrimSpace(st.Currency))
-	if !currency.IsSupported(st.Currency) {
+	if st.Currency != "" && !currency.IsSupported(st.Currency) {
 		return "Unsupported currency " + st.Currency
+	}
+	in.CountryCode = strings.ToUpper(strings.TrimSpace(in.CountryCode))
+	if in.CountryCode != "" && !currency.IsCountry(in.CountryCode) {
+		return "Choose a country from the list"
 	}
 	switch st.DateFormat {
 	case "DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD", "DD-MM-YYYY":
@@ -364,6 +374,15 @@ func (h *Handler) updateOrganization(c *gin.Context) {
 	})
 	if err != nil {
 		fail(c, http.StatusInternalServerError, "Could not save organisation settings")
+		return
+	}
+	// Country / currency / time zone: the single source (and its mirrors).
+	country := in.CountryCode
+	if country == "" {
+		country = strings.TrimSpace(a.Country)
+	}
+	if _, err := orgprefs.Set(h.DB, orgID, orgprefs.Input{CountryCode: country, Currency: in.Settings.Currency, Timezone: in.Settings.Timezone}, orgprefs.SourceUser); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	if p, found := h.orgPayload(c, orgID); found {

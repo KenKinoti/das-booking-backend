@@ -71,6 +71,8 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
 	g.GET("/overview", h.Overview)
 
 	g.GET("/organizations", h.ListOrganizations)
+	g.GET("/organizations/duplicates", h.Duplicates)
+	g.POST("/organizations/merge", h.Merge)
 	g.POST("/organizations", h.CreateOrganization)
 	g.GET("/organizations/:id", h.GetOrganization)
 	g.PUT("/organizations/:id", h.UpdateOrganization)

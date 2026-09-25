@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"log"
 	"math"
 	"net/http"
@@ -173,15 +174,8 @@ type dayRow struct {
 	V float64   `gorm:"column:v"`
 }
 
-func (h *Handler) currency(org string) string {
-	var cur string
-	h.DB.Raw("SELECT currency FROM billing_settings WHERE organization_id = ? LIMIT 1", org).Row().Scan(&cur)
-	cur = strings.ToUpper(strings.TrimSpace(cur))
-	if len(cur) != 3 {
-		return "AUD"
-	}
-	return cur
-}
+// currency is the organisation's home currency (pkg/orgprefs).
+func (h *Handler) currency(org string) string { return orgprefs.Currency(h.DB, org) }
 
 // Currency exposes the organisation's invoicing currency (used by the market module).
 func Currency(db *gorm.DB, org string) string { return (&Handler{DB: db}).currency(org) }
@@ -247,8 +241,9 @@ func (h *Handler) Overview(c *gin.Context) {
 	h.scan(&pos, `SELECT (created_at AT TIME ZONE ?)::date AS d, COUNT(*) AS n, COALESCE(SUM(total_amount),0) AS v
 		FROM pos_transactions
 		WHERE organization_id = ? AND deleted_at IS NULL AND status = 'completed' AND type = 'sale'
+		  AND UPPER(COALESCE(NULLIF(currency,''), ?)) = ?
 		  AND created_at >= ? AND created_at < ?
-		GROUP BY 1`, tzName, org, spanStart, spanEnd)
+		GROUP BY 1`, tzName, org, curCode, curCode, spanStart, spanEnd)
 	h.scan(&bookings, `SELECT (start_time AT TIME ZONE ?)::date AS d, COUNT(*) AS n,
 		  COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','no_show') THEN total_price ELSE 0 END),0) AS v
 		FROM bookings
@@ -487,8 +482,9 @@ func (h *Handler) Overview(c *gin.Context) {
 		  COALESCE(SUM(t.total_amount),0) AS v, COUNT(*) AS n
 		FROM pos_transactions t LEFT JOIN customers c ON c.id = t.customer_id
 		WHERE t.organization_id = ? AND t.deleted_at IS NULL AND t.status = 'completed' AND t.type = 'sale' AND t.customer_id IS NOT NULL
+		  AND UPPER(COALESCE(NULLIF(t.currency,''), ?)) = ?
 		  AND t.created_at >= ? AND t.created_at < ?
-		GROUP BY 1,2 ORDER BY v DESC LIMIT ?`, org, cStart, cEnd, limit)
+		GROUP BY 1,2 ORDER BY v DESC LIMIT ?`, org, curCode, curCode, cStart, cEnd, limit)
 	for _, pc := range posCust {
 		merged := false
 		for i := range topCust {

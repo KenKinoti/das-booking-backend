@@ -36,6 +36,12 @@ func init() {
 			"terms":        tStr("Terms shown to the client"),
 		}
 	}
+	depositProps := map[string]any{
+		"amount_paid":       tNum("Money ALREADY received for this invoice (a deposit / part payment), in the invoice currency. Recorded as a real payment: the invoice becomes partially paid (or paid)."),
+		"payment_date":      tDate("Date the amount_paid was received (default today)"),
+		"payment_method":    tEnum("How amount_paid was received (default cash)", "cash", "card", "bank_transfer", "mobile_money", "cheque", "paypal", "stripe", "other"),
+		"payment_reference": tStr("Receipt / transaction reference for amount_paid, e.g. an M-Pesa code"),
+	}
 	listProps := map[string]any{
 		"doc_type": tEnum("invoice (default), quote, or all", "invoice", "quote", "all"),
 		"status": tEnum("Filter by displayed status. unpaid = sent+partial; overdue = unpaid past due; open = quotes awaiting a decision; due = unpaid not yet due",
@@ -76,8 +82,10 @@ func init() {
 		Title: "Create invoice",
 		Description: "Creates a DRAFT invoice for a customer (customer_id or customer name/email) or a one-off client " +
 			"(client_name). Line items need description and unit_price; tax defaults to the organisation's rate. " +
+			"If the client already paid part (a deposit), pass amount_paid (+ payment_date/method/reference): it is recorded " +
+			"as a payment and the invoice shows the balance due. " +
 			"The invoice is not sent — use invoices_send afterwards if the user wants it emailed. Returns number, totals and link.",
-		InputSchema: tObj(docProps(false), "items"),
+		InputSchema: tObj(withProps(docProps(false), depositProps), "items"),
 		Module:      "invoicing",
 		Handler:     func(c *Ctx, a map[string]any) (any, error) { return docCreate(c, a, "invoice") },
 	})
@@ -141,10 +149,11 @@ func init() {
 		Handler: invoicesSend,
 	})
 	Register(Tool{
-		Name:        "quotes_convert",
-		Title:       "Convert quote to invoice",
-		Description: "Turns a quote into a new draft invoice (copying client and lines) and marks the quote converted. Returns the new invoice.",
-		InputSchema: tObj(map[string]any{"quote_id": tStr("Quote id")}, "quote_id"),
+		Name:  "quotes_convert",
+		Title: "Convert quote to invoice",
+		Description: "Turns a quote into a new draft invoice (copying client and lines) and marks the quote converted. " +
+			"Pass amount_paid (+ payment_date/method/reference) when the client already paid a deposit. Returns the new invoice.",
+		InputSchema: tObj(withProps(map[string]any{"quote_id": tStr("Quote id")}, depositProps), "quote_id"),
 		Module:      "invoicing",
 		Handler:     quotesConvert,
 	})
@@ -211,7 +220,7 @@ func invoiceFull(c *Ctx, inv map[string]any) map[string]any {
 	out["items"] = items
 	pays := []map[string]any{}
 	for _, p := range tList(inv["payments"]) {
-		m := tPick(p, "id", "amount", "method", "reference")
+		m := tPick(p, "id", "amount", "method", "reference", "is_deposit")
 		m["date"] = tDay(tS(p, "date"))
 		pays = append(pays, m)
 	}
@@ -420,6 +429,13 @@ func docCreate(c *Ctx, a map[string]any, docType string) (any, error) {
 		return nil, err
 	}
 	body["items"] = items
+	if docType == "invoice" {
+		if dep, err := depositArg(a); err != nil {
+			return nil, err
+		} else if dep != nil {
+			body["deposit"] = dep
+		}
+	}
 	v, err := c.api("POST", "/invoicing/invoices", nil, body)
 	if err != nil {
 		return nil, err
@@ -535,13 +551,59 @@ func quotesConvert(c *Ctx, a map[string]any) (any, error) {
 	if id == "" {
 		return nil, tErr("quote_id is required")
 	}
-	v, err := c.api("POST", "/invoicing/invoices/"+url.PathEscape(id)+"/convert", nil, nil)
+	var body any
+	dep, err := depositArg(a)
+	if err != nil {
+		return nil, err
+	}
+	if dep != nil {
+		body = map[string]any{"deposit": dep}
+	}
+	v, err := c.api("POST", "/invoicing/invoices/"+url.PathEscape(id)+"/convert", nil, body)
 	if err != nil {
 		return nil, err
 	}
 	out := invoiceBrief(tObjOf(v))
 	out["converted_from_quote"] = id
+	if dep != nil {
+		out["deposit_recorded"] = dep["amount"]
+	}
 	return out, nil
+}
+
+// depositArg maps amount_paid / payment_* to the API's deposit object (nil
+// when no amount was given).
+func depositArg(a map[string]any) (map[string]any, error) {
+	amt, ok := argNum(a, "amount_paid")
+	if !ok || amt == 0 {
+		return nil, nil
+	}
+	if amt < 0 {
+		return nil, tErr("amount_paid must be greater than zero")
+	}
+	dep := map[string]any{"amount": amt}
+	if s := argStr(a, "payment_date"); s != "" {
+		dep["date"] = s
+	}
+	if s := argStr(a, "payment_method"); s != "" {
+		dep["method"] = s
+	}
+	if s := argStr(a, "payment_reference"); s != "" {
+		dep["reference"] = s
+	}
+	return dep, nil
+}
+
+// withProps returns a copy of a with b's properties added.
+func withProps(a, b map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range a {
+		out[k] = v
+	}
+	for k, v := range b {
+		out[k] = v
+	}
+	return out
 }
 
 func invoicesVoid(c *Ctx, a map[string]any) (any, error) {

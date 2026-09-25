@@ -170,8 +170,11 @@ type Payment struct {
 	Method         string    `json:"method" gorm:"type:varchar(30)"`
 	Reference      string    `json:"reference" gorm:"type:varchar(255)"`
 	Notes          string    `json:"notes" gorm:"type:text"`
-	CreatedBy      string    `json:"created_by" gorm:"type:varchar(255)"`
-	CreatedAt      time.Time `json:"created_at"`
+	// IsDeposit marks money already received when the invoice was written
+	// (entered in the invoice editor or when converting a quote).
+	IsDeposit bool      `json:"is_deposit" gorm:"default:false"`
+	CreatedBy string    `json:"created_by" gorm:"type:varchar(255)"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (Payment) TableName() string { return "billing_payments" }

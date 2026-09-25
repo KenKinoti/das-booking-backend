@@ -8,6 +8,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"net/http"
 	"net/mail"
 	"sort"
@@ -374,7 +375,7 @@ func (h *Handler) Stats(c *gin.Context) {
 	for _, v := range views {
 		currencies[strings.ToUpper(v.Currency)]++
 	}
-	currency, best := "AUD", 0
+	currency, best := orgprefs.Currency(h.db, org), 0
 	for k, n := range currencies {
 		if k != "" && (n > best || (n == best && k < currency)) {
 			currency, best = k, n
@@ -721,10 +722,15 @@ func (h *Handler) CreateEvent(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "BAD_REQUEST", "Invalid request body: "+err.Error())
 		return
 	}
-	e := models.Event{OrganizationID: org, CreatedBy: ctxString(c, "user_id"), IsPublic: true, Currency: "AUD"}
+	// New events default to the organisation's home currency and country.
+	prefs := orgprefs.Get(h.db, org)
+	e := models.Event{OrganizationID: org, CreatedBy: ctxString(c, "user_id"), IsPublic: true, Currency: prefs.Currency}
 	if err := in.apply(&e); err != nil {
 		failErr(c, err)
 		return
+	}
+	if (in.Address == nil || strings.TrimSpace(in.Address.Country) == "") && prefs.CountryName != "" {
+		e.Address.Country = prefs.CountryName
 	}
 	err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&e).Error; err != nil {

@@ -2,6 +2,7 @@ package finance
 
 import (
 	"errors"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"sort"
 	"strings"
 	"time"
@@ -159,6 +160,99 @@ type BillInput struct {
 	Notes     string          `json:"notes"`
 	Status    string          `json:"status"` // "draft" keeps it unapproved; anything else approves
 	LineItems []BillLineInput `json:"line_items"`
+	// PurchaseOrderID (optional) links the bill to a purchase order; nil keeps
+	// the current link, "" removes it.
+	PurchaseOrderID *string `json:"purchase_order_id"`
+}
+
+// linkPurchaseOrder validates and applies the optional purchase-order link.
+// A purchase order can be linked to one bill only (so it is counted once).
+func (s *Service) linkPurchaseOrder(tx *gorm.DB, orgID string, b *Bill, in BillInput) error {
+	if in.PurchaseOrderID == nil {
+		return nil
+	}
+	id := strings.TrimSpace(*in.PurchaseOrderID)
+	if id == "" {
+		b.PurchaseOrderID = ""
+		return nil
+	}
+	var po struct {
+		OrderNumber string
+		Status      string
+	}
+	if err := tx.Table("purchase_orders").Select("order_number, status").
+		Where("id = ? AND organization_id = ? AND deleted_at IS NULL", id, orgID).Take(&po).Error; err != nil {
+		return invalid("choose a purchase order from your suppliers")
+	}
+	if po.Status == "cancelled" {
+		return invalid("purchase order %s is cancelled", po.OrderNumber)
+	}
+	var other string
+	tx.Model(&Bill{}).Select("bill_number").Where("organization_id = ? AND purchase_order_id = ? AND id <> ?", orgID, id, b.ID).Limit(1).Scan(&other)
+	if other != "" {
+		return invalid("purchase order %s is already linked to bill %s", po.OrderNumber, other)
+	}
+	b.PurchaseOrderID = id
+	return nil
+}
+
+// FilterBillsByDate keeps bills dated in [from, to] and/or with a payment
+// dated in [paidFrom, paidTo]. Empty bounds are open.
+func (s *Service) FilterBillsByDate(orgID string, bills []Bill, from, to, paidFrom, paidTo string) []Bill {
+	f, okF := ParseDate(from)
+	t, okT := ParseDate(to)
+	pf, okPF := ParseDate(paidFrom)
+	pt, okPT := ParseDate(paidTo)
+	if !okF && !okT && !okPF && !okPT {
+		return bills
+	}
+	paid := map[string]bool{}
+	if okPF || okPT {
+		q := s.db.Model(&Payment{}).Where("organization_id = ? AND type = ? AND bill_id IS NOT NULL", orgID, "vendor_payment")
+		if okPF {
+			q = q.Where("payment_date >= ?", pf)
+		}
+		if okPT {
+			q = q.Where("payment_date < ?", pt.AddDate(0, 0, 1))
+		}
+		var ids []string
+		q.Pluck("bill_id", &ids)
+		for _, id := range ids {
+			paid[id] = true
+		}
+	}
+	out := make([]Bill, 0, len(bills))
+	for _, b := range bills {
+		d := dateOnly(b.BillDate)
+		if (okF && d.Before(f)) || (okT && d.After(t)) {
+			continue
+		}
+		if (okPF || okPT) && !paid[b.ID] {
+			continue
+		}
+		out = append(out, b)
+	}
+	return out
+}
+
+// poNumbers maps purchase-order ids to their numbers for display.
+func (s *Service) poNumbers(orgID string, bills []Bill) map[string]string {
+	ids := []string{}
+	for _, b := range bills {
+		if b.PurchaseOrderID != "" {
+			ids = append(ids, b.PurchaseOrderID)
+		}
+	}
+	out := map[string]string{}
+	if len(ids) == 0 {
+		return out
+	}
+	var rows []struct{ ID, OrderNumber string }
+	s.db.Table("purchase_orders").Select("id, order_number").Where("organization_id = ? AND id IN ?", orgID, ids).Scan(&rows)
+	for _, r := range rows {
+		out[r.ID] = r.OrderNumber
+	}
+	return out
 }
 
 // decorateBill fills computed fields.
@@ -215,11 +309,13 @@ func (s *Service) GetBillsOn(orgID, status, q, vendorID string, t time.Time) ([]
 		return nil, err
 	}
 	names := s.vendorNames(orgID)
+	pos := s.poNumbers(orgID, bills)
 	q = strings.ToLower(strings.TrimSpace(q))
 	out := make([]Bill, 0, len(bills))
 	for i := range bills {
 		b := &bills[i]
 		decorateBillOn(b, names, t)
+		b.PurchaseOrderNumber = pos[b.PurchaseOrderID]
 		if status == "overdue" && b.DisplayStatus != "overdue" {
 			continue
 		}
@@ -245,6 +341,7 @@ func (s *Service) GetBill(orgID, id string) (*Bill, error) {
 		return nil, err
 	}
 	decorateBill(&b, s.vendorNames(orgID))
+	b.PurchaseOrderNumber = s.poNumbers(orgID, []Bill{b})[b.PurchaseOrderID]
 	if len(b.Payments) > 0 {
 		var banks []BankAccount
 		s.db.Select("id, account_name").Where("organization_id = ?", orgID).Find(&banks)
@@ -331,6 +428,9 @@ func (s *Service) buildBill(tx *gorm.DB, orgID string, b *Bill, in BillInput) er
 	if sub+tax <= 0 {
 		return invalid("bill total must be greater than zero")
 	}
+	if err := s.linkPurchaseOrder(tx, orgID, b, in); err != nil {
+		return err
+	}
 	b.VendorID, b.Reference, b.Notes = v.ID, strings.TrimSpace(in.Reference), strings.TrimSpace(in.Notes)
 	b.BillDate, b.DueDate = bd, dd
 	b.SubTotal, b.TaxAmount, b.Total = float64(sub)/100, float64(tax)/100, float64(sub+tax)/100
@@ -400,6 +500,7 @@ func (s *Service) CreateBill(orgID, userID string, in BillInput) (*Bill, error) 
 			return err
 		}
 		b.BillNumber = nextNumber(tx, &Bill{}, "bill_number", orgID, "BILL")
+		b.Currency = orgprefs.Currency(tx, orgID)
 		b.Status = "unpaid"
 		if in.Status == "draft" {
 			b.Status = "draft"
@@ -441,8 +542,12 @@ func (s *Service) UpdateBill(orgID, userID, id string, in BillInput) (*Bill, err
 				}
 				b.DueDate = dd
 			}
+			if err := s.linkPurchaseOrder(tx, orgID, &b, in); err != nil {
+				return err
+			}
 			return tx.Model(&Bill{}).Where("id = ?", b.ID).Updates(map[string]interface{}{
-				"reference": strings.TrimSpace(in.Reference), "notes": strings.TrimSpace(in.Notes), "due_date": b.DueDate, "updated_at": time.Now()}).Error
+				"reference": strings.TrimSpace(in.Reference), "notes": strings.TrimSpace(in.Notes), "due_date": b.DueDate,
+				"purchase_order_id": b.PurchaseOrderID, "updated_at": time.Now()}).Error
 		}
 		if err := s.unpostBill(tx, &b, userID); err != nil {
 			return err

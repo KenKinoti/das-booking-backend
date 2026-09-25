@@ -2,12 +2,12 @@ package assistant
 
 import (
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/aitools"
-	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
 )
 
 const rules = `You are DASYIN Assistant ("Ask DASYIN"), built into the DASYIN ERP web app. You help the signed-in user look up and update their business records using the tools provided.
@@ -104,13 +104,6 @@ func (s *Service) profile(who aitools.Identity) (name, org, cur string) {
 		}
 	}
 	s.DB.Raw("SELECT name FROM organizations WHERE id = ? LIMIT 1", who.OrgID).Row().Scan(&org)
-	s.DB.Raw("SELECT UPPER(currency) FROM billing_settings WHERE organization_id = ? AND currency <> '' LIMIT 1", who.OrgID).Row().Scan(&cur)
-	if !currency.IsSupported(cur) {
-		cur = ""
-		s.DB.Raw("SELECT UPPER(COALESCE(NULLIF(default_currency,''), currency)) FROM plan_subscriptions WHERE organization_id = ? LIMIT 1", who.OrgID).Row().Scan(&cur)
-	}
-	if !currency.IsSupported(cur) {
-		cur = "AUD"
-	}
+	cur = orgprefs.Currency(s.DB, who.OrgID)
 	return name, org, cur
 }
