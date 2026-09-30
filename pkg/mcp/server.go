@@ -393,6 +393,9 @@ func (s *Server) callTool(ctx context.Context, p Principal, t aitools.Tool, args
 	if errMsg != "" {
 		return textResult(errMsg, true)
 	}
+	if !t.ReadOnly && p.Kind != "test" {
+		notifyWrite(s.DB, p, t)
+	}
 	res := textResult(result, false)
 	switch v := result.(type) {
 	case map[string]any:

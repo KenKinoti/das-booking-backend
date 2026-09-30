@@ -6,7 +6,7 @@ import (
 	"html"
 	"log"
 	"net/http"
-	"net/mail"
+	netmail "net/mail"
 	"net/url"
 	"os"
 	"sort"
@@ -16,19 +16,39 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 )
 
 // Handler serves the /meetings API.
 type Handler struct {
 	DB        *gorm.DB
-	Mailer    Mailer
-	PublicURL string // base URL of the web app, used for in-app join links
+	Mailer    Mailer        // fixed mailer (tests); when nil, Mail resolves one per organisation
+	Mail      *mail.Service // outgoing email: organisation → platform default → SMTP_* env
+	PublicURL string        // base URL of the web app, used for in-app join links
 	Now       func() time.Time
 }
 
-// NewHandler builds a handler with SMTP and PUBLIC_APP_URL from the environment.
+// NewHandler builds a handler that sends invitations through the
+// organisation's outgoing email account (pkg/mail) and reads PUBLIC_APP_URL.
 func NewHandler(db *gorm.DB) *Handler {
-	return &Handler{DB: db, Mailer: SMTPMailerFromEnv(), PublicURL: os.Getenv("PUBLIC_APP_URL"), Now: time.Now}
+	return &Handler{DB: db, Mail: mail.Shared(db), PublicURL: os.Getenv("PUBLIC_APP_URL"), Now: time.Now}
+}
+
+// mailerFor returns the mailer used for org's invitations.
+func (h *Handler) mailerFor(org string) Mailer {
+	if h.Mailer != nil {
+		return h.Mailer
+	}
+	if h.Mail != nil {
+		return &OrgMailer{Svc: h.Mail, Org: org}
+	}
+	return nil
+}
+
+func (h *Handler) smtpConfigured(org string) bool {
+	m := h.mailerFor(org)
+	return m != nil && m.Configured()
 }
 
 // Migrate creates/updates the meeting tables.
@@ -368,7 +388,7 @@ func normalizeParticipants(in []participantInput) ([]participantInput, error) {
 			}
 			return nil, apiErr{"Participant " + name + " has no email address"}
 		}
-		addr, err := mail.ParseAddress(email)
+		addr, err := netmail.ParseAddress(email)
 		if err != nil || addr.Address != email {
 			return nil, apiErr{"Invalid email address: " + p.Email}
 		}
@@ -525,7 +545,8 @@ func (h *Handler) sendInvites(m *Meeting, recipients []Participant, method strin
 	for _, p := range recipients {
 		res.Recipients = append(res.Recipients, p.Email)
 	}
-	res.SMTPConfigured = h.Mailer != nil && h.Mailer.Configured()
+	mailer := h.mailerFor(m.OrgID)
+	res.SMTPConfigured = mailer != nil && mailer.Configured()
 	if len(recipients) == 0 {
 		res.Message = "No participants to invite"
 		return res
@@ -536,7 +557,7 @@ func (h *Handler) sendInvites(m *Meeting, recipients []Participant, method strin
 	}
 	now := h.now()
 	for _, p := range recipients {
-		if err := h.Mailer.SendInvite(h.buildInvite(m, p, method, icsAttendees)); err != nil {
+		if err := mailer.SendInvite(h.buildInvite(m, p, method, icsAttendees)); err != nil {
 			log.Printf("meetings: invite to %s failed: %v", p.Email, err)
 			res.Failed = append(res.Failed, InviteError{Email: p.Email, Error: err.Error()})
 			continue
@@ -629,7 +650,7 @@ func (h *Handler) list(c *gin.Context) {
 			items[i].HasTranscript = has[items[i].ID]
 		}
 	}
-	ok(c, http.StatusOK, gin.H{"meetings": items, "smtp_configured": h.Mailer != nil && h.Mailer.Configured()})
+	ok(c, http.StatusOK, gin.H{"meetings": items, "smtp_configured": h.smtpConfigured(org)})
 }
 
 func (h *Handler) get(c *gin.Context) {
@@ -641,7 +662,7 @@ func (h *Handler) get(c *gin.Context) {
 	if !found {
 		return
 	}
-	ok(c, http.StatusOK, gin.H{"meeting": m, "smtp_configured": h.Mailer != nil && h.Mailer.Configured()})
+	ok(c, http.StatusOK, gin.H{"meeting": m, "smtp_configured": h.smtpConfigured(org)})
 }
 
 func (h *Handler) create(c *gin.Context) {
@@ -687,6 +708,7 @@ func (h *Handler) create(c *gin.Context) {
 	if in.SendInvites == nil || *in.SendInvites {
 		resp["invite"] = h.sendInvites(m, nil, MethodRequest, nil)
 	}
+	h.notifyMeeting(m, "scheduled")
 	ok(c, http.StatusCreated, resp)
 }
 
@@ -807,6 +829,7 @@ func (h *Handler) cancel(c *gin.Context) {
 	if body.Notify == nil || *body.Notify {
 		resp["invite"] = h.sendInvites(m, nil, MethodCancel, nil)
 	}
+	h.notifyMeeting(m, "cancelled")
 	ok(c, http.StatusOK, resp)
 }
 

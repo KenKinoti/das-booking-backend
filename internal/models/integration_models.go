@@ -57,6 +57,10 @@ type EmailSettings struct {
 	FromName        string `json:"from_name" gorm:"type:varchar(255);default:'DAS Booking Platform'"`
 	FromEmail       string `json:"from_email" gorm:"type:varchar(255)"`
 	ReplyToEmail    string `json:"reply_to_email" gorm:"type:varchar(255)"`
+	// Comma-separated address lists (see pkg/mail).
+	AlwaysCC               string `json:"always_cc" gorm:"type:text"`
+	AlwaysBCC              string `json:"always_bcc" gorm:"type:text"`
+	NotificationRecipients string `json:"notification_recipients" gorm:"type:text"`
 	TestEmailSent   bool   `json:"test_email_sent" gorm:"default:false"`
 	LastTestedAt    *time.Time `json:"last_tested_at,omitempty"`
 }

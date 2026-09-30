@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	outmail "github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"net/http"
 	"time"
 
@@ -42,8 +43,8 @@ func (h *SimpleIntegrationHandler) GetIntegrationSettings(c *gin.Context) {
 					DefaultCurrency: "USD",
 				},
 				EmailSettings: models.EmailSettings{
-					Provider: "smtp",
-					SMTPPort: 587,
+					Provider:     "smtp",
+					SMTPPort:     587,
 					SMTPSecurity: "tls",
 				},
 				SecuritySettings: models.SecuritySettings{
@@ -113,7 +114,11 @@ func (h *SimpleIntegrationHandler) UpdateIntegrationSettings(c *gin.Context) {
 		}
 	}
 
-	// Merge updates with existing settings
+	// Merge updates with existing settings. A blank or masked SMTP password
+	// keeps the stored one; a new one is encrypted.
+	if pw := updateData.EmailSettings.SMTPPassword; pw == "" || pw == "****" {
+		updateData.EmailSettings.SMTPPassword = existingSettings.EmailSettings.SMTPPassword
+	}
 	updateData.ID = existingSettings.ID
 	updateData.OrganizationID = organizationID
 	updateData.CreatedAt = existingSettings.CreatedAt
@@ -216,30 +221,39 @@ func (h *SimpleIntegrationHandler) SendTestEmail(c *gin.Context) {
 		return
 	}
 
-	// Simulate sending email
-	time.Sleep(2 * time.Second)
-
-	// Log the communication
+	// Send for real through the organisation's outgoing email account.
+	subject := requestData.Subject
+	if subject == "" {
+		subject = "DASYIN test email"
+	}
+	body := requestData.Message
+	if body == "" {
+		body = "This is a test message. If you received it, outgoing email is working."
+	}
+	_, sendErr := outmail.Shared(h.db).SendAs(c.Request.Context(), organizationID, outmail.Message{To: []string{requestData.ToEmail}, Subject: subject, Text: body})
+	status := "sent"
+	if sendErr != nil {
+		status = "failed"
+	}
 	logEntry := &models.CommunicationLog{
 		OrganizationID: organizationID,
 		Type:           "email",
 		Provider:       "smtp",
 		Direction:      "outbound",
 		ToEmail:        requestData.ToEmail,
-		Subject:        requestData.Subject,
-		Message:        requestData.Message,
-		Status:         "sent",
+		Subject:        subject,
+		Message:        body,
+		Status:         status,
 		MessageType:    "text",
 	}
-
-	if err := h.db.Create(logEntry).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to log communication"})
+	h.db.Create(logEntry)
+	if sendErr != nil {
+		h.logIntegrationEvent(organizationID, "test_email_failed", "error", sendErr.Error(), outmail.Code(sendErr), "")
+		c.JSON(http.StatusBadGateway, gin.H{"error": sendErr.Error()})
 		return
 	}
-
 	h.logIntegrationEvent(organizationID, "test_email_sent", "success", fmt.Sprintf("Test email sent to %s", requestData.ToEmail), "", "")
-
-	c.JSON(http.StatusOK, gin.H{"message": "Test email sent successfully (simulated)"})
+	c.JSON(http.StatusOK, gin.H{"message": "Test email sent successfully"})
 }
 
 func (h *SimpleIntegrationHandler) SendTestSMS(c *gin.Context) {
@@ -431,7 +445,12 @@ func (h *SimpleIntegrationHandler) maskSensitiveFields(settings models.Integrati
 }
 
 func (h *SimpleIntegrationHandler) encryptSensitiveFields(settings *models.IntegrationSettings) error {
-	// For demo purposes, just return nil (no actual encryption needed for testing)
+	enc, err := outmail.EncryptSecret(settings.EmailSettings.SMTPPassword)
+	if err != nil {
+		return err
+	}
+	settings.EmailSettings.SMTPPassword = enc
+	outmail.InvalidateAll()
 	return nil
 }
 

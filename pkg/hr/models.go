@@ -75,19 +75,20 @@ func (Employee) TableName() string { return "hr_employees" }
 
 // LeaveRequest is a request for time off.
 type LeaveRequest struct {
-	ID         string     `json:"id" gorm:"type:varchar(64);primaryKey"`
-	OrgID      string     `json:"org_id" gorm:"type:varchar(255);not null;index"`
-	EmployeeID string     `json:"employee_id" gorm:"type:varchar(64);not null;index"`
-	Type       string     `json:"type" gorm:"type:varchar(20);not null"`
-	StartDate  string     `json:"start_date" gorm:"type:varchar(10);not null"`
-	EndDate    string     `json:"end_date" gorm:"type:varchar(10);not null"`
-	Days       float64    `json:"days" gorm:"type:decimal(6,2);not null;default:0"`
-	Reason     string     `json:"reason" gorm:"type:text"`
-	Status     string     `json:"status" gorm:"type:varchar(20);not null;default:'pending';index"`
-	DecidedBy  string     `json:"decided_by" gorm:"type:varchar(255)"`
-	DecidedAt  *time.Time `json:"decided_at"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	ID          string     `json:"id" gorm:"type:varchar(64);primaryKey"`
+	OrgID       string     `json:"org_id" gorm:"type:varchar(255);not null;index"`
+	EmployeeID  string     `json:"employee_id" gorm:"type:varchar(64);not null;index"`
+	Type        string     `json:"type" gorm:"type:varchar(20);not null"`
+	StartDate   string     `json:"start_date" gorm:"type:varchar(10);not null"`
+	EndDate     string     `json:"end_date" gorm:"type:varchar(10);not null"`
+	Days        float64    `json:"days" gorm:"type:decimal(6,2);not null;default:0"`
+	Reason      string     `json:"reason" gorm:"type:text"`
+	Status      string     `json:"status" gorm:"type:varchar(20);not null;default:'pending';index"`
+	RequestedBy string     `json:"requested_by" gorm:"type:varchar(255)"`
+	DecidedBy   string     `json:"decided_by" gorm:"type:varchar(255)"`
+	DecidedAt   *time.Time `json:"decided_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 
 	EmployeeName string `json:"employee_name" gorm:"-"`
 }

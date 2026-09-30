@@ -415,6 +415,9 @@ func (h *Handler) apply(c *gin.Context, org string, admin bool) {
 		failErr(c, err)
 		return
 	}
+	if t, ok := cat.Tier(next.Tier); ok {
+		h.notifyPlan(c, org, t.Name, planChanged, admin)
+	}
 	if req.DefaultCurrency != nil {
 		h.Svc.SyncDefaultCurrency(org, next.DefaultCurrency)
 	}

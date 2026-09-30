@@ -372,6 +372,13 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 	}
 
 	posPreloadTx(h.DB).Where("id = ? AND organization_id = ?", txnID, orgID).First(&txn)
+	sold := make([]string, 0, len(txn.Items))
+	for _, it := range txn.Items {
+		if it.ProductID != nil {
+			sold = append(sold, *it.ProductID)
+		}
+	}
+	go h.notifyLowStock(orgID, sold)
 	c.JSON(http.StatusCreated, gin.H{"transaction": txn})
 }
 
@@ -580,6 +587,7 @@ func (h *Handler) VoidPOSTransaction(c *gin.Context) {
 
 	var t models.POSTransaction
 	posPreloadTx(h.DB).Where("id = ? AND organization_id = ?", id, orgID).First(&t)
+	h.notifyPOSVoid(c, &t, req.Reason)
 	c.JSON(http.StatusOK, gin.H{"message": "Transaction voided", "transaction": t})
 }
 

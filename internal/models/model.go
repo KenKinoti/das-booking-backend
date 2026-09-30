@@ -309,7 +309,7 @@ type CarePlan struct {
 type RefreshToken struct {
 	ID        string    `json:"id" gorm:"type:varchar(255);primaryKey"`
 	UserID    string    `json:"user_id" gorm:"type:varchar(255);not null;index"`
-	Token     string    `json:"token" gorm:"type:varchar(255);not null;uniqueIndex"`
+	Token     string    `json:"token" gorm:"type:text;not null;uniqueIndex"`
 	ExpiresAt time.Time `json:"expires_at" gorm:"not null;index"`
 	IsRevoked bool      `json:"is_revoked" gorm:"default:false;index"`
 	CreatedAt time.Time `json:"created_at"`

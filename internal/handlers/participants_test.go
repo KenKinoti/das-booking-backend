@@ -17,12 +17,12 @@ func TestCreateParticipant(t *testing.T) {
 
 	t.Run("Valid participant creation", func(t *testing.T) {
 		participantData := map[string]interface{}{
-			"first_name":     "Jane",
-			"last_name":      "Participant",
-			"date_of_birth":  "1990-05-15T00:00:00Z",
-			"ndis_number":    "1234567890",
-			"email":          "jane.participant@email.com",
-			"phone":          "+61456789123",
+			"first_name":    "Jane",
+			"last_name":     "Participant",
+			"date_of_birth": "1990-05-15T00:00:00Z",
+			"ndis_number":   "1234567890",
+			"email":         "jane.participant@email.com",
+			"phone":         "+61456789123",
 			"address": map[string]interface{}{
 				"street":   "123 Test Street",
 				"suburb":   "Adelaide",
@@ -31,10 +31,10 @@ func TestCreateParticipant(t *testing.T) {
 				"country":  "Australia",
 			},
 			"medical_information": map[string]interface{}{
-				"conditions":    `["Test Condition"]`,
-				"medications":   `["Test Medication"]`,
-				"doctor_name":   "Dr. Test",
-				"doctor_phone":  "+61887654321",
+				"conditions":   `["Test Condition"]`,
+				"medications":  `["Test Medication"]`,
+				"doctor_name":  "Dr. Test",
+				"doctor_phone": "+61887654321",
 			},
 			"funding": map[string]interface{}{
 				"total_budget":     30000.00,
@@ -101,11 +101,11 @@ func TestCreateParticipant(t *testing.T) {
 	t.Run("Duplicate NDIS number", func(t *testing.T) {
 		// First create a participant
 		firstParticipant := models.Participant{
-			ID:           "first-participant",
-			FirstName:    "First",
-			LastName:     "Participant",
-			DateOfBirth:  time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
-			NDISNumber:   "DUPLICATE123",
+			ID:             "first-participant",
+			FirstName:      "First",
+			LastName:       "Participant",
+			DateOfBirth:    time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+			NDISNumber:     "DUPLICATE123",
 			OrganizationID: "test-org",
 		}
 		handler.DB.Create(&firstParticipant)
@@ -184,12 +184,12 @@ func TestGetParticipant(t *testing.T) {
 
 	// Create a test participant
 	testParticipant := models.Participant{
-		ID:           "test-participant",
-		FirstName:    "Test",
-		LastName:     "Participant",
-		DateOfBirth:  time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
-		NDISNumber:   "TEST123456",
-		Email:        "test.participant@email.com",
+		ID:             "test-participant",
+		FirstName:      "Test",
+		LastName:       "Participant",
+		DateOfBirth:    time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+		NDISNumber:     "TEST123456",
+		Email:          "test.participant@email.com",
 		OrganizationID: "test-org",
 	}
 	handler.DB.Create(&testParticipant)
@@ -229,12 +229,12 @@ func TestUpdateParticipant(t *testing.T) {
 
 	// Create a test participant to update
 	testParticipant := models.Participant{
-		ID:           "update-participant",
-		FirstName:    "Update",
-		LastName:     "Participant",
-		DateOfBirth:  time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
-		NDISNumber:   "UPDATE123",
-		Email:        "update@email.com",
+		ID:             "update-participant",
+		FirstName:      "Update",
+		LastName:       "Participant",
+		DateOfBirth:    time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+		NDISNumber:     "UPDATE123",
+		Email:          "update@email.com",
 		OrganizationID: "test-org",
 	}
 	handler.DB.Create(&testParticipant)
@@ -289,12 +289,12 @@ func TestDeleteParticipant(t *testing.T) {
 
 	// Create a test participant to delete
 	testParticipant := models.Participant{
-		ID:           "delete-participant",
-		FirstName:    "Delete",
-		LastName:     "Participant",
-		DateOfBirth:  time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
-		NDISNumber:   "DELETE123",
-		Email:        "delete@email.com",
+		ID:             "delete-participant",
+		FirstName:      "Delete",
+		LastName:       "Participant",
+		DateOfBirth:    time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+		NDISNumber:     "DELETE123",
+		Email:          "delete@email.com",
 		OrganizationID: "test-org",
 	}
 	handler.DB.Create(&testParticipant)

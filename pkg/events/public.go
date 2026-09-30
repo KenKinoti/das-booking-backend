@@ -192,6 +192,7 @@ func (h *Handler) PublicRegister(c *gin.Context) {
 		failErr(c, err)
 		return
 	}
+	notifyRegistration(h.db, ev, &reg)
 	ok(c, http.StatusCreated, gin.H{
 		"reference": reg.QRCode, "status": reg.Status, "payment_status": reg.PaymentStatus,
 		"total_amount": reg.TotalAmount, "currency": ev.Currency, "quantity": reg.Quantity,

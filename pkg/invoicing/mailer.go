@@ -1,15 +1,19 @@
 package invoicing
 
 import (
+	"context"
 	"fmt"
-	"net/mail"
-	"net/smtp"
+	netmail "net/mail"
 	"os"
+	"strconv"
 	"strings"
+
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 )
 
-// SMTPMailer sends plain-text email using SMTP settings from the environment:
-// SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM.
+// SMTPMailer is the legacy fixed-account mailer (SMTP_* environment
+// variables). Production resolves the account per organisation through
+// pkg/mail instead (Handler.Mail); SMTPMailer delegates delivery to pkg/mail.
 type SMTPMailer struct {
 	Host, Port, Username, Password, From string
 }
@@ -44,12 +48,21 @@ func (m *SMTPMailer) SendWithCC(to string, cc []string, subject, body string) er
 	if to == "" {
 		return fmt.Errorf("no valid recipient")
 	}
-	msg := BuildMessage(m.From, to, cc, subject, body)
-	var auth smtp.Auth
-	if m.Username != "" {
-		auth = smtp.PlainAuth("", m.Username, m.Password, m.Host)
+	return mail.Send(context.Background(), m.config(), mail.Message{To: []string{to}, CC: cc, Subject: subject, Text: body})
+}
+
+// config converts the legacy settings into a pkg/mail configuration.
+func (m *SMTPMailer) config() mail.Config {
+	port, _ := strconv.Atoi(m.Port)
+	if port <= 0 {
+		port = 587
 	}
-	return smtp.SendMail(m.Host+":"+m.Port, auth, envelopeAddress(m.From), append([]string{to}, cc...), msg)
+	fromEmail, fromName := envelopeAddress(m.From), ""
+	if a, err := netmail.ParseAddress(headerClean(m.From)); err == nil {
+		fromName = a.Name
+	}
+	return mail.Config{Host: m.Host, Port: port, Username: m.Username, Password: m.Password,
+		Security: mail.NormalizeSecurity("auto", port), FromEmail: fromEmail, FromName: fromName, Source: mail.SourceEnvironment}
 }
 
 // headerClean strips CR/LF so values can't inject extra headers.
@@ -59,7 +72,7 @@ func headerClean(s string) string {
 
 // envelopeAddress returns the bare address of "Name <a@b>" (or the input).
 func envelopeAddress(s string) string {
-	if a, err := mail.ParseAddress(headerClean(s)); err == nil {
+	if a, err := netmail.ParseAddress(headerClean(s)); err == nil {
 		return a.Address
 	}
 	return headerClean(s)
@@ -94,7 +107,7 @@ func ValidEmail(s string) bool {
 	if s == "" || len(s) > 254 || strings.ContainsAny(s, " \r\n,;<>") {
 		return false
 	}
-	a, err := mail.ParseAddress(s)
+	a, err := netmail.ParseAddress(s)
 	if err != nil || a.Address != s {
 		return false
 	}

@@ -221,6 +221,21 @@ func Load(db *gorm.DB, org string, from, to time.Time, loc *time.Location) *Inpu
 		in.PayRuns = append(in.PayRuns, PayRun{ID: r.ID, Number: r.Number, Status: r.Status, Currency: strings.ToUpper(r.Currency), PayDate: d, PaidAt: r.PaidAt,
 			Gross: r.TotalGross, Deductions: r.TotalDeductions, Net: r.TotalNet})
 	}
+
+	// Online payments: processor fees and surcharges
+	if db.Migrator().HasTable("pay_transactions") {
+		var fees []struct {
+			Currency    string
+			CompletedAt time.Time
+			AppFee      float64
+			Surcharge   float64
+		}
+		l.scan(&fees, `SELECT currency, completed_at, app_fee, surcharge FROM pay_transactions
+			WHERE organization_id = ? AND status = 'successful' AND completed_at >= ? AND completed_at < ? AND (app_fee <> 0 OR surcharge <> 0)`, org, tsFrom, tsTo)
+		for _, r := range fees {
+			in.ProcessorFees = append(in.ProcessorFees, ProcessorFee{Currency: strings.ToUpper(r.Currency), At: r.CompletedAt, Fee: r.AppFee, Surcharge: r.Surcharge})
+		}
+	}
 	return in
 }
 

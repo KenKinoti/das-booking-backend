@@ -132,8 +132,10 @@ func init() {
 	Register(Tool{
 		Name:  "invoices_send",
 		Title: "Email invoice or quote",
-		Description: "Emails an invoice or quote to the client (and the customer's CC contacts) with a link to view/pay/accept " +
-			"online, and marks it sent. kind=reminder sends a payment reminder for an unpaid invoice. Requires the server's " +
+		Description: "Emails an invoice or quote to the client (and the customer's CC contacts) and marks it sent. The email " +
+			"always has the PDF copy attached (e.g. INV-1005.pdf) and a View button (quotes: View & accept); invoices with a " +
+			"balance also get a Pay now link when online payments (Flutterwave) are on. Subject and message default to the " +
+			"invoice settings. kind=reminder sends a payment reminder for an unpaid invoice. Requires the server's " +
 			"email (SMTP) to be configured — otherwise returns a clear message with the share link so the user can send it " +
 			"themselves; mark_as_sent_only=true just marks it sent without emailing.",
 		InputSchema: tObj(map[string]any{
@@ -147,6 +149,20 @@ func init() {
 		}, "invoice_id"),
 		Module:  "invoicing",
 		Handler: invoicesSend,
+	})
+	Register(Tool{
+		Name:  "invoices_payment_link",
+		Title: "Get invoice payment link",
+		Description: "Returns the link where the client can pay an invoice online (card, M-Pesa, mobile money, bank — the " +
+			"cheapest method is suggested) and the view link. When online payments are off, the invoice is a draft or has no " +
+			"balance, says why and returns only the view link. Pass invoice_id or number.",
+		InputSchema: tObj(map[string]any{
+			"invoice_id": tStr("Invoice id"),
+			"number":     tStr("Invoice number, e.g. INV-1001"),
+		}),
+		ReadOnly: true,
+		Module:   "invoicing",
+		Handler:  invoicesPaymentLink,
 	})
 	Register(Tool{
 		Name:  "quotes_convert",
@@ -522,13 +538,16 @@ func invoicesSend(c *Ctx, a map[string]any) (any, error) {
 	}
 	body := map[string]any{"mode": "email"}
 	copyArgs(body, a, "to", "subject", "message", "kind")
+	if AppURL() != "" {
+		body["app_url"] = AppURL()
+	}
 	if argHas(a, "cc") {
 		body["cc"] = argStrList(a, "cc")
 	}
 	v, err := c.Call("POST", "/invoicing/invoices/"+url.PathEscape(id)+"/send", nil, body)
 	if err != nil {
 		if ae, ok := err.(*APIError); ok && ae.Status == 503 {
-			msg := "Email isn't set up on this server (SMTP not configured), so nothing was sent."
+			msg := "Outgoing email isn't set up for this organisation (no SMTP account in Settings → Outgoing email, no platform default), so nothing was sent."
 			if inv, err2 := c.get("/invoicing/invoices/"+url.PathEscape(id), nil); err2 == nil {
 				if tok := tS(tObjOf(inv), "public_token"); tok != "" && AppURL() != "" {
 					msg += " Share this link with the client instead: " + tURL("/i/"+tok) + " — then call invoices_send with mark_as_sent_only=true."
@@ -540,8 +559,32 @@ func invoicesSend(c *Ctx, a map[string]any) (any, error) {
 	}
 	d := tObjOf(v)
 	out := invoiceBrief(tObjOf(d, "invoice"))
-	for k, val := range tPick(d, "emailed", "to", "cc", "kind", "skipped") {
+	for k, val := range tPick(d, "emailed", "to", "cc", "bcc", "kind", "skipped", "sender", "attachment", "view_url", "pay_url") {
 		out[k] = val
+	}
+	return out, nil
+}
+
+func invoicesPaymentLink(c *Ctx, a map[string]any) (any, error) {
+	inv, err := c.loadInvoice(a, "invoice_id")
+	if err != nil {
+		return nil, err
+	}
+	q := url.Values{}
+	if AppURL() != "" {
+		q.Set("app_url", AppURL())
+	}
+	v, err := c.get("/invoicing/invoices/"+url.PathEscape(tS(inv, "id"))+"/pay-link", q)
+	if err != nil {
+		return nil, err
+	}
+	d := tObjOf(v)
+	out := map[string]any{"invoice_id": tS(inv, "id")}
+	for k, val := range tPick(d, "number", "payable", "url", "view_url", "reason", "balance_due", "currency", "enabled") {
+		out[k] = val
+	}
+	if tS(d, "url") != "" {
+		out["pay_url"] = tS(d, "url")
 	}
 	return out, nil
 }

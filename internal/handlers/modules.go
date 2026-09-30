@@ -23,9 +23,9 @@ func (h *Handler) GetOrganizationModules(c *gin.Context) {
 			InventoryEnabled:     false,
 			SupplierEnabled:      false,
 			PurchaseOrderEnabled: false,
-			POSEnabled:          false,
-			CRMEnabled:          false,
-			ReportsEnabled:      false,
+			POSEnabled:           false,
+			CRMEnabled:           false,
+			ReportsEnabled:       false,
 		}
 		h.DB.Create(&modules)
 	}

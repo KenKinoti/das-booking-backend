@@ -2,17 +2,19 @@ package meetings
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"mime"
-	"net"
-	"net/smtp"
+	netmail "net/mail"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 )
 
 // Mailer sends calendar invitations. Implemented by SMTPMailer; tests may
@@ -129,52 +131,57 @@ func BuildMIME(from string, msg InviteMessage) []byte {
 	return buf.Bytes()
 }
 
-// SendInvite delivers one invitation. Port 465 uses implicit TLS; other
-// ports use STARTTLS when the server offers it.
+// SendInvite delivers one invitation through pkg/mail.
 func (m *SMTPMailer) SendInvite(msg InviteMessage) error {
 	if !m.Configured() {
 		return fmt.Errorf("SMTP is not configured")
 	}
+	port, _ := strconv.Atoi(m.Port)
+	if port <= 0 {
+		port = 587
+	}
+	cfg := mail.Config{Host: m.Host, Port: port, Username: m.Username, Password: m.Password,
+		Security: mail.NormalizeSecurity("auto", port), FromEmail: strings.ToLower(addressOnly(m.From)), Source: mail.SourceEnvironment}
+	if i := strings.Index(m.From, "<"); i > 0 {
+		cfg.FromName = strings.Trim(strings.TrimSpace(m.From[:i]), `"`)
+	}
+	return mail.Send(context.Background(), cfg, inviteMessage(msg))
+}
+
+// inviteMessage converts an invitation to a pkg/mail message: text + HTML +
+// text/calendar alternatives plus an invite.ics attachment, which is what
+// Gmail and Outlook need to show Accept/Decline controls.
+func inviteMessage(msg InviteMessage) mail.Message {
+	method := strings.ToUpper(msg.Method)
+	if method == "" {
+		method = MethodRequest
+	}
 	to := strings.TrimSpace(headerSafe(msg.To))
-	body := BuildMIME(m.From, msg)
-	sender := addressOnly(m.From)
-	var auth smtp.Auth
-	if m.Username != "" {
-		auth = smtp.PlainAuth("", m.Username, m.Password, m.Host)
+	if msg.ToName != "" {
+		to = (&netmail.Address{Name: headerSafe(msg.ToName), Address: to}).String()
 	}
-	addr := net.JoinHostPort(m.Host, m.Port)
-	if m.Port != "465" {
-		return smtp.SendMail(addr, auth, sender, []string{to}, body)
+	return mail.Message{
+		To: []string{to}, Subject: msg.Subject, Text: msg.Text, HTML: msg.HTML,
+		Calendar: msg.ICS, CalendarMethod: method, FromName: msg.FromName,
+		Attachments: []mail.Attachment{{Filename: "invite.ics", ContentType: "application/ics", Data: []byte(msg.ICS)}},
 	}
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 15 * time.Second}, "tcp", addr, &tls.Config{ServerName: m.Host})
-	if err != nil {
-		return err
-	}
-	c, err := smtp.NewClient(conn, m.Host)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-	if auth != nil {
-		if err := c.Auth(auth); err != nil {
-			return err
-		}
-	}
-	if err := c.Mail(sender); err != nil {
-		return err
-	}
-	if err := c.Rcpt(to); err != nil {
-		return err
-	}
-	w, err := c.Data()
-	if err != nil {
-		return err
-	}
-	if _, err := w.Write(body); err != nil {
-		return err
-	}
-	if err := w.Close(); err != nil {
-		return err
-	}
-	return c.Quit()
+}
+
+// OrgMailer sends invitations with the organisation's resolved outgoing email
+// account (organisation settings → platform default → SMTP_* env).
+type OrgMailer struct {
+	Svc *mail.Service
+	Org string
+}
+
+// Configured reports whether the organisation can send email.
+func (o *OrgMailer) Configured() bool {
+	cfg, _ := o.Svc.Resolve(o.Org)
+	return cfg.Ready()
+}
+
+// SendInvite delivers one invitation and records the result.
+func (o *OrgMailer) SendInvite(msg InviteMessage) error {
+	_, err := o.Svc.SendAs(context.Background(), o.Org, inviteMessage(msg))
+	return err
 }

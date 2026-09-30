@@ -35,6 +35,7 @@ import (
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/crm"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/finance"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/invoicing"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/messaging"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/video"
 )
@@ -98,7 +99,8 @@ func main() {
 		booking.NewHandler(db).RegisterRoutes(auth.Group("/booking"))
 
 		inv := invoicing.NewHandler(db)
-		inv.Mailer = invoicing.SMTPMailerFromEnv()
+		// Outgoing email: organisation settings → platform default → SMTP_* env.
+		inv.Mail = mail.Shared(db)
 		inv.PublicURL = os.Getenv("PUBLIC_APP_URL")
 		inv.RegisterRoutes(auth.Group("/invoicing"))
 		inv.RegisterPublicRoutes(v1.Group("/public"))

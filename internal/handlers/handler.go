@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/config"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/middleware"
+	"gorm.io/gorm"
 )
 
 type Handler struct {
@@ -25,12 +25,12 @@ func (h *Handler) getOrganizationID(c *gin.Context) string {
 	if !exists {
 		return ""
 	}
-	
+
 	orgIDStr, ok := orgID.(string)
 	if !ok {
 		return ""
 	}
-	
+
 	return orgIDStr
 }
 
@@ -106,15 +106,15 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 			{
 				organization.GET("", h.GetOrganization)
 				organization.PUT("", middleware.RequireRole("admin", "manager"), h.UpdateOrganization)
-				
+
 				// Organization branding routes
 				organization.GET("/branding", h.GetOrganizationBranding)
 				organization.PUT("/branding", middleware.RequireRole("admin"), h.UpdateOrganizationBranding)
-				
+
 				// Organization settings routes
 				organization.GET("/settings", h.GetOrganizationSettings)
 				organization.PUT("/settings", middleware.RequireRole("admin"), h.UpdateOrganizationSettings)
-				
+
 				// Organization subscription routes
 				organization.GET("/subscription", middleware.RequireRole("admin"), h.GetOrganizationSubscription)
 				organization.PUT("/subscription", middleware.RequireRole("admin"), h.UpdateOrganizationSubscription)
@@ -152,7 +152,7 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 				admin.POST("/seed-advanced", h.SeedAdvanced)
 				admin.DELETE("/clear-test-data", middleware.RequireElevatedAuth(), h.ClearTestData)
 				admin.DELETE("/truncate", middleware.RequireElevatedAuth(), middleware.RequirePasswordConfirmation(), h.TruncateDatabase)
-				
+
 				// Database management routes (admin can view stats)
 				admin.GET("/stats", h.GetSystemStats)
 				admin.GET("/tables", h.GetTableStats)
@@ -213,7 +213,7 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 				customers.GET("", h.GetCustomers)
 				customers.GET("/stats", h.GetCustomerStats)
 				customers.GET("/:id", h.GetCustomer)
-				customers.GET("/:id/vehicles", h.GetCustomerVehicles)  // Move customer vehicles here
+				customers.GET("/:id/vehicles", h.GetCustomerVehicles) // Move customer vehicles here
 				customers.POST("", h.CreateCustomer)
 				customers.PUT("/:id", h.UpdateCustomer)
 				customers.PATCH("/:id/toggle-status", h.ToggleCustomerStatus)

@@ -529,6 +529,9 @@ func (s *Service) execute(ctx context.Context, who aitools.Identity, t aitools.T
 		norm = out
 	}
 	meta = resultMeta(t, args, norm)
+	if !t.ReadOnly {
+		s.notifyWrite(who, t, meta)
+	}
 	emit("tool_result", toolEvent(u.ID, meta))
 	return Block{Type: "tool_result", ToolUseID: u.ID, Content: txt}, meta
 }

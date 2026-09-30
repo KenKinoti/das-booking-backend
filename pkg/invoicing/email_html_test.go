@@ -21,7 +21,7 @@ func TestEmailHTMLLogo(t *testing.T) {
 	// no logo (or a relative URL mail clients can't load): business name in bold
 	for _, u := range []string{"", "/api/v1/public/org-logo/x?v=1"} {
 		h = EmailHTML("Acme", u, "red;}</style>", "Hello")
-		if strings.Contains(h, "<img") || !strings.Contains(h, "font-weight:700;color:#111322\">Acme</div>") || strings.Contains(h, "</style>") {
+		if strings.Contains(h, "<img") || !strings.Contains(h, "color:#1a1d2e\">Acme</div>") || strings.Contains(h, "red;}") || strings.Count(h, "</style>") != 1 {
 			t.Fatalf("fallback header wrong for %q: %s", u, h)
 		}
 	}

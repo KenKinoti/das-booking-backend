@@ -313,6 +313,7 @@ func (h *Handler) CreateBooking(c *gin.Context) {
 	}
 
 	h.bookingPreload(h.DB.Where("id = ?", booking.ID)).First(&booking)
+	h.notifyBooking(c, &booking, "created", "")
 	c.JSON(http.StatusCreated, gin.H{"booking": booking})
 }
 
@@ -438,6 +439,7 @@ func (h *Handler) UpdateBooking(c *gin.Context) {
 		updates["end_time"] = end
 	}
 
+	prevStatus := booking.Status
 	finalStatus := booking.Status
 	if s, ok := updates["status"].(string); ok {
 		finalStatus = s
@@ -472,6 +474,7 @@ func (h *Handler) UpdateBooking(c *gin.Context) {
 
 	var fresh models.Booking
 	h.bookingPreload(h.DB.Where("id = ?", booking.ID)).First(&fresh)
+	h.notifyBooking(c, &fresh, "status", prevStatus)
 	c.JSON(http.StatusOK, gin.H{"booking": fresh})
 }
 
@@ -623,6 +626,7 @@ func (h *Handler) UpdateBookingStatus(c *gin.Context) {
 		return
 	}
 
+	prevStatus := booking.Status
 	if err := h.DB.Model(&booking).Update("status", request.Status).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update booking status"})
 		return
@@ -630,5 +634,6 @@ func (h *Handler) UpdateBookingStatus(c *gin.Context) {
 
 	var fresh models.Booking
 	h.bookingPreload(h.DB.Where("id = ?", booking.ID)).First(&fresh)
+	h.notifyBooking(c, &fresh, "status", prevStatus)
 	c.JSON(http.StatusOK, gin.H{"booking": fresh})
 }

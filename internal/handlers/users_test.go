@@ -277,14 +277,14 @@ func getTestToken(handler *Handler) string {
 		}
 		handler = &Handler{Config: cfg}
 	}
-	
+
 	user := models.User{
-		ID:    "test-user",
-		Email: "test@example.com",
-		Role:  "admin",
+		ID:             "test-user",
+		Email:          "test@example.com",
+		Role:           "admin",
 		OrganizationID: "test-org",
 	}
-	
+
 	// Generate test JWT token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID,

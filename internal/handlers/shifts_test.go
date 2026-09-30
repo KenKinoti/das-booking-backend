@@ -17,21 +17,21 @@ func TestCreateShift(t *testing.T) {
 
 	// Create test participant and staff
 	testParticipant := models.Participant{
-		ID:           "shift-participant",
-		FirstName:    "Shift",
-		LastName:     "Participant",
-		DateOfBirth:  time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
-		NDISNumber:   "SHIFT123",
+		ID:          "shift-participant",
+		FirstName:   "Shift",
+		LastName:    "Participant",
+		DateOfBirth: time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC),
+		NDISNumber:  "SHIFT123",
 	}
 	handler.DB.Create(&testParticipant)
 
 	testStaff := models.User{
-		ID:             "shift-staff",
-		Email:          "staff@example.com",
-		FirstName:      "Shift",
-		LastName:       "Staff",
-		Role:           "care_worker",
-		IsActive:       true,
+		ID:        "shift-staff",
+		Email:     "staff@example.com",
+		FirstName: "Shift",
+		LastName:  "Staff",
+		Role:      "care_worker",
+		IsActive:  true,
 	}
 	handler.DB.Create(&testStaff)
 
@@ -290,8 +290,8 @@ func TestUpdateShiftStatus(t *testing.T) {
 
 	t.Run("Valid status update to in_progress", func(t *testing.T) {
 		statusData := map[string]interface{}{
-			"status":              "in_progress",
-			"actual_start_time":   time.Now().Format(time.RFC3339),
+			"status":            "in_progress",
+			"actual_start_time": time.Now().Format(time.RFC3339),
 		}
 
 		body, _ := json.Marshal(statusData)
@@ -320,7 +320,7 @@ func TestUpdateShiftStatus(t *testing.T) {
 			EndTime:       futureTime.Add(8 * time.Hour),
 			Status:        "scheduled",
 			HourlyRate:    45.50,
-			}
+		}
 		handler.DB.Create(&testShift2)
 
 		statusData := map[string]interface{}{

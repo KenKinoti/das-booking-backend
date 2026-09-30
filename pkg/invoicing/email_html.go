@@ -2,14 +2,15 @@ package invoicing
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"html"
 	"mime/quotedprintable"
-	"net/smtp"
 	"regexp"
 	"strings"
+
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 )
 
 // HTMLMailer is implemented by mailers that can send a multipart/alternative
@@ -20,39 +21,25 @@ type HTMLMailer interface {
 
 var urlRe = regexp.MustCompile(`https?://[^\s<>"']+`)
 
-// EmailHTML renders the invoice email: the company logo at the top (or the
-// business name in bold when there is no logo), then the message with links
-// made clickable. logoURL must be absolute so mail clients can load it.
+// EmailHTML renders a message in the shared email template: the company logo
+// at the top (or the business name when there is no logo), then the message
+// with links made clickable. logoURL must be absolute so mail clients can load it.
 func EmailHTML(business, logoURL, accent, message string) string {
-	if !regexp.MustCompile(`^#[0-9a-fA-F]{3,8}$`).MatchString(accent) {
-		accent = "#4f46e5"
-	}
-	var head string
-	if strings.HasPrefix(logoURL, "https://") || strings.HasPrefix(logoURL, "http://") {
-		head = fmt.Sprintf(`<img src="%s" alt="%s" style="display:block;max-height:64px;max-width:220px;height:auto;width:auto;border:0;outline:none">`,
-			html.EscapeString(logoURL), html.EscapeString(business))
-	} else {
-		head = fmt.Sprintf(`<div style="font-size:20px;font-weight:700;color:#111322">%s</div>`, html.EscapeString(business))
-	}
-	// Escape, then linkify, then keep line breaks.
-	var body strings.Builder
-	msg := strings.ReplaceAll(message, "\r\n", "\n")
-	last := 0
-	for _, m := range urlRe.FindAllStringIndex(msg, -1) {
-		body.WriteString(html.EscapeString(msg[last:m[0]]))
-		u := strings.TrimRight(msg[m[0]:m[1]], ".,);")
-		body.WriteString(fmt.Sprintf(`<a href="%s" style="color:%s">%s</a>`, html.EscapeString(u), accent, html.EscapeString(u)))
-		last = m[0] + len(u)
-	}
-	body.WriteString(html.EscapeString(msg[last:]))
-	content := strings.ReplaceAll(body.String(), "\n", "<br>\n")
-	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>` +
-		`<body style="margin:0;padding:0;background:#f6f7fb">` +
-		`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f7fb"><tr><td align="center" style="padding:24px 12px">` +
-		`<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;border-top:4px solid ` + accent + `">` +
-		`<tr><td style="padding:28px 32px 8px">` + head + `</td></tr>` +
-		`<tr><td style="padding:16px 32px 32px;font:15px/1.6 -apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1d2e">` + content + `</td></tr>` +
-		`</table></td></tr></table></body></html>`
+	return EmailHTMLWithActions(business, logoURL, accent, message, nil, "")
+}
+
+// EmailAction is a button in an email (View invoice, Pay now …).
+type EmailAction struct {
+	Label   string
+	URL     string
+	Primary bool
+}
+
+// EmailHTMLWithActions renders a simple branded email (the shared template,
+// see RenderEmail) with call-to-action buttons and an optional small note.
+func EmailHTMLWithActions(business, logoURL, accent, message string, actions []EmailAction, note string) string {
+	out, _ := RenderEmail(EmailView{Business: EmailBusiness{Name: business}, LogoURL: logoURL, Accent: accent, Message: message, Actions: actions, Note: note})
+	return out
 }
 
 // SendHTML sends a multipart/alternative message (text + HTML) to `to`,
@@ -62,12 +49,7 @@ func (m *SMTPMailer) SendHTML(to string, cc []string, subject, text, htmlBody st
 	if to == "" {
 		return fmt.Errorf("no valid recipient")
 	}
-	msg := BuildHTMLMessage(m.From, to, cc, subject, text, htmlBody)
-	var auth smtp.Auth
-	if m.Username != "" {
-		auth = smtp.PlainAuth("", m.Username, m.Password, m.Host)
-	}
-	return smtp.SendMail(m.Host+":"+m.Port, auth, envelopeAddress(m.From), append([]string{to}, cc...), msg)
+	return mail.Send(context.Background(), m.config(), mail.Message{To: []string{to}, CC: cc, Subject: subject, Text: text, HTML: htmlBody})
 }
 
 // BuildHTMLMessage renders an RFC 5322 multipart/alternative message.

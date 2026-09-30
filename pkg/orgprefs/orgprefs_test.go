@@ -100,7 +100,7 @@ func TestInferAndBackfill(t *testing.T) {
 	db.Exec("INSERT INTO billing_settings (organization_id, currency) VALUES (?, 'AUD')", au)
 	// Plan default currency only.
 	gbp := org(t, db, map[string]interface{}{"address_country": ""})
-	db.Exec("INSERT INTO plan_subscriptions (id, organization_id, currency, default_currency) VALUES (?, ?, 'USD', 'GBP')", uuid.NewString(), gbp)
+	db.Exec("INSERT INTO plan_subscriptions (id, organization_id, tier, currency, default_currency) VALUES (?, ?, 'small', 'USD', 'GBP')", uuid.NewString(), gbp)
 	// Nothing at all → AU / AUD, still needs setup.
 	none := org(t, db, map[string]interface{}{"address_country": "Australia"})
 
@@ -131,7 +131,7 @@ func TestSetMirrors(t *testing.T) {
 	id := org(t, db, map[string]interface{}{"address_country": "Australia"})
 	db.Exec("INSERT INTO billing_settings (organization_id, currency) VALUES (?, 'AUD')", id)
 	db.Exec("INSERT INTO organization_settings (id, organization_id, timezone, currency) VALUES (?, ?, 'Australia/Sydney', 'AUD')", uuid.NewString(), id)
-	db.Exec("INSERT INTO plan_subscriptions (id, organization_id, currency, default_currency) VALUES (?, ?, 'USD', 'AUD')", uuid.NewString(), id)
+	db.Exec("INSERT INTO plan_subscriptions (id, organization_id, tier, currency, default_currency) VALUES (?, ?, 'small', 'USD', 'AUD')", uuid.NewString(), id)
 	db.Exec("INSERT INTO smallbiz_settings (organization_id, currency, opening_balance) VALUES (?, 'AUD', 0)", id)
 
 	p, err := Set(db, id, Input{CountryCode: "KE"}, SourceUser)

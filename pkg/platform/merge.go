@@ -176,6 +176,7 @@ var knownSingletons = map[string]bool{
 	"billing_settings": true, "organization_settings": true, "organization_subscriptions": true, "organization_modules": true,
 	"organization_brandings": true, "plan_subscriptions": true, "org_logos": true, "smallbiz_settings": true,
 	"integration_settings": true, "message_settings": true, "video_settings": true, "pm_jira_connections": true,
+	"pay_settings": true,
 }
 
 // numberColumns are document numbers that must be unique within an
@@ -267,6 +268,7 @@ var tableLabels = map[string]string{
 	"organization_brandings": "Organisation branding", "organization_modules": "Module settings",
 	"organization_subscriptions": "Legacy subscription", "organization_invitations": "Invitations", "video_settings": "Video settings",
 	"integration_settings": "Integration settings", "message_settings": "Messaging settings", "roles": "Roles",
+	"pay_settings": "Online payment settings", "pay_transactions": "Online payments",
 }
 
 func tableLabel(t string) string {
@@ -603,6 +605,9 @@ func (h *Handler) Merge(c *gin.Context) {
 		}
 		fail(c, http.StatusInternalServerError, "MERGE_FAILED", "The merge was rolled back: "+err.Error())
 		return
+	}
+	if !req.DryRun && report != nil {
+		notifyMerge(h.DB, c, req.KeepID, report)
 	}
 	ok(c, http.StatusOK, report)
 }

@@ -391,3 +391,25 @@ func TestChangePct(t *testing.T) {
 		t.Fatal("0/0")
 	}
 }
+
+func TestProcessorFeesAndSurcharges(t *testing.T) {
+	in := base()
+	in.ProcessorFees = []ProcessorFee{
+		{Currency: "AUD", At: ts("2026-09-10T10:00:00Z"), Fee: 2.9},
+		{Currency: "AUD", At: ts("2026-09-11T10:00:00Z"), Fee: 3.1, Surcharge: 3.1},
+		{Currency: "KES", At: ts("2026-09-11T10:00:00Z"), Fee: 50}, // other currency
+		{Currency: "AUD", At: ts("2026-10-02T10:00:00Z"), Fee: 9},  // outside the period
+	}
+	for _, basis := range []string{Accrual, Cash} {
+		s := Compute(in, sep, basis)
+		if amt(s, "processing_fees") != 600 || amt(s, "surcharges") != 310 {
+			t.Fatalf("%s: fees %d surcharges %d", basis, amt(s, "processing_fees"), amt(s, "surcharges"))
+		}
+		if s.Lines["processing_fees"].Section != SecExpenses || s.Lines["surcharges"].Section != SecIncome {
+			t.Fatal("sections")
+		}
+		if tt := s.Totals(); tt.NetProfit != 310-600 {
+			t.Fatalf("net %d", tt.NetProfit)
+		}
+	}
+}

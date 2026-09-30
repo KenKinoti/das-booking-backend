@@ -20,6 +20,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/aitools"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 )
 
 // Token formats.
@@ -95,8 +96,9 @@ func (s *Server) userIdentity(userID string) (aitools.Identity, error) {
 		return aitools.Identity{}, errUnauthorized
 	}
 	id := aitools.Identity{UserID: u.ID, OrgID: u.OrganizationID, Role: u.Role, Email: u.Email}
-	var tz string
-	s.DB.Raw("SELECT hours_timezone FROM organizations WHERE id = ?", u.OrganizationID).Row().Scan(&tz)
+	// The organisation's time zone (Settings → Regional), the same one the web
+	// app sends as tz= — not the booking-hours zone, which defaults to Adelaide.
+	tz := orgprefs.Get(s.DB, u.OrganizationID).Timezone
 	if tz != "" {
 		if _, err := time.LoadLocation(tz); err == nil {
 			id.TZ = tz

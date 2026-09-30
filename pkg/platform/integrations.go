@@ -2,18 +2,13 @@ package platform
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/mail"
-	"net/smtp"
 	"net/url"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
-	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/invoicing"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 )
 
 // secretFields are never returned to the browser. Each entry is
@@ -77,6 +72,13 @@ func hint(s string) string {
 	if s == "" {
 		return ""
 	}
+	if mail.IsEncrypted(s) {
+		if pw, err := mail.DecryptSecret(s); err == nil {
+			s = pw
+		} else {
+			return "••••"
+		}
+	}
 	if len(s) <= 8 {
 		return "••••"
 	}
@@ -114,56 +116,74 @@ func (h *Handler) GetIntegrations(c *gin.Context) {
 		return
 	}
 	out := publicSettings(s)
-	out["runtime"] = h.runtimeInfo()
+	out["runtime"] = h.runtimeInfo(actorOrg(c))
 	ok(c, http.StatusOK, out)
 }
 
-func (h *Handler) runtimeInfo() gin.H {
-	m := invoicing.SMTPMailerFromEnv()
+func (h *Handler) runtimeInfo(orgID string) gin.H {
 	env := ""
 	var jwtHours float64
 	if h.Cfg != nil {
 		env = h.Cfg.Environment
 		jwtHours = h.Cfg.JWTExpiry.Hours()
 	}
+	st := mail.Shared(h.DB).Status(orgID)
 	return gin.H{
 		"environment":   env,
 		"go_version":    runtime.Version(),
 		"session_hours": jwtHours,
+		// Effective outgoing email (organisation → platform default → SMTP_* env).
 		"smtp": gin.H{
-			"configured": m.Configured(),
-			"host":       m.Host,
-			"port":       m.Port,
-			"from":       m.From,
-			"auth":       m.Username != "",
+			"configured": st.Ready,
+			"host":       st.Host,
+			"port":       st.Port,
+			"from":       st.From,
+			"auth":       st.Auth,
+			"source":     st.Source,
+			"status":     st,
 		},
 	}
 }
 
-// SendTestEmail sends a real message through the server's outgoing mail
-// configuration (SMTP_* environment variables), which invoices and meeting
-// invitations use.
+// SendTestEmail sends a real message through the effective outgoing mail
+// configuration — the same one invoices and meeting invitations use. Without
+// an address it goes to the notification recipients (or the admin).
 func (h *Handler) SendTestEmail(c *gin.Context) {
 	var req struct {
 		To string `json:"to"`
 	}
 	_ = c.ShouldBindJSON(&req)
-	to := strings.TrimSpace(req.To)
-	if to == "" {
-		to = c.GetString("user_email")
-	}
-	if _, err := mail.ParseAddress(to); err != nil || to == "" {
+	svc := mail.Shared(h.DB)
+	cfg, _ := svc.Resolve(actorOrg(c))
+	to, invalid := mail.ParseList(req.To)
+	if len(invalid) > 0 {
 		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Enter a valid email address")
 		return
 	}
-	m := invoicing.SMTPMailerFromEnv()
-	if !m.Configured() {
-		fail(c, http.StatusBadRequest, "SMTP_NOT_CONFIGURED", "Outgoing email is not configured on the server (set SMTP_HOST and SMTP_FROM)")
+	if len(to) == 0 {
+		to = cfg.Notify
+	}
+	if len(to) == 0 {
+		if e := strings.ToLower(c.GetString("user_email")); mail.ValidAddress(e) {
+			to = []string{e}
+		}
+	}
+	if len(to) == 0 {
+		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Enter a valid email address")
+		return
+	}
+	if !cfg.Ready() {
+		msg := "Outgoing email is not set up. Save an SMTP account under System settings → Email."
+		if cfg.Problem != "" {
+			msg = cfg.Problem
+		}
+		fail(c, http.StatusBadRequest, "SMTP_NOT_CONFIGURED", msg)
 		return
 	}
 	start := time.Now()
-	err := m.Send(to, "DASYIN test email", "This is a test message from the DASYIN platform admin.\n\nIf you received it, outgoing email is working.")
-	status, msg := "success", "Test email sent to "+to
+	err := svc.SendWith(c.Request.Context(), actorOrg(c), cfg, mail.Message{To: to, Subject: "DASYIN test email ✓",
+		Text: "This is a test message from the DASYIN platform admin.\n\nIf you received it, outgoing email is working.\n\nSent from: " + cfg.Display() + "\nSettings: " + mail.SourceLabel(cfg.Source) + "\n"})
+	status, msg := "success", "Test email sent to "+strings.Join(to, ", ")+" from "+cfg.Display()
 	if err != nil {
 		status, msg = "error", "Sending failed: "+err.Error()
 	}
@@ -246,12 +266,16 @@ func (h *Handler) UpdateIntegrations(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", msg)
 		return
 	}
+	if enc, err := mail.EncryptSecret(merged.EmailSettings.SMTPPassword); err == nil {
+		merged.EmailSettings.SMTPPassword = enc
+	}
 	merged.UpdatedAt = time.Now()
 	if err := h.DB.Omit("Organization").Save(&merged).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "DATABASE_ERROR", "Failed to save settings")
 		return
 	}
 	Audit(h.DB, c, "", "settings.integrations.update", "integration_settings", merged.ID, nil, gin.H{"sections": changed})
+	mail.InvalidateAll()
 	ok(c, http.StatusOK, publicSettings(&merged))
 }
 
@@ -363,45 +387,18 @@ func testSMTP(e models.EmailSettings) (string, error) {
 	if strings.TrimSpace(e.SMTPHost) == "" {
 		return "", errors.New("Enter an SMTP host first")
 	}
-	port := e.SMTPPort
-	if port == 0 {
-		port = 587
+	cfg, _ := mail.FromSettings(e)
+	if cfg.Problem != "" && !strings.Contains(cfg.Problem, "From email") {
+		return "", errors.New(cfg.Problem)
 	}
-	addr := net.JoinHostPort(e.SMTPHost, strconv.Itoa(port))
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	var conn net.Conn
-	var err error
-	tlsCfg := &tls.Config{ServerName: e.SMTPHost, MinVersion: tls.VersionTLS12}
-	if e.SMTPSecurity == "ssl" || port == 465 {
-		conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsCfg)
-	} else {
-		conn, err = dialer.Dial("tcp", addr)
+	if err := mail.Probe(context.Background(), cfg); err != nil {
+		return "", err
 	}
-	if err != nil {
-		return "", fmt.Errorf("Could not connect to %s: %v", addr, err)
+	msg := fmt.Sprintf("Connected to %s:%d", cfg.Host, cfg.Port)
+	if cfg.Username != "" {
+		msg += " and signed in successfully"
 	}
-	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
-	cl, err := smtp.NewClient(conn, e.SMTPHost)
-	if err != nil {
-		conn.Close()
-		return "", fmt.Errorf("The server did not respond like an SMTP server: %v", err)
-	}
-	defer cl.Close()
-	if e.SMTPSecurity == "tls" && port != 465 {
-		if okExt, _ := cl.Extension("STARTTLS"); !okExt {
-			return "", errors.New("The server does not support STARTTLS; choose SSL or none")
-		}
-		if err := cl.StartTLS(tlsCfg); err != nil {
-			return "", fmt.Errorf("STARTTLS failed: %v", err)
-		}
-	}
-	if e.SMTPUsername != "" {
-		if err := cl.Auth(smtp.PlainAuth("", e.SMTPUsername, e.SMTPPassword, e.SMTPHost)); err != nil {
-			return "", fmt.Errorf("Authentication failed: %v", err)
-		}
-	}
-	_ = cl.Quit()
-	return fmt.Sprintf("Connected to %s and signed in successfully", addr), nil
+	return msg, nil
 }
 
 func getJSON(req *http.Request) (int, map[string]interface{}, error) {

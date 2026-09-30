@@ -9,22 +9,22 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/config"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
 	"github.com/stretchr/testify/assert"
-	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
 func setupTestHandler() (*Handler, *gin.Engine) {
 	gin.SetMode(gin.TestMode)
-	
+
 	// Setup test database
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		panic("Failed to connect to test database: " + err.Error())
 	}
-	
+
 	// Run only basic migrations for tests
 	err = db.AutoMigrate(
 		&models.Organization{},
@@ -37,28 +37,28 @@ func setupTestHandler() (*Handler, *gin.Engine) {
 	if err != nil {
 		panic("Failed to migrate test database: " + err.Error())
 	}
-	
+
 	// Setup test configuration
 	cfg := &config.Config{
 		JWTSecret:          "test-secret-key",
 		JWTExpiry:          24 * time.Hour,
 		RefreshTokenExpiry: 7 * 24 * time.Hour,
 	}
-	
+
 	// Create handler
 	handler := NewHandler(db, cfg)
-	
+
 	// Setup router
 	router := gin.New()
 	handler.SetupRoutes(router)
-	
+
 	// Create test organization
 	org := models.Organization{
 		ID:   "test-org",
 		Name: "Test Org",
 	}
 	db.Create(&org)
-	
+
 	// Create test user
 	user := models.User{
 		ID:             "test-user",
@@ -71,7 +71,7 @@ func setupTestHandler() (*Handler, *gin.Engine) {
 		IsActive:       true,
 	}
 	db.Create(&user)
-	
+
 	return handler, router
 }
 
@@ -83,16 +83,16 @@ func TestLogin(t *testing.T) {
 			"email":    "test@example.com",
 			"password": "password",
 		}
-		
+
 		body, _ := json.Marshal(loginData)
 		req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
-		
+
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
-		
+
 		assert.Equal(t, http.StatusOK, w.Code)
-		
+
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -105,16 +105,16 @@ func TestLogin(t *testing.T) {
 			"email":    "test@example.com",
 			"password": "wrongpassword",
 		}
-		
+
 		body, _ := json.Marshal(loginData)
 		req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
-		
+
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
-		
+
 		assert.Equal(t, http.StatusUnauthorized, w.Code)
-		
+
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -124,10 +124,10 @@ func TestLogin(t *testing.T) {
 	t.Run("Invalid JSON", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewBuffer([]byte("invalid json")))
 		req.Header.Set("Content-Type", "application/json")
-		
+
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
-		
+
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 
@@ -136,14 +136,14 @@ func TestLogin(t *testing.T) {
 			"email": "test@example.com",
 			// missing password
 		}
-		
+
 		body, _ := json.Marshal(loginData)
 		req := httptest.NewRequest("POST", "/api/v1/auth/login", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
-		
+
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
-		
+
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }

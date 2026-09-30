@@ -606,7 +606,7 @@ func (h *Handler) createLeave(c *gin.Context) {
 	if !okk {
 		return
 	}
-	l := LeaveRequest{OrgID: org, Status: "pending"}
+	l := LeaveRequest{OrgID: org, Status: "pending", RequestedBy: ctxString(c, "user_id")}
 	if !h.applyLeave(c, org, &l) {
 		return
 	}
@@ -615,6 +615,7 @@ func (h *Handler) createLeave(c *gin.Context) {
 		return
 	}
 	l.EmployeeName = h.employeeNames(org)[l.EmployeeID]
+	h.notifyLeave(c, &l, "submitted")
 	ok(c, http.StatusCreated, l)
 }
 
@@ -685,6 +686,7 @@ func (h *Handler) decideLeave(status string) gin.HandlerFunc {
 			return
 		}
 		l.EmployeeName = h.employeeNames(org)[l.EmployeeID]
+		h.notifyLeave(c, &l, status)
 		ok(c, http.StatusOK, l)
 	}
 }

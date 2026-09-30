@@ -10,18 +10,18 @@ import (
 
 // BillingRecord represents a billing/invoice record
 type BillingRecord struct {
-	ID            string    `json:"id"`
-	ParticipantID string    `json:"participant_id"`
-	ShiftIDs      []string  `json:"shift_ids"`
-	InvoiceNumber string    `json:"invoice_number"`
-	Amount        float64   `json:"amount"`
-	Status        string    `json:"status"` // draft, sent, paid, overdue
-	IssueDate     time.Time `json:"issue_date"`
-	DueDate       time.Time `json:"due_date"`
+	ID            string     `json:"id"`
+	ParticipantID string     `json:"participant_id"`
+	ShiftIDs      []string   `json:"shift_ids"`
+	InvoiceNumber string     `json:"invoice_number"`
+	Amount        float64    `json:"amount"`
+	Status        string     `json:"status"` // draft, sent, paid, overdue
+	IssueDate     time.Time  `json:"issue_date"`
+	DueDate       time.Time  `json:"due_date"`
 	PaidDate      *time.Time `json:"paid_date,omitempty"`
-	Description   string    `json:"description"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	Description   string     `json:"description"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 func (h *Handler) GetBilling(c *gin.Context) {
@@ -78,10 +78,10 @@ func (h *Handler) GetBilling(c *gin.Context) {
 		// Calculate shift cost
 		hours := shift.EndTime.Sub(shift.StartTime).Hours()
 		cost := hours * shift.HourlyRate
-		
+
 		participantBilling[shift.ParticipantID].Amount += cost
 		participantBilling[shift.ParticipantID].ShiftIDs = append(
-			participantBilling[shift.ParticipantID].ShiftIDs, 
+			participantBilling[shift.ParticipantID].ShiftIDs,
 			shift.ID,
 		)
 	}
@@ -107,7 +107,7 @@ func (h *Handler) GetBilling(c *gin.Context) {
 
 func (h *Handler) GetBillingRecord(c *gin.Context) {
 	billingID := c.Param("id")
-	
+
 	// For MVP, return mock data
 	billingRecord := BillingRecord{
 		ID:            billingID,
@@ -180,7 +180,7 @@ type PaymentRequest struct {
 
 func (h *Handler) MarkAsPaid(c *gin.Context) {
 	billingID := c.Param("id")
-	
+
 	var req PaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -219,13 +219,13 @@ func (h *Handler) MarkAsPaid(c *gin.Context) {
 
 func (h *Handler) DownloadInvoice(c *gin.Context) {
 	billingID := c.Param("id")
-	
+
 	// For MVP, return mock PDF response
 	c.Header("Content-Type", "application/pdf")
 	c.Header("Content-Disposition", "attachment; filename=invoice_"+billingID+".pdf")
-	
+
 	// Return mock PDF content (in real implementation, generate actual PDF)
 	mockPDFContent := "%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n\n2 0 obj\n<<\n/Type /Pages\n/Kids [3 0 R]\n/Count 1\n>>\nendobj\n\n3 0 obj\n<<\n/Type /Page\n/Parent 2 0 R\n/MediaBox [0 0 612 792]\n>>\nendobj\n\nxref\n0 4\n0000000000 65535 f \n0000000010 00000 n \n0000000053 00000 n \n0000000104 00000 n \ntrailer\n<<\n/Size 4\n/Root 1 0 R\n>>\nstartxref\n164\n%%EOF"
-	
+
 	c.String(http.StatusOK, mockPDFContent)
 }

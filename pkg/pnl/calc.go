@@ -139,6 +139,15 @@ type PayRun struct {
 	Gross, Deductions, Net       float64
 }
 
+// ProcessorFee is an online payment (pay_transactions): the processor's fee
+// (an operating expense) and any surcharge the customer paid on top of the
+// invoice amount (income). Counted when the payment completed, on both bases.
+type ProcessorFee struct {
+	Currency       string
+	At             time.Time
+	Fee, Surcharge float64
+}
+
 // Input is everything the calculation needs.
 type Input struct {
 	Home     string         // currency the statement is in
@@ -156,6 +165,7 @@ type Input struct {
 	Bills           []Bill
 	BillPayments    []BillPayment
 	PayRuns         []PayRun
+	ProcessorFees   []ProcessorFee
 
 	// Document numbers (lower case) the cash book can refer to, for the
 	// reference-matching de-duplication rule. POS numbers come from POS.
@@ -248,7 +258,7 @@ func (s *Statement) SortedLines(section string) []*Line {
 }
 
 var lineOrder = map[string]int{
-	"invoices": 1, "pos": 2, "online": 3, "events": 4, "cashbook_income": 5,
+	"invoices": 1, "pos": 2, "online": 3, "events": 4, "cashbook_income": 5, "surcharges": 6,
 	"stock_received": 1, "bills_cos": 2, "cashbook_cos": 3,
 }
 
@@ -552,6 +562,19 @@ func Compute(in *Input, p Period, basis string) *Statement {
 				}
 				addBill(b, func(net, tax int64) (int64, int64) { return net, tax })
 			}
+		}
+	}
+
+	// --- Online payment processing (Flutterwave): fees and surcharges ---
+	for _, f := range in.ProcessorFees {
+		if !in.inHome(f.Currency) || !p.Contains(LocalDay(f.At, in.Loc)) {
+			continue
+		}
+		if v := in.minor(f.Fee); v != 0 {
+			line("processing_fees", SecExpenses, "Payment processing fees").add(v, "flutterwave")
+		}
+		if v := in.minor(f.Surcharge); v != 0 {
+			line("surcharges", SecIncome, "Payment surcharges collected").add(v, "flutterwave")
 		}
 	}
 

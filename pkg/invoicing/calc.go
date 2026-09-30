@@ -27,6 +27,16 @@ func fmtAmount(v float64, cur string) string {
 // as tax-inclusive and tax is extracted rather than added.
 func Recalculate(inv *Invoice) {
 	r := func(v float64) float64 { return roundCur(v, inv.Currency) }
+	// Money entered at document level is in the currency's minor units too:
+	// an unrounded shipping of 12.345 AUD would print as A$12.35 but add
+	// 12.345 to the total, so the printed lines would not add up.
+	if inv.ShippingAmount < 0 {
+		inv.ShippingAmount = 0
+	}
+	inv.ShippingAmount = r(inv.ShippingAmount)
+	if inv.DiscountType == "amount" {
+		inv.DiscountValue = r(inv.DiscountValue)
+	}
 	var net float64
 	for i := range inv.Items {
 		it := &inv.Items[i]
@@ -94,9 +104,6 @@ func Recalculate(inv *Invoice) {
 	inv.Subtotal = r(subtotal)
 	inv.DiscountTotal = r(lineDiscounts + docDiscount)
 	inv.TaxTotal = r(tax)
-	if inv.ShippingAmount < 0 {
-		inv.ShippingAmount = 0
-	}
 	if inv.PricesIncludeTax {
 		inv.Total = r(inv.Subtotal - inv.DiscountTotal + inv.ShippingAmount)
 	} else {

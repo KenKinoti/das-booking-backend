@@ -265,6 +265,10 @@ func (x *ctx) lineOut(l *Line, prev *Statement) lineOut {
 		o.Note = "Issued invoices (not draft or void), excluding tax"
 	case l.Key == "stock_received":
 		o.Note = "Received quantity × unit cost, for orders without a linked supplier bill"
+	case l.Key == "processing_fees":
+		o.Note = "Fees Flutterwave charged on online invoice payments"
+	case l.Key == "surcharges":
+		o.Note = "Processing fees passed on to customers who paid online"
 	}
 	if strings.HasPrefix(l.Key, "exp:") {
 		src = ""

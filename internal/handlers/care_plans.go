@@ -142,11 +142,11 @@ func (h *Handler) GetCarePlan(c *gin.Context) {
 }
 
 type CreateCarePlanRequest struct {
-	ParticipantID string    `json:"participant_id" binding:"required"`
-	Title         string    `json:"title" binding:"required"`
-	Description   string    `json:"description"`
-	Goals         string    `json:"goals"`
-	StartDate     time.Time `json:"start_date" binding:"required"`
+	ParticipantID string     `json:"participant_id" binding:"required"`
+	Title         string     `json:"title" binding:"required"`
+	Description   string     `json:"description"`
+	Goals         string     `json:"goals"`
+	StartDate     time.Time  `json:"start_date" binding:"required"`
 	EndDate       *time.Time `json:"end_date,omitempty"`
 }
 

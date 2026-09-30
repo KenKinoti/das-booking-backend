@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 	"gorm.io/gorm"
@@ -50,8 +51,9 @@ func logoFor(c *gin.Context, org string) string {
 // Handler serves the invoicing API.
 type Handler struct {
 	DB        *gorm.DB
-	Mailer    Mailer
-	PublicURL string // e.g. https://das-erp-frontend.web.app
+	Mailer    Mailer        // legacy/test mailer; when set it is used instead of Mail
+	Mail      *mail.Service // resolves the organisation's outgoing email account
+	PublicURL string        // e.g. https://das-erp-frontend.web.app
 	Now       func() time.Time
 }
 
@@ -80,6 +82,11 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/invoices/:id", h.Update)
 	r.DELETE("/invoices/:id", h.Delete)
 	r.POST("/invoices/:id/send", h.Send)
+	r.POST("/invoices/:id/send-test", h.SendTest)
+	r.POST("/invoices/:id/preflight", h.Preflight)
+	r.GET("/invoices/:id/email-draft", h.EmailDraft)
+	r.GET("/invoices/:id/email-log", h.EmailLogList)
+	r.POST("/invoices/:id/rate", h.LockRate)
 	r.GET("/invoices/:id/recipients", h.Recipients)
 	r.POST("/invoices/:id/mark-sent", h.MarkSent)
 	r.POST("/invoices/:id/void", h.Void)
@@ -90,12 +97,17 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/invoices/:id/payments", h.AddPayment)
 	r.DELETE("/invoices/:id/payments/:paymentId", h.DeletePayment)
 	r.POST("/invoices/:id/regenerate-link", h.RegenerateLink)
+	r.GET("/invoices/:id/pdf", h.PDF)
+	r.GET("/invoices/:id/pay-link", h.PayLink)
+	r.GET("/invoices/:id/payments/:paymentId/receipt", h.ReceiptPDF)
 }
 
 // RegisterPublicRoutes mounts unauthenticated, token-based client views.
 func (h *Handler) RegisterPublicRoutes(r *gin.RouterGroup) {
 	r.GET("/invoices/:token", h.PublicView)
 	r.POST("/invoices/:token/accept", h.PublicAccept)
+	r.GET("/invoices/:token/pdf", h.PublicPDF)
+	r.GET("/invoices/:token/receipts/:paymentId", h.PublicReceiptPDF)
 }
 
 // ---------- helpers ----------
@@ -113,6 +125,11 @@ func fail(c *gin.Context, status int, code, msg string) {
 }
 
 func failErr(c *gin.Context, err error) {
+	var ce *checkError
+	if errors.As(err, &ce) {
+		c.JSON(ce.status, gin.H{"success": false, "error": gin.H{"code": ce.code, "message": ce.msg, "checks": ce.checks}})
+		return
+	}
 	var ae *apiError
 	if errors.As(err, &ae) {
 		fail(c, ae.status, ae.code, ae.msg)
@@ -289,9 +306,14 @@ type itemInput struct {
 	DiscountPercent float64 `json:"discount_percent"`
 	TaxRate         float64 `json:"tax_rate"`
 	TaxName         string  `json:"tax_name"`
+	// OriginalUnitPrice / OriginalCurrency: the catalog price a converted
+	// line came from. The server re-prices such lines at the locked rate.
+	OriginalUnitPrice *float64 `json:"original_unit_price"`
+	OriginalCurrency  string   `json:"original_currency"`
 }
 
 type invoiceInput struct {
+	rateInput
 	DocType            string      `json:"doc_type"`
 	Status             string      `json:"status"`
 	CustomerID         *string     `json:"customer_id"`
@@ -426,9 +448,18 @@ func (in *invoiceInput) apply(inv *Invoice, s *Settings, now time.Time) error {
 		if it.TaxRate < 0 || it.TaxRate > 100 {
 			return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Tax rate must be between 0 and 100"}
 		}
+		var orig *float64
+		oc := strings.ToUpper(strings.TrimSpace(it.OriginalCurrency))
+		if it.OriginalUnitPrice != nil && *it.OriginalUnitPrice >= 0 && currency.IsSupported(oc) {
+			v := *it.OriginalUnitPrice
+			orig = &v
+		} else {
+			oc = ""
+		}
 		items = append(items, InvoiceItem{
 			ID: uuid.NewString(), InvoiceID: inv.ID, ItemType: it.ItemType, ReferenceID: it.ReferenceID,
 			Description: it.Description, Quantity: it.Quantity, Unit: it.Unit, UnitPrice: it.UnitPrice,
+			OriginalUnitPrice: orig, OriginalCurrency: oc,
 			DiscountPercent: it.DiscountPercent, TaxRate: it.TaxRate, TaxName: it.TaxName,
 		})
 	}
@@ -588,6 +619,9 @@ func (h *Handler) Create(c *gin.Context) {
 		if err := in.apply(inv, s, h.now()); err != nil {
 			return err
 		}
+		if err := h.finishAmounts(tx, inv, in.rateInput, "", ""); err != nil {
+			return err
+		}
 		num, err := h.nextNumber(tx, org, inv.DocType)
 		if err != nil {
 			return err
@@ -653,7 +687,11 @@ func (h *Handler) Update(c *gin.Context) {
 		if err != nil {
 			return err
 		}
+		prevCur, prevBase := inv.Currency, inv.BaseCurrency
 		if err := in.apply(inv, s, h.now()); err != nil {
+			return err
+		}
+		if err := h.finishAmounts(tx, inv, in.rateInput, prevCur, prevBase); err != nil {
 			return err
 		}
 		if inv.DocType == TypeInvoice && inv.Total+0.004 < inv.AmountPaid {
@@ -739,26 +777,41 @@ func (h *Handler) markSent(tx *gorm.DB, inv *Invoice, user, msg string) error {
 
 func (h *Handler) MarkSent(c *gin.Context) {
 	h.simpleAction(c, func(tx *gorm.DB, inv *Invoice, user string) error {
+		// Official status change: the amounts and exchange rate must be right.
+		if checks := h.runChecks(tx, inv, nil, checkOptions{Mode: "mark"}); countSeverity(checks, "error") > 0 {
+			return blocked(checks, false)
+		}
 		return h.markSent(tx, inv, user, "Marked as sent")
 	})
 }
 
 type sendInput struct {
 	To      string    `json:"to"`
-	CC      *[]string `json:"cc"` // nil: use the suggested CCs; [] sends to To only
+	CC      *[]string `json:"cc"`  // nil: use the suggested CCs (incl. "Always CC"); [] sends to To only
+	BCC     *[]string `json:"bcc"` // nil: the email settings' "Always BCC"
 	Subject string    `json:"subject"`
 	Message string    `json:"message"`
-	Kind    string    `json:"kind"` // invoice | quote | reminder
+	Kind    string    `json:"kind"` // invoice | quote | reminder | receipt
+	// PaymentID is the payment a receipt email is about (kind "receipt").
+	PaymentID string `json:"payment_id"`
 	// Mode "email" requires server email (SMTP) and fails clearly without it;
 	// "mailto" only records the send (the user's email app sends it). Empty
 	// keeps the old behaviour: email when configured, else mailto.
 	Mode string `json:"mode"`
+	// AppURL is the web app's origin (window.location.origin), used for the
+	// View / Pay links when PUBLIC_APP_URL is not set.
+	AppURL string `json:"app_url"`
+	// AcceptWarnings: the pre-send checks always run and errors always block.
+	// false makes warnings block too (the send dialog passes true only after
+	// the user chose "Send anyway"); nil (API callers) lets warnings through.
+	AcceptWarnings *bool `json:"accept_warnings"`
 }
 
 // Send emails the document when SMTP is configured; otherwise it marks it sent
 // and returns a ready-made mailto payload for the client's own mail app.
 // Customer contacts flagged for this kind of email are copied automatically
-// unless the caller passes an explicit cc list.
+// unless the caller passes an explicit cc list. The pre-send checks run first
+// (see runChecks) and every attempt is written to invoice_email_log.
 func (h *Handler) Send(c *gin.Context) {
 	org, okk := h.org(c)
 	if !okk {
@@ -767,92 +820,123 @@ func (h *Handler) Send(c *gin.Context) {
 	var in sendInput
 	_ = c.ShouldBindJSON(&in)
 	user := ctxString(c, "user_id")
-	configured := h.Mailer != nil && h.Mailer.Configured()
+	mcfg, viaMail := h.mailConfig(org)
+	configured := h.emailEnabled(org)
 	if in.Mode == "email" && !configured {
-		fail(c, http.StatusServiceUnavailable, "SMTP_NOT_CONFIGURED",
-			"Email sending isn't set up on the server (SMTP_HOST / SMTP_FROM are missing). Use “Open in email app” instead, or ask your administrator to configure outgoing email.")
+		msg := "Email sending isn't set up yet. Use “Open in email app” instead, or ask your administrator to set up outgoing email under Settings → Outgoing email."
+		if viaMail && mcfg.Problem != "" {
+			msg = "Email sending isn't ready: " + mcfg.Problem
+		}
+		fail(c, http.StatusServiceUnavailable, "SMTP_NOT_CONFIGURED", msg)
 		return
 	}
 	useEmail := configured && in.Mode != "mailto"
+	mode := "mailto"
+	if useEmail {
+		mode = "email"
+	}
 	var out *Invoice
-	var rec Recipients
-	var skipped []string
+	var built *builtEmail
+	var entry *EmailLog
+	var checks []Check
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		inv, err := h.load(tx, org, c.Param("id"), false)
 		if err != nil {
 			return err
 		}
-		kind := kindFor(inv, in.Kind)
+		kind := kindOf(inv, in.Kind)
 		if kind == KindReminder && inv.Status != StatusSent && inv.Status != StatusPartial {
 			return &apiError{http.StatusConflict, "NOT_REMINDABLE", "Reminders can only be sent for unpaid invoices"}
 		}
-		sugTo, sugCC := h.recipientsFor(org, inv, kind)
-		to := strings.TrimSpace(in.To)
-		if to == "" && sugTo != nil {
-			to = sugTo.Email
+		if kind != KindReminder && kind != KindReceipt && (inv.Status == StatusVoid || inv.Status == StatusConverted) {
+			return &apiError{http.StatusConflict, "LOCKED", "This document can't be sent"}
 		}
-		var ccIn []string
-		if in.CC != nil {
-			ccIn = *in.CC
-		} else {
-			for _, r := range sugCC {
-				ccIn = append(ccIn, r.Email)
-			}
+		b, err := h.buildEmail(tx, c, inv, in, mcfg, viaMail)
+		if err != nil {
+			return err
 		}
-		var cc []string
-		to, cc, skipped = MergeRecipients(to, ccIn)
-		if strings.TrimSpace(in.To) != "" && to == "" {
-			return &apiError{http.StatusBadRequest, "INVALID_EMAIL", "“" + strings.TrimSpace(in.To) + "” is not a valid email address"}
+		built = b
+		checks = h.runChecks(tx, inv, b, checkOptions{Mode: mode, Configured: configured, MailCfg: mcfg, ViaMail: viaMail})
+		entry = h.newLog(inv, b, mode, user, "", checks)
+		if countSeverity(checks, "error") > 0 {
+			entry.Status = "blocked"
+			return blocked(checks, false)
 		}
-		if len(cc) > 50 {
-			return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Too many CC recipients (max 50)"}
+		if countSeverity(checks, "warning") > 0 && in.AcceptWarnings != nil && !*in.AcceptWarnings {
+			entry.Status = "blocked"
+			return blocked(checks, true)
 		}
-		rec = Recipients{Kind: kind, To: to, CC: cc}
+		rec := Recipients{Kind: kind, To: b.To, CC: b.CC, BCC: b.BCC}
+		if kind == KindReceipt {
+			rec.Kind = KindInvoice
+		}
 		if useEmail {
-			if to == "" {
-				return &apiError{http.StatusBadRequest, "NO_EMAIL", "Add the client's email address first"}
-			}
+			start := time.Now()
 			var sendErr error
-			if m, isHTML := h.Mailer.(HTMLMailer); isHTML {
-				// Branded HTML version: company logo (absolute URL) at the top.
-				biz, accent := "", ""
-				if s, serr := h.settingsFor(tx, org, false); serr == nil {
-					biz, accent = s.BusinessName, s.AccentColor
+			switch {
+			case viaMail:
+				msg := mail.Message{To: []string{b.To}, CC: b.CC, BCC: b.BCC, Subject: b.Subject, Text: b.Text, HTML: b.HTML,
+					Attachments: []mail.Attachment{b.Attachment}, MessageID: mail.NewMessageID(mcfg.FromEmail), ReplyTo: mcfg.ReplyTo}
+				entry.MessageID = msg.MessageID
+				sendErr = h.Mail.SendWith(c.Request.Context(), org, mcfg, msg)
+			default:
+				if m, isHTML := h.Mailer.(HTMLMailer); isHTML {
+					sendErr = m.SendHTML(b.To, b.CC, b.Subject, b.Text, b.HTML)
+				} else if m, isCC := h.Mailer.(CCMailer); isCC {
+					sendErr = m.SendWithCC(b.To, b.CC, b.Subject, b.Text)
+				} else {
+					if len(b.CC) > 0 {
+						return &apiError{http.StatusBadRequest, "CC_UNSUPPORTED", "The configured mailer can't copy other recipients"}
+					}
+					sendErr = h.Mailer.Send(b.To, b.Subject, b.Text)
 				}
-				if biz == "" && tx.Migrator().HasTable("organizations") {
-					tx.Raw("SELECT name FROM organizations WHERE id = ?", org).Scan(&biz)
-				}
-				sendErr = m.SendHTML(to, cc, in.Subject, in.Message, EmailHTML(biz, logoFor(c, org), accent, in.Message))
-			} else if m, isCC := h.Mailer.(CCMailer); isCC {
-				sendErr = m.SendWithCC(to, cc, in.Subject, in.Message)
-			} else {
-				if len(cc) > 0 {
-					return &apiError{http.StatusBadRequest, "CC_UNSUPPORTED", "The configured mailer can't copy other recipients"}
-				}
-				sendErr = h.Mailer.Send(to, in.Subject, in.Message)
 			}
+			entry.DurationMS = int(time.Since(start).Milliseconds())
 			if sendErr != nil {
+				entry.Status, entry.Error, entry.ErrorCode = "failed", sendErr.Error(), mail.Code(sendErr)
 				return &apiError{http.StatusBadGateway, "EMAIL_FAILED", "Email could not be sent: " + sendErr.Error()}
 			}
+			entry.Status = "sent"
+			entry.Response = "250 accepted"
+			if viaMail {
+				entry.Response = "250 accepted by " + mcfg.Host
+			}
 			rec.Emailed = true
+		} else {
+			entry.Status = "recorded"
+			entry.Response = "Handed to the user's email app (mailto)"
 		}
-		// Remember the CCs so reminders and recurring copies reuse them.
-		if !equalStrings(cc, inv.CCEmails) {
-			if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Update("cc_emails", ccJSON(cc)).Error; err != nil {
+		// Remember the CCs so reminders and recurring copies reuse them — but
+		// not the settings' "Always CC" addresses, which are added at send time.
+		keepCC := b.CC
+		if viaMail {
+			keepCC = withoutAddresses(b.CC, withoutAddresses(mcfg.CC, inv.CCEmails))
+		}
+		if kind != KindReceipt && !equalStrings(keepCC, inv.CCEmails) {
+			if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Update("cc_emails", ccJSON(keepCC)).Error; err != nil {
 				return err
 			}
 		}
 		msg := recipientsMessage(rec)
-		if kind == KindReminder {
+		switch kind {
+		case KindReceipt:
+			what := "Receipt for " + FormatMoney(b.Payment.Amount, inv.Currency)
+			if rec.Emailed {
+				msg = what + " emailed to " + rec.To
+			} else {
+				msg = what + " sent via email app to " + rec.To
+			}
+			if len(rec.CC) > 0 {
+				msg += " · CC " + strings.Join(rec.CC, ", ")
+			}
+			h.logRecipients(tx, inv, "receipt_sent", msg, user, &rec)
+		case KindReminder:
 			t := h.now()
 			if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Update("sent_at", t).Error; err != nil {
 				return err
 			}
 			h.logRecipients(tx, inv, "reminder", msg, user, &rec)
-		} else {
-			if inv.Status == StatusVoid || inv.Status == StatusConverted {
-				return &apiError{http.StatusConflict, "LOCKED", "This document can't be sent"}
-			}
+		default:
 			t := h.now()
 			updates := map[string]interface{}{"sent_at": t}
 			if inv.Status == StatusDraft {
@@ -866,14 +950,39 @@ func (h *Handler) Send(c *gin.Context) {
 		out, err = h.load(tx, org, inv.ID, true)
 		return err
 	})
+	if entry != nil && entry.Status != "" {
+		entry.UserEmail = h.userEmail(user)
+		if err := h.DB.Create(entry).Error; err != nil {
+			fmt.Printf("invoicing: email log: %v\n", err)
+		}
+	}
 	if err != nil {
 		failErr(c, err)
 		return
 	}
+	skipped := built.Skipped
 	if skipped == nil {
 		skipped = []string{}
 	}
-	ok(c, http.StatusOK, gin.H{"invoice": out, "emailed": rec.Emailed, "to": rec.To, "cc": rec.CC, "kind": rec.Kind, "skipped": skipped})
+	bccOut := built.BCC
+	if bccOut == nil {
+		bccOut = []string{}
+	}
+	ccOut := built.CC
+	if ccOut == nil {
+		ccOut = []string{}
+	}
+	resp := gin.H{"invoice": out, "emailed": entry.Status == "sent", "to": built.To, "cc": ccOut, "bcc": bccOut, "kind": built.Kind, "skipped": skipped,
+		"subject": built.Subject, "message": built.Message, "checks": checks, "log_id": entry.ID, "message_id": entry.MessageID}
+	if s := h.sender(org); s != nil {
+		resp["sender"] = s
+	}
+	if built.PDFErr == nil && built.Attachment.Filename != "" {
+		resp["attachment"] = built.Attachment.Filename
+		resp["view_url"] = built.ViewURL
+		resp["pay_url"] = built.PayURL
+	}
+	ok(c, http.StatusOK, resp)
 }
 
 func (h *Handler) logRecipients(tx *gorm.DB, inv *Invoice, typ, msg, user string, rec *Recipients) {
@@ -1000,7 +1109,10 @@ func (h *Handler) RegenerateLink(c *gin.Context) {
 }
 
 // copyInvoice clones src into a new draft of docType inside tx.
-func (h *Handler) copyInvoice(tx *gorm.DB, src *Invoice, docType, user string, issue time.Time) (*Invoice, error) {
+// keepRate copies src's locked exchange rate (quote → invoice, recurring
+// copies: the amounts stay identical); otherwise today's rate is locked and
+// catalog lines are re-priced at it.
+func (h *Handler) copyInvoice(tx *gorm.DB, src *Invoice, docType, user string, issue time.Time, keepRate bool) (*Invoice, error) {
 	s, err := h.settingsFor(tx, src.OrganizationID, false)
 	if err != nil {
 		return nil, err
@@ -1026,7 +1138,17 @@ func (h *Handler) copyInvoice(tx *gorm.DB, src *Invoice, docType, user string, i
 		it.InvoiceID = n.ID
 		n.Items = append(n.Items, it)
 	}
-	Recalculate(n)
+	n.BaseCurrency = src.BaseCurrency
+	if keepRate && (src.ExchangeRate > 0 || src.Currency == src.BaseCurrency) && src.BaseCurrency != "" {
+		n.ExchangeRate, n.RateSource, n.RateDate, n.RateProvider = src.ExchangeRate, src.RateSource, src.RateDate, src.RateProvider
+		Recalculate(n)
+		setBaseTotal(n)
+	} else {
+		n.BaseCurrency = ""
+		if err := h.finishAmounts(tx, n, rateInput{}, "", ""); err != nil {
+			return nil, err
+		}
+	}
 	num, err := h.nextNumber(tx, n.OrganizationID, docType)
 	if err != nil {
 		return nil, err
@@ -1057,7 +1179,7 @@ func (h *Handler) Duplicate(c *gin.Context) {
 		if err != nil {
 			return err
 		}
-		n, err := h.copyInvoice(tx, src, src.DocType, user, h.now())
+		n, err := h.copyInvoice(tx, src, src.DocType, user, h.now(), false)
 		if err != nil {
 			return err
 		}
@@ -1101,7 +1223,7 @@ func (h *Handler) Convert(c *gin.Context) {
 		if src.Status == StatusConverted || src.Status == StatusVoid || src.Status == StatusDeclined {
 			return &apiError{http.StatusConflict, "LOCKED", "This quote can't be converted"}
 		}
-		n, err := h.copyInvoice(tx, src, TypeInvoice, user, h.now())
+		n, err := h.copyInvoice(tx, src, TypeInvoice, user, h.now(), true)
 		if err != nil {
 			return err
 		}
@@ -1135,6 +1257,9 @@ type paymentInput struct {
 	Method    string  `json:"method"`
 	Reference string  `json:"reference"`
 	Notes     string  `json:"notes"`
+	// keepMethod stores Method as given (online payments, e.g.
+	// "Flutterwave · M-Pesa").
+	keepMethod bool
 }
 
 func (h *Handler) AddPayment(c *gin.Context) {
@@ -1204,6 +1329,9 @@ func (h *Handler) recordPayment(tx *gorm.DB, inv *Invoice, in paymentInput, user
 	}
 	method := strings.ToLower(strings.TrimSpace(in.Method))
 	method = strings.NewReplacer(" ", "_", "-", "_").Replace(method)
+	if in.keepMethod {
+		method = strings.TrimSpace(in.Method)
+	}
 	switch method {
 	case "":
 		method = "bank_transfer"
@@ -1237,8 +1365,16 @@ func (h *Handler) recordPayment(tx *gorm.DB, inv *Invoice, in paymentInput, user
 	if deposit {
 		label = "Deposit of"
 	}
-	h.log(tx, inv, "payment", fmt.Sprintf("%s %s %s recorded (%s)", label, inv.Currency, fmtAmount(amt, inv.Currency), strings.ReplaceAll(method, "_", " ")), user)
+	h.log(tx, inv, "payment", fmt.Sprintf("%s %s %s recorded (%s)", label, inv.Currency, fmtAmount(amt, inv.Currency), methodText(method, in.keepMethod)), user)
 	return nil
+}
+
+// methodText is how a payment method reads in the activity log.
+func methodText(m string, raw bool) string {
+	if raw {
+		return m
+	}
+	return strings.ReplaceAll(m, "_", " ")
 }
 
 func (h *Handler) DeletePayment(c *gin.Context) {
@@ -1289,7 +1425,7 @@ func (h *Handler) runRecurring(org, user string) int {
 					fresh.IsRecurring = false
 					break
 				}
-				n, err := h.copyInvoice(tx, src, TypeInvoice, user, issue)
+				n, err := h.copyInvoice(tx, src, TypeInvoice, user, issue, true)
 				if err != nil {
 					return err
 				}
@@ -1337,7 +1473,7 @@ func (h *Handler) Stats(c *gin.Context) {
 		cur = strings.ToUpper(s.Currency)
 	}
 	var invs []Invoice
-	if err := h.DB.Select("id, doc_type, status, total, amount_paid, balance_due, issue_date, due_date, client_name, customer_id, currency").
+	if err := h.DB.Select("id, doc_type, status, total, amount_paid, balance_due, issue_date, due_date, client_name, customer_id, currency, base_currency, exchange_rate, total_base").
 		Where("organization_id = ?", org).Find(&invs).Error; err != nil {
 		failErr(c, err)
 		return
@@ -1347,13 +1483,25 @@ func (h *Handler) Stats(c *gin.Context) {
 	// Totals are in the organisation's currency; documents in other currencies
 	// are reported separately (other_currencies) rather than added in.
 	invCur := map[string]string{}
+	// Each foreign-currency figure is also given in the home currency,
+	// converted at the rate locked on each invoice ("converted at…").
 	type otherTotal struct {
-		Currency    string  `json:"currency"`
-		Open        int     `json:"open"`
-		Outstanding float64 `json:"outstanding"`
-		Overdue     float64 `json:"overdue"`
+		Currency        string  `json:"currency"`
+		Open            int     `json:"open"`
+		Outstanding     float64 `json:"outstanding"`
+		Overdue         float64 `json:"overdue"`
+		OutstandingBase float64 `json:"outstanding_base"`
+		OverdueBase     float64 `json:"overdue_base"`
+		NoRate          int     `json:"no_rate"`
 	}
 	others := map[string]*otherTotal{}
+	var conv struct {
+		Outstanding       float64 `json:"outstanding"`
+		Overdue           float64 `json:"overdue"`
+		InvoicedThisMonth float64 `json:"invoiced_this_month"`
+		Open              int     `json:"open"`
+		NoRate            int     `json:"no_rate"`
+	}
 
 	aging := map[string]float64{"current": 0, "1_30": 0, "31_60": 0, "61_90": 0, "90_plus": 0}
 	var outstanding, overdue, drafts, paidThisMonth, invoicedThisMonth float64
@@ -1391,9 +1539,25 @@ func (h *Handler) Stats(c *gin.Context) {
 				}
 				o.Open++
 				o.Outstanding = round2(o.Outstanding + inv.BalanceDue)
+				bb, okb := ToBase(inv, inv.BalanceDue)
+				if !okb || inv.BaseCurrency != cur {
+					o.NoRate++
+					conv.NoRate++
+				} else {
+					conv.Open++
+					o.OutstandingBase = roundCur(o.OutstandingBase+bb, cur)
+					conv.Outstanding = roundCur(conv.Outstanding+bb, cur)
+				}
 				if inv.DisplayStatus == StatusOverdue {
 					o.Overdue = round2(o.Overdue + inv.BalanceDue)
+					if okb && inv.BaseCurrency == cur {
+						o.OverdueBase = roundCur(o.OverdueBase+bb, cur)
+						conv.Overdue = roundCur(conv.Overdue+bb, cur)
+					}
 				}
+			}
+			if inv.DocType == TypeInvoice && inv.Status != StatusDraft && inv.IssueDate.Format("2006-01") == thisMonth && inv.BaseCurrency == cur && inv.ExchangeRate > 0 {
+				conv.InvoicedThisMonth = roundCur(conv.InvoicedThisMonth+inv.TotalBase, cur)
 			}
 			continue
 		}
@@ -1475,6 +1639,7 @@ func (h *Handler) Stats(c *gin.Context) {
 		"currency": cur, "outstanding": round2(outstanding), "overdue": round2(overdue), "drafts": round2(drafts),
 		"paid_this_month": round2(paidThisMonth), "invoiced_this_month": round2(invoicedThisMonth), "open_quotes": round2(openQuotes),
 		"aging": aging, "monthly": months, "top_outstanding": top, "counts": counts, "other_currencies": otherList,
+		"converted": conv, "converted_note": "Other currencies converted to " + cur + " at the exchange rate locked on each invoice — not included in the totals above.",
 		"outstanding_count": outstandingN, "overdue_count": overdueN, "drafts_count": draftsN,
 	})
 }
@@ -1493,7 +1658,7 @@ func (h *Handler) GetSettings(c *gin.Context) {
 	}
 	// Read-only: the company logo is managed under Settings → Business details.
 	s.LogoURL = logoFor(c, org)
-	ok(c, http.StatusOK, gin.H{"settings": s, "email_enabled": h.Mailer != nil && h.Mailer.Configured()})
+	ok(c, http.StatusOK, gin.H{"settings": s, "email_enabled": h.emailEnabled(org), "sender": h.sender(org)})
 }
 
 func (h *Handler) UpdateSettings(c *gin.Context) {
@@ -1546,7 +1711,7 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		return
 	}
 	in.LogoURL = logoFor(c, org)
-	ok(c, http.StatusOK, gin.H{"settings": in, "email_enabled": h.Mailer != nil && h.Mailer.Configured()})
+	ok(c, http.StatusOK, gin.H{"settings": in, "email_enabled": h.emailEnabled(org), "sender": h.sender(org)})
 }
 
 func (h *Handler) ListTaxRates(c *gin.Context) {
@@ -1814,7 +1979,7 @@ func (h *Handler) PublicView(c *gin.Context) {
 	if s.BusinessName == "" && h.DB.Migrator().HasTable("organizations") {
 		h.DB.Raw("SELECT name FROM organizations WHERE id = ?", inv.OrganizationID).Scan(&s.BusinessName)
 	}
-	ok(c, http.StatusOK, gin.H{"invoice": inv, "business": s})
+	ok(c, http.StatusOK, gin.H{"invoice": inv, "business": s, "pay_enabled": h.payable(inv)})
 }
 
 func (h *Handler) PublicAccept(c *gin.Context) {

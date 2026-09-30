@@ -22,7 +22,7 @@ type Recipient struct {
 	Email  string `json:"email"`
 	Name   string `json:"name,omitempty"`
 	Role   string `json:"role,omitempty"`
-	Source string `json:"source"` // client | primary_billing | contact | document
+	Source string `json:"source"` // client | primary_billing | contact | document | settings
 }
 
 // customerRow is the subset of the core customers table invoicing reads.
@@ -225,7 +225,33 @@ func (h *Handler) Recipients(c *gin.Context) {
 	}
 	kind := kindFor(inv, c.Query("kind"))
 	to, cc := h.recipientsFor(org, inv, kind)
-	ok(c, http.StatusOK, gin.H{"kind": kind, "to": to, "cc": cc, "email_enabled": h.Mailer != nil && h.Mailer.Configured()})
+	out := gin.H{"kind": kind, "to": to, "cc": cc, "bcc": []Recipient{}, "email_enabled": h.emailEnabled(org)}
+	if s := h.sender(org); s != nil {
+		// The email settings' "Always CC/BCC" addresses, merged and de-duplicated
+		// so the send dialog shows every recipient.
+		seen := map[string]bool{}
+		if to != nil {
+			seen[to.Email] = true
+		}
+		for _, r := range cc {
+			seen[r.Email] = true
+		}
+		for _, e := range s.AlwaysCC {
+			if !seen[e] {
+				seen[e] = true
+				cc = append(cc, Recipient{Email: e, Name: "Always CC", Source: "settings"})
+			}
+		}
+		bcc := []Recipient{}
+		for _, e := range s.AlwaysBCC {
+			if !seen[e] {
+				seen[e] = true
+				bcc = append(bcc, Recipient{Email: e, Name: "Always BCC", Source: "settings"})
+			}
+		}
+		out["cc"], out["bcc"], out["sender"] = cc, bcc, s
+	}
+	ok(c, http.StatusOK, out)
 }
 
 // CustomerDefaults GET /customer-defaults/:customerId?type=invoice|quote
