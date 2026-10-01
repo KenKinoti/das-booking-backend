@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/dbstatus"
 	"log"
 	"time"
 
@@ -40,6 +42,7 @@ func init() {
 	extraMigrations = append(extraMigrations, func(db *gorm.DB) {
 		if err := fxrates.Migrate(db); err != nil {
 			log.Printf("fx rates migration failed: %v", err)
+			dbstatus.AddMigrationError(fmt.Sprintf("%s: %v", "fxrates", err))
 		}
 		// Documents created before rates were locked: record their home
 		// currency (and rate 1 when they are in it).

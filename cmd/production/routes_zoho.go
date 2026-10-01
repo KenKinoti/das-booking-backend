@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/dbstatus"
 	"log"
 	"os"
 
@@ -41,6 +43,7 @@ func init() {
 	extraMigrations = append(extraMigrations, func(db *gorm.DB) {
 		if err := zoho.Migrate(db); err != nil {
 			log.Printf("⚠️  import (zoho) migration failed: %v", err)
+			dbstatus.AddMigrationError(fmt.Sprintf("%s: %v", "zoho", err))
 		}
 	})
 }

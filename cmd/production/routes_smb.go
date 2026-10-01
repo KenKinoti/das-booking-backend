@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/dbstatus"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +20,7 @@ func init() {
 	extraMigrations = append(extraMigrations, func(db *gorm.DB) {
 		if err := smallbiz.Migrate(db); err != nil {
 			log.Printf("⚠️  smallbiz migration failed: %v", err)
+			dbstatus.AddMigrationError(fmt.Sprintf("%s: %v", "smallbiz", err))
 		}
 	})
 }

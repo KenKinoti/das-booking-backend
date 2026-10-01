@@ -8,13 +8,17 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/aitools"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/dbstatus"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -78,6 +82,7 @@ func main() {
 
 	// Plan entitlements: blocks module APIs the organisation's plan does not
 	// include (402 MODULE_NOT_IN_PLAN). Must precede every route registration.
+	r.Use(dbReadyGate())
 	r.Use(plansEnforcer(db, cfg))
 
 	// Core API: auth, users, organisations, customers, bookings, services,
@@ -287,11 +292,13 @@ func prepareDatabase(db *gorm.DB) {
 	}
 	if strings.EqualFold(os.Getenv("SKIP_MIGRATIONS"), "true") {
 		log.Println("SKIP_MIGRATIONS=true — not changing the schema")
-	} else {
-		started := time.Now()
-		migrate(db)
 		dbstatus.SetMigrated()
-		log.Printf("✅ migrations finished in %s (%d problems)", time.Since(started).Round(time.Millisecond), dbstatus.Get(false).MigrationErrors)
+	} else if fp := buildFingerprint(); fp != "" && alreadyMigrated(db, fp) && !strings.EqualFold(os.Getenv("FORCE_MIGRATIONS"), "true") {
+		log.Printf("✅ schema already up to date for this build (%s) — skipping migrations", fp[:12])
+		dbstatus.SetSkipped(true)
+		dbstatus.SetMigrated()
+	} else {
+		runMigrations(db)
 	}
 	bootstrap(db)
 }
@@ -624,4 +631,84 @@ func inSchema(db *gorm.DB, fn func(tx *gorm.DB) error) error {
 		}
 		return fn(tx)
 	})
+}
+
+var migrateMu sync.Mutex
+
+// runMigrations migrates every module and remembers a clean run for this build
+// so restarts of the same build start instantly.
+func runMigrations(db *gorm.DB) {
+	migrateMu.Lock()
+	defer migrateMu.Unlock()
+	dbstatus.SetMigrating()
+	started := time.Now()
+	migrate(db)
+	problems := dbstatus.Get(false).MigrationErrors
+	dbstatus.SetMigrated()
+	log.Printf("✅ migrations finished in %s (%d problems)", time.Since(started).Round(time.Millisecond), problems)
+	if fp := buildFingerprint(); fp != "" && problems == 0 {
+		_ = inSchema(db, func(tx *gorm.DB) error {
+			if err := tx.Exec(`CREATE TABLE IF NOT EXISTS app_schema_builds (fingerprint varchar(64) PRIMARY KEY, version varchar(32), migrated_at timestamptz NOT NULL DEFAULT now())`).Error; err != nil {
+				return err
+			}
+			return tx.Exec(`INSERT INTO app_schema_builds (fingerprint, version) VALUES (?, ?) ON CONFLICT (fingerprint) DO UPDATE SET migrated_at = now()`, fp, handlers.AppVersion()).Error
+		})
+	}
+}
+
+// alreadyMigrated reports whether this exact build already migrated cleanly.
+func alreadyMigrated(db *gorm.DB, fp string) bool {
+	var n int64
+	err := inSchema(db, func(tx *gorm.DB) error {
+		var exists bool
+		if err := tx.Raw(`SELECT to_regclass('app_schema_builds') IS NOT NULL`).Scan(&exists).Error; err != nil || !exists {
+			return err
+		}
+		return tx.Raw(`SELECT count(*) FROM app_schema_builds WHERE fingerprint = ?`, fp).Scan(&n).Error
+	})
+	return err == nil && n > 0
+}
+
+var (
+	fpOnce sync.Once
+	fpVal  string
+)
+
+// buildFingerprint is the SHA-256 of the running executable.
+func buildFingerprint() string {
+	fpOnce.Do(func() {
+		exe, err := os.Executable()
+		if err != nil {
+			return
+		}
+		f, err := os.Open(exe)
+		if err != nil {
+			return
+		}
+		defer f.Close()
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err != nil {
+			return
+		}
+		fpVal = hex.EncodeToString(h.Sum(nil))
+	})
+	return fpVal
+}
+
+// dbReadyGate answers API calls with a clear 503 while the database is still
+// being updated after a deploy, instead of "relation does not exist" errors.
+func dbReadyGate() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		p := c.Request.URL.Path
+		if dbstatus.Ready() || !strings.HasPrefix(p, "/api/v1/") || strings.HasPrefix(p, "/api/v1/auth/") ||
+			strings.HasPrefix(p, "/api/v1/super-admin/db-") || c.Request.Method == http.MethodOptions {
+			c.Next()
+			return
+		}
+		c.Header("Retry-After", "15")
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": gin.H{
+			"code":    "DB_UPDATING",
+			"message": "DASYIN is finishing a database update after a new release. Please try again in a minute.",
+		}})
+	}
 }

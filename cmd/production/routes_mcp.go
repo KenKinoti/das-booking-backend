@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/dbstatus"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -34,6 +36,7 @@ func init() {
 	extraMigrations = append(extraMigrations, func(db *gorm.DB) {
 		if err := mcp.Migrate(db); err != nil {
 			log.Printf("mcp migrate: %v", err)
+			dbstatus.AddMigrationError(fmt.Sprintf("%s: %v", "mcp", err))
 		}
 	})
 }
