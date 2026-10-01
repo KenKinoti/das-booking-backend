@@ -54,10 +54,11 @@ const (
 	CatEmail    = "email"
 	CatSoftware = "software"
 	CatOther    = "other"
+	// CatSupport ("support") is declared in synergy_parse.go: Synergy priority tickets.
 )
 
 // Categories lists the categories in display order.
-var Categories = []string{CatHosting, CatDomains, CatEmail, CatSoftware, CatOther}
+var Categories = []string{CatHosting, CatDomains, CatEmail, CatSoftware, CatSupport, CatOther}
 
 // CategoryLabels are the human names (also the expense-account names).
 var CategoryLabels = map[string]string{
@@ -65,6 +66,7 @@ var CategoryLabels = map[string]string{
 	CatDomains:  "Domain Names",
 	CatEmail:    "Email & Workspace",
 	CatSoftware: "Software & Subscriptions",
+	CatSupport:  "Support Fees",
 	CatOther:    "Other Expenses",
 }
 
@@ -133,6 +135,11 @@ type Item struct {
 	Snippet    string   `json:"snippet" gorm:"type:text"`            // first ~1500 chars of the text it came from
 	DocumentID string   `json:"document_id" gorm:"type:varchar(64)"` // stored PDF / file
 	Notes      string   `json:"notes" gorm:"type:text"`
+
+	// Lines: an expense created from Synergy statements (source
+	// synergy_statement) is one month × category with a line per domain / fee.
+	Lines []StatementLine `json:"lines,omitempty" gorm:"type:text;serializer:json"`
+	Basis string          `json:"basis,omitempty" gorm:"type:varchar(10)"` // statement items: charge | service
 
 	DedupeKey   string `json:"dedupe_key" gorm:"type:varchar(255);index"`
 	DuplicateOf string `json:"duplicate_of" gorm:"type:varchar(64)"`
@@ -210,6 +217,7 @@ type Connection struct {
 	LastResult     string     `json:"last_result" gorm:"type:text"`
 	Balance        *float64   `json:"balance"`
 	BalanceAt      *time.Time `json:"balance_at"`
+	BalanceSource  string     `json:"balance_source" gorm:"type:varchar(20)"` // api | email | statement
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
 }
@@ -276,5 +284,5 @@ func (AlertLog) TableName() string { return "expense_alert_log" }
 
 // Models lists the tables for AutoMigrate.
 func Models() []interface{} {
-	return []interface{}{&Vendor{}, &Item{}, &Allocation{}, &Document{}, &Connection{}, &Renewal{}, &AlertLog{}}
+	return append([]interface{}{&Vendor{}, &Item{}, &Allocation{}, &Document{}, &Connection{}, &Renewal{}, &AlertLog{}}, SynergyModels()...)
 }

@@ -1,0 +1,16 @@
+Identifier,Status,Plan,Usage,Limit,"Is at 75%","% Used","Is at 100MB",Remaining
+kilimo-supplies.co.ke,Active,"Micro Env",356,512,False,69.00,False,156.00
+avocado-traders.co.ke,Active,"Micro Env",522,512,True,101.00,True,-10.00
+acme-digital.com,Active,"Mega Env",5968,10240,False,58.00,False,4272.00
+zebra-agency.com,Active,"Basic Env",978,2048,False,47.00,False,1070.00
+green-house-advisory.com,Active,"Micro Env",502,512,True,98.00,True,10.00
+legacy-education.com,Active,"Large Env",2677,5120,False,52.00,False,2443.00
+locks-studio.com.au,Active,"Mega Env",3062,10240,False,29.00,False,7178.00
+acme-digital.com.au,Active,"Mega Env",2084,10240,False,20.00,False,8156.00
+handson-recruit.com.au,Active,"Basic Env",556,2048,False,27.00,False,1492.00
+ago-advisory.com.au,Active,"Basic Env",1216,2048,False,59.00,False,832.00
+farm-feeds.co.ke,Active,"Micro Env",297,512,False,58.00,False,215.00
+budget-luxe.com.au,Active,"Basic Env",2056,2048,True,100.00,True,-8.00
+water-network.org,Active,"Goliath ENV",11186,20480,False,54.00,False,9294.00
+tamu-tours.com,Active,"Basic Env",458,2048,False,22.00,False,1590.00
+savanna-women.org,Active,"Hybrid ENV",2031,10240,False,19.00,False,8209.00

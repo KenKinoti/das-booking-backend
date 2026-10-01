@@ -64,6 +64,7 @@ func (h *Handler) RegisterRoutes(auth, public *gin.RouterGroup) {
 	g.DELETE("/sources/gmail", h.deleteGmail)
 	g.PUT("/sources/schedule", h.saveSchedule)
 	g.POST("/sync", h.sync)
+	h.registerSynergy(g)
 	public.GET("/google/callback", h.googleCallback)
 }
 
@@ -167,7 +168,7 @@ func (h *Handler) summary(c *gin.Context) {
 		top = top[:8]
 	}
 	ok(c, gin.H{"currency": d.Currency, "today": d.Today, "kpis": d.KPIs, "by_vendor": top, "by_category": d.ByCategory, "subscriptions": subs,
-		"alerts": alerts, "forecast": d.Forecast, "months": months, "balance": d.Balance, "range": d.Range, "sources": d.Sources,
+		"alerts": alerts, "forecast": d.Forecast, "months": months, "balance": d.Balance, "range": d.Range, "sources": d.Sources, "synergy": d.Synergy,
 		"note": "Amounts are approved expenses in the home currency excluding GST/VAT, dated by invoice date (the same figures the P&L counts)."})
 }
 
@@ -380,6 +381,14 @@ func (h *Handler) upload(c *gin.Context) {
 		return
 	}
 	vendorID, category := c.PostForm("vendor_id"), c.PostForm("category")
+	// dates: {"hosting-account-usage.csv": "2026-10-01"} — snapshot dates chosen for usage reports.
+	dates := map[string]string{}
+	if v := strings.TrimSpace(c.PostForm("dates")); v != "" {
+		if err := json.Unmarshal([]byte(v), &dates); err != nil {
+			fail(c, http.StatusBadRequest, "VALIDATION", "dates must be a JSON object of file name → YYYY-MM-DD")
+			return
+		}
+	}
 	results := []*UploadResult{}
 	errs := []gin.H{}
 	for _, fh := range files {
@@ -394,7 +403,16 @@ func (h *Handler) upload(c *gin.Context) {
 		}
 		data, _ := io.ReadAll(io.LimitReader(f, 16<<20))
 		f.Close()
-		r, err := h.S.Upload(c.Request.Context(), o, fh.Filename, fh.Header.Get("Content-Type"), data, vendorID, category)
+		var snap *time.Time
+		if d, ok := dates[fh.Filename]; ok {
+			t, perr := time.Parse(dayFmt, strings.TrimSpace(d))
+			if perr != nil {
+				errs = append(errs, gin.H{"file": fh.Filename, "message": "the snapshot date must look like 2026-10-01"})
+				continue
+			}
+			snap = &t
+		}
+		r, err := h.S.UploadAs(c.Request.Context(), o, c.GetString("user_id"), fh.Filename, fh.Header.Get("Content-Type"), data, vendorID, category, snap)
 		if err != nil {
 			errs = append(errs, gin.H{"file": fh.Filename, "message": err.Error()})
 			continue

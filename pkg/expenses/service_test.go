@@ -59,7 +59,8 @@ func testDB(t *testing.T) *gorm.DB {
 	for _, q := range []string{
 		`CREATE TABLE organizations (id varchar(255) primary key, name text, country_code text, currency text, timezone text, region_source text, address_country text)`,
 		`CREATE TABLE users (id varchar(255) primary key, email text, role text, first_name text, last_name text, organization_id varchar(255), is_active boolean default true, created_at timestamptz, deleted_at timestamptz)`,
-		`CREATE TABLE customers (id varchar(255) primary key, organization_id varchar(255), first_name text, last_name text, deleted_at timestamptz)`,
+		`CREATE TABLE customers (id varchar(255) primary key, organization_id varchar(255), first_name text, last_name text, email text, company_name text, website text, deleted_at timestamptz)`,
+		`CREATE TABLE billing_invoice_items (id varchar(64) primary key, invoice_id varchar(64), description text, quantity numeric, unit text, line_subtotal numeric, line_discount numeric, line_total numeric)`,
 		`CREATE TABLE billing_invoices (id varchar(64) primary key, organization_id varchar(255), number text, doc_type text, status text, customer_id varchar(255), currency text,
 			total numeric, tax_total numeric, total_base numeric, issue_date date, deleted_at timestamptz)`,
 	} {

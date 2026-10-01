@@ -1,0 +1,12 @@
+Identifier,Status,Plan,Usage,Limit,"Is at 75%","% Used","Is at 100MB",Remaining
+avocado-traders.co.ke,Active,"Micro Env",518,512,True,101.00,True,-6.00
+acme-digital.com,Active,"Mega Env",5967,10240,False,58.00,False,4273.00
+zebra-agency.com,Active,"Basic Env",1049,2048,False,51.00,False,999.00
+legacy-education.com,Active,"Large Env",2645,5120,False,51.00,False,2475.00
+locks-studio.com.au,Active,"Mega Env",3073,10240,False,30.00,False,7167.00
+acme-digital.com.au,Active,"Mega Env",2095,10240,False,20.00,False,8145.00
+handson-recruit.com.au,Active,"Basic Env",552,2048,False,26.00,False,1496.00
+water-network.org,Active,"Mega Env",8007,10240,True,78.00,False,2233.00
+tamu-tours.com,Active,"Basic Env",468,2048,False,22.00,False,1580.00
+savanna-women.org,Active,"Mega Env",7439,10240,False,72.00,False,2801.00
+info-hub.co.ke,Active,"Medium Env",2677,5120,False,52.00,False,2443.00

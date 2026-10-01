@@ -437,6 +437,9 @@ func (s *Service) Ingest(org string, in Incoming) (*Item, bool, error) {
 	if v != nil && v.Key == "synergy" && regexp.MustCompile(`(?i)account funds|add funds|top[ -]?up|prepay`).MatchString(in.Text) {
 		it.Warnings = append(it.Warnings, "Looks like an account top-up (prepaid funds) — approve it if you count Synergy costs from invoices, or ignore it if you count statement lines")
 	}
+	if v != nil && v.Key == "synergy" && v.CountFrom == "statement" && in.Source != synStatementSource && x.Ignore == "" && it.Kind != KindDeclined {
+		x.Ignore = "Synergy Wholesale is counted from the monthly statement (Expenses → Synergy) — invoices and receipts are top-ups of the prepaid balance, so this one is not counted again"
+	}
 	if it.Paid && it.PaidDate == nil && it.Kind != KindInvoice {
 		it.PaidDate = it.InvoiceDate
 	}
@@ -672,16 +675,38 @@ type UploadResult struct {
 	Created int     `json:"created"`
 	Skipped int     `json:"skipped"`
 	Message string  `json:"message"`
+	// Synergy is set for a Synergy Wholesale statement or hosting usage
+	// report: those go to the Synergy analytics (and statement expenses),
+	// not to the inbox line by line.
+	Synergy *SynergyUploadSummary `json:"synergy,omitempty"`
 }
 
 // Upload processes an uploaded invoice PDF, CSV or image.
 func (s *Service) Upload(ctx context.Context, org, name, mime string, data []byte, vendorID, category string) (*UploadResult, error) {
+	return s.UploadAs(ctx, org, "", name, mime, data, vendorID, category, nil)
+}
+
+// UploadAs is Upload with the uploading user and, for a Synergy usage report,
+// the snapshot date chosen by the user (nil: read it from the file name).
+func (s *Service) UploadAs(ctx context.Context, org, user, name, mime string, data []byte, vendorID, category string, snapshot *time.Time) (*UploadResult, error) {
 	res := &UploadResult{File: name, Items: []*Item{}}
 	if len(data) == 0 {
 		return nil, invalid("%s is empty", name)
 	}
 	lname := strings.ToLower(name)
 	mime = sniffMime(lname, mime, data)
+	if mime == "text/csv" {
+		if kind := DetectSynergyFile(data); kind != "" {
+			sum, err := s.importSynergyCSV(org, user, name, SourceUpload, kind, data, snapshot)
+			if err != nil {
+				return nil, err
+			}
+			res.Synergy = sum
+			res.Created, res.Skipped = sum.New+sum.Updated, sum.Duplicates
+			res.Message = map[string]string{SynFileStatement: "Synergy statement", SynFileUsage: "Synergy hosting usage"}[kind]
+			return res, nil
+		}
+	}
 	var defCur string
 	if v := s.vendorByID(org, vendorID); v != nil && v.Key == "synergy" {
 		defCur = "AUD"
@@ -934,7 +959,7 @@ func (s *Service) TestSynergy(ctx context.Context, org string) (float64, error) 
 		s.DB.Model(&Connection{}).Where("id = ?", c.ID).Updates(map[string]any{"last_status": "error", "last_error": err.Error(), "updated_at": now})
 		return 0, err
 	}
-	s.DB.Model(&Connection{}).Where("id = ?", c.ID).Updates(map[string]any{"balance": bal, "balance_at": now, "last_status": "ok", "last_error": "", "updated_at": now})
+	s.DB.Model(&Connection{}).Where("id = ?", c.ID).Updates(map[string]any{"balance": bal, "balance_at": now, "balance_source": "api", "last_status": "ok", "last_error": "", "updated_at": now})
 	return bal, nil
 }
 
@@ -992,7 +1017,7 @@ func (s *Service) SyncSynergy(ctx context.Context, org string) *SyncResult {
 	}
 	r.Balance = &bal
 	now := s.now()
-	s.DB.Model(&Connection{}).Where("id = ?", c.ID).Updates(map[string]any{"balance": bal, "balance_at": now})
+	s.DB.Model(&Connection{}).Where("id = ?", c.ID).Updates(map[string]any{"balance": bal, "balance_at": now, "balance_source": "api"})
 	v := s.vendorByKey(org, "synergy")
 	vid := ""
 	if v != nil {
@@ -1352,9 +1377,9 @@ func (s *Service) ingestEmail(ctx context.Context, org string, g *Gmail, mid str
 	if x.Balance != nil {
 		// Synergy low-balance notice: keep the balance when the API is not connected / older.
 		if c := s.connection(org, "synergy"); c != nil && when != nil && (c.BalanceAt == nil || c.BalanceAt.Before(*when)) {
-			s.DB.Model(&Connection{}).Where("id = ?", c.ID).Updates(map[string]any{"balance": *x.Balance, "balance_at": *when})
+			s.DB.Model(&Connection{}).Where("id = ?", c.ID).Updates(map[string]any{"balance": *x.Balance, "balance_at": *when, "balance_source": "email"})
 		} else if c == nil && when != nil {
-			nc := &Connection{ID: uuid.NewString(), OrganizationID: org, Kind: "synergy", Balance: x.Balance, BalanceAt: when, CreatedAt: s.now(), UpdatedAt: s.now()}
+			nc := &Connection{ID: uuid.NewString(), OrganizationID: org, Kind: "synergy", Balance: x.Balance, BalanceAt: when, BalanceSource: "email", CreatedAt: s.now(), UpdatedAt: s.now()}
 			s.DB.Create(nc)
 		}
 	}
@@ -1373,6 +1398,33 @@ func (s *Service) ingestEmail(ctx context.Context, org string, g *Gmail, mid str
 		doc, _, err := s.StoreDocument(org, csvAtt.Filename, "text/csv", SourceGmail, data, "")
 		if err != nil {
 			return err
+		}
+		if kind := DetectSynergyFile(data); kind != "" {
+			// A real Synergy statement / usage report: stored in the Synergy
+			// analytics; statement expenses (one per month × category) are
+			// created when Synergy is counted from statements.
+			note := "Synergy statement imported into Expenses → Synergy"
+			sd := when
+			if SnapshotDateFromName(csvAtt.Filename) != nil {
+				sd = nil
+			}
+			sum, ierr := s.importSynergyCSV(org, "", csvAtt.Filename, SourceGmail, kind, data, sd)
+			if ierr != nil {
+				note = "Synergy file could not be imported: " + ierr.Error()
+			} else if kind == SynFileStatement && v != nil && v.CountFrom == "statement" {
+				if _, err := s.CreateStatementExpenses(org, "", StatementExpenseInput{Months: sum.Months}); err != nil {
+					note += " (statement expenses: " + err.Error() + ")"
+				} else {
+					note += "; statement expenses updated in the inbox"
+				}
+			}
+			x = Extracted{Kind: KindInvoice, VendorKey: vk, Ignore: note, Method: "csv", Date: when}
+			it, created, err := s.Ingest(org, Incoming{Source: SourceGmail, ExternalID: mid, X: x, Subject: subj, Sender: from, Text: text, DocumentID: doc.ID})
+			if err != nil {
+				return err
+			}
+			countResult(r, it, created)
+			return nil
 		}
 		countLines := v != nil && v.CountFrom == "statement"
 		rows, perr := ParseCSV(data, nonEmpty(defCur, s.Home(org)))
@@ -1453,7 +1505,7 @@ type ApproveInput struct {
 	PaymentMethod string `json:"payment_method"`
 }
 
-var categoryCodes = map[string]string{CatHosting: "6410", CatDomains: "6420", CatEmail: "6430", CatSoftware: "6400", CatOther: "6990"}
+var categoryCodes = map[string]string{CatHosting: "6410", CatDomains: "6420", CatEmail: "6430", CatSoftware: "6400", CatSupport: "6440", CatOther: "6990"}
 
 // Approve turns an inbox item into a paid (or unpaid) supplier bill.
 func (s *Service) Approve(org, user, id string, in ApproveInput) (*Item, error) {
@@ -1485,8 +1537,13 @@ func (s *Service) Approve(org, user, id string, in ApproveInput) (*Item, error) 
 	if it.Tax < 0 || it.Tax >= it.Total {
 		return nil, invalid("tax must be less than the total")
 	}
-	if d := s.findDuplicate(org, &it); d != nil && d.Status == StatusApproved {
-		return nil, invalid("the same invoice was already approved (%s) — mark this one as a duplicate", nonEmpty(d.InvoiceNumber, d.VendorName))
+	if it.Source != synStatementSource {
+		if d := s.findDuplicate(org, &it); d != nil && d.Status == StatusApproved {
+			return nil, invalid("the same invoice was already approved (%s) — mark this one as a duplicate", nonEmpty(d.InvoiceNumber, d.VendorName))
+		}
+	}
+	if err := s.countOnceGuard(org, &it); err != nil {
+		return nil, err
 	}
 	s.convert(org, &it, false)
 	if it.FxRate <= 0 {
@@ -1525,6 +1582,19 @@ func (s *Service) Approve(org, user, id string, in ApproveInput) (*Item, error) 
 		"home_currency": it.HomeCurrency, "fx_rate": it.FxRate, "fx_source": it.FxSource, "fx_date": it.FxDate,
 		"home_total": it.HomeTotal, "home_tax": it.HomeTax, "home_net": it.HomeNet, "net": it.Net}
 
+	// A statement expense: a line per domain, a payment per charge month.
+	if it.Source == synStatementSource {
+		bill, err := s.createStatementBill(org, user, &it, finVendor, accID, in)
+		if err != nil {
+			return nil, err
+		}
+		upd["bill_id"], upd["bill_linked"] = bill.ID, false
+		upd["home_total"], upd["home_tax"], upd["home_net"] = bill.Total, bill.TaxAmount, fxrates.Round(bill.Total-bill.TaxAmount, it.HomeCurrency)
+		if err := s.DB.Model(&Item{}).Where("id = ?", it.ID).Updates(upd).Error; err != nil {
+			return nil, err
+		}
+		return s.Get(org, it.ID)
+	}
 	// An existing bill for the same supplier invoice (entered by hand in Bills) is linked, not duplicated.
 	if ref := strings.TrimSpace(it.InvoiceNumber); ref != "" {
 		var bill finance.Bill
@@ -2170,6 +2240,7 @@ type Dashboard struct {
 	Balance       map[string]any    `json:"balance"`
 	Sources       map[string]any    `json:"sources"`
 	Range         map[string]string `json:"range"`
+	Synergy       map[string]any    `json:"synergy"` // Synergy analytics summary (nil before any upload)
 }
 
 func fmtMoney(v float64, cur string) string {
@@ -2271,12 +2342,27 @@ func (s *Service) DashboardFor(org string, today time.Time, from, to string) *Da
 			low = syn.Settings.LowBalance
 		}
 		balInfo = map[string]any{"available": true, "amount": *syn.Balance, "currency": "AUD", "as_of": syn.BalanceAt, "low_balance": low,
-			"source": map[bool]string{true: "api", false: "email"}[syn.SecretEnc != ""]}
+			"source": nonEmpty(syn.BalanceSource, map[bool]string{true: "api", false: "email"}[syn.SecretEnc != ""])}
 	}
 	var declined []Item
 	s.DB.Where("organization_id = ? AND kind = ? AND invoice_date >= ?", org, KindDeclined, today.AddDate(0, 0, -30)).Find(&declined)
 	alerts := Alerts(AlertInput{Today: today, Home: home, Charges: charges, Subs: subs, Declined: declined, Renewals: renewals, Balance: bal, LowBalance: low, Fmt: fmtMoney})
+	var synRep *SynergyReport
+	if s.HasSynergyData(org) {
+		synRep = s.SynergyReport(org, today, "charge")
+		alerts = append(alerts, synRep.Alerts...)
+	}
 	alerts = s.withoutDismissed(org, alerts)
+	var synergy map[string]any
+	if synRep != nil {
+		n := 0
+		for _, a := range alerts {
+			if strings.HasPrefix(a.Type, "synergy") || a.Type == "low_balance" {
+				n++
+			}
+		}
+		synergy = synergySummary(synRep, n)
+	}
 
 	// Range for breakdowns.
 	rFrom := ms.AddDate(0, -11, 0)
@@ -2387,7 +2473,7 @@ func (s *Service) DashboardFor(org string, today time.Time, from, to string) *Da
 			"alerts": len(alerts), "inbox": inbox[StatusPending],
 		},
 		Months: months, ByVendor: vend, ByCategory: cats, Subscriptions: subs, Renewals: upcoming, Alerts: alerts, Forecast: fc, Inbox: inbox,
-		Balance: balInfo, Sources: sources, Range: map[string]string{"from": rFrom.Format(dayFmt), "to": rTo.Format(dayFmt)},
+		Balance: balInfo, Sources: sources, Range: map[string]string{"from": rFrom.Format(dayFmt), "to": rTo.Format(dayFmt)}, Synergy: synergy,
 	}
 }
 
