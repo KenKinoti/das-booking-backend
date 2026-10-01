@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/config"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/industry"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/plans"
 )
 
@@ -40,6 +41,8 @@ func plansEnforcer(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		Lookup:   svc.AccessFor,
 		Identify: plans.TokenIdentity(cfg.JWTSecret),
 		Users:    svc.UserCount,
+		// Business type and role checks (pkg/industry) run after the plan.
+		After: (&industry.Guard{Svc: industryService(db)}).Check,
 	}
 	return e.Middleware()
 }

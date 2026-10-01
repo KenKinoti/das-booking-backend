@@ -31,6 +31,87 @@ func (h *Handler) registerSynergy(g *gin.RouterGroup) {
 	g.PUT("/synergy/plans", h.saveSynergyPlan)
 	g.GET("/synergy/statement-expenses", h.statementPreview)
 	g.POST("/synergy/statement-expenses", h.statementCreate)
+	g.GET("/synergy/accounting", h.accounting)
+	g.PUT("/synergy/accounting", h.saveAccounting)
+	g.POST("/synergy/accounting/apply", h.applyAccounting)
+	g.POST("/synergy/accounting/dismiss-notice", h.dismissAccountingNotice)
+	g.PUT("/synergy/month-rate", h.saveMonthRate)
+	g.GET("/automation", h.automation)
+}
+
+func (h *Handler) accounting(c *gin.Context) {
+	o, okk := h.org(c)
+	if !okk {
+		return
+	}
+	h.S.EnsureSynergyBackfill(o)
+	ok(c, h.S.Accounting(o))
+}
+
+func (h *Handler) saveAccounting(c *gin.Context) {
+	o, okk := h.admin(c)
+	if !okk {
+		return
+	}
+	var in AccountingInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		fail(c, http.StatusBadRequest, "VALIDATION", "Invalid request")
+		return
+	}
+	res, err := h.S.SaveAccounting(o, c.GetString("user_id"), in)
+	if err != nil {
+		errOut(c, err)
+		return
+	}
+	ok(c, gin.H{"result": res, "accounting": h.S.Accounting(o)})
+}
+
+func (h *Handler) applyAccounting(c *gin.Context) {
+	o, okk := h.admin(c)
+	if !okk {
+		return
+	}
+	res, err := h.S.ApplySynergyAccounting(o, c.GetString("user_id"))
+	if err != nil {
+		errOut(c, err)
+		return
+	}
+	ok(c, gin.H{"result": res, "accounting": h.S.Accounting(o)})
+}
+
+func (h *Handler) dismissAccountingNotice(c *gin.Context) {
+	o, okk := h.org(c)
+	if !okk {
+		return
+	}
+	h.S.DismissAccountingNotice(o)
+	ok(c, gin.H{"dismissed": true})
+}
+
+func (h *Handler) saveMonthRate(c *gin.Context) {
+	o, okk := h.admin(c)
+	if !okk {
+		return
+	}
+	var in MonthRateInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		fail(c, http.StatusBadRequest, "VALIDATION", "Invalid request")
+		return
+	}
+	res, err := h.S.SetMonthRate(o, c.GetString("user_id"), in)
+	if err != nil {
+		errOut(c, err)
+		return
+	}
+	ok(c, gin.H{"result": res, "accounting": h.S.Accounting(o)})
+}
+
+func (h *Handler) automation(c *gin.Context) {
+	o, okk := h.org(c)
+	if !okk {
+		return
+	}
+	ok(c, h.S.AutomationFor(o))
 }
 
 func (h *Handler) synergy(c *gin.Context) {
@@ -38,6 +119,7 @@ func (h *Handler) synergy(c *gin.Context) {
 	if !okk {
 		return
 	}
+	h.S.EnsureSynergyBackfill(o)
 	ok(c, h.S.SynergyReport(o, reqtz.Now(c), c.Query("basis")))
 }
 

@@ -400,7 +400,11 @@ func (s *Service) CreateStatementExpenses(org, user string, in StatementExpenseI
 		if it, ok := existing[statementExtID(*g)]; ok {
 			g.ItemID, g.ItemStatus = it.ID, it.Status
 			g.Change = "update"
-			if math.Abs(it.Total-g.Total) < 0.005 && linesEqual(it.Lines, g.Lines) && it.Basis == in.Basis && it.InvoiceDate != nil && it.InvoiceDate.Format(dayFmt) == g.BillDate {
+			tax, _ := s.synergyTax(org, g.Total)
+			bill, _ := time.Parse(dayFmt, g.BillDate)
+			rate := s.RateFor(org, "AUD", s.Home(org), bill)
+			if math.Abs(it.Total-g.Total) < 0.005 && linesEqual(it.Lines, g.Lines) && it.Basis == in.Basis && it.InvoiceDate != nil && it.InvoiceDate.Format(dayFmt) == g.BillDate &&
+				math.Abs(it.Tax-tax) < 0.005 && it.HomeCurrency == s.Home(org) && sameRate(it.FxRate, rate.Rate) {
 				g.Change = "unchanged"
 			}
 		}
@@ -543,11 +547,7 @@ func (s *Service) upsertStatementItem(org, user string, v *Vendor, g *StatementG
 	paid, _ := time.Parse(dayFmt, g.PaidDate)
 	mStart, _ := time.Parse("2006-01", g.Month)
 	mEnd := mStart.AddDate(0, 1, -1)
-	home := s.Home(org)
-	tax, taxNote := 0.0, "No GST claimed: your home currency is "+home+" (Synergy prices include Australian GST)"
-	if home == "AUD" {
-		tax, taxNote = r2(g.Total/11), "GST 1/11 of total (estimated — Synergy prices include GST)"
-	}
+	tax, taxNote := s.synergyTax(org, g.Total)
 	desc := []string{}
 	for _, l := range g.Lines {
 		desc = append(desc, fmt.Sprintf("%s: %s", l.Label, audFmt(l.Amount)))
@@ -579,6 +579,7 @@ func (s *Service) upsertStatementItem(org, user string, v *Vendor, g *StatementG
 	ex.InvoiceDate, ex.PeriodStart, ex.PeriodEnd, ex.PaidDate = &bill, &mStart, &mEnd, &paid
 	ex.Total, ex.Tax, ex.TaxNote, ex.Currency, ex.Lines, ex.Basis = g.Total, tax, taxNote, "AUD", g.Lines, basis
 	ex.Service, ex.Description, ex.InvoiceNumber, ex.Warnings = service, strings.Join(desc, "\n"), ref, g.Warnings
+	ex.Category = g.Category
 	s.convert(org, ex, true)
 	lj, _ := json.Marshal(ex.Lines)
 	if ex.Warnings == nil {
@@ -588,7 +589,7 @@ func (s *Service) upsertStatementItem(org, user string, v *Vendor, g *StatementG
 	if err := s.DB.Model(&Item{}).Where("id = ?", ex.ID).Updates(map[string]any{"invoice_date": ex.InvoiceDate, "period_start": ex.PeriodStart, "period_end": ex.PeriodEnd,
 		"paid_date": ex.PaidDate, "total": ex.Total, "tax": ex.Tax, "net": ex.Net, "tax_note": ex.TaxNote, "currency": ex.Currency, "lines": string(lj), "basis": basis,
 		"service": ex.Service, "description": ex.Description, "invoice_number": ex.InvoiceNumber, "warnings": string(wj), "home_currency": ex.HomeCurrency,
-		"fx_rate": ex.FxRate, "fx_source": ex.FxSource, "fx_date": ex.FxDate, "home_total": ex.HomeTotal, "home_tax": ex.HomeTax, "home_net": ex.HomeNet,
+		"fx_rate": ex.FxRate, "fx_source": ex.FxSource, "fx_date": ex.FxDate, "fx_basis": ex.FxBasis, "fx_note": ex.FxNote, "home_total": ex.HomeTotal, "home_tax": ex.HomeTax, "home_net": ex.HomeNet,
 		"status": map[bool]string{true: StatusPending, false: ex.Status}[wasApproved || ex.Status == StatusIgnored], "updated_at": s.now()}).Error; err != nil {
 		return nil, err
 	}

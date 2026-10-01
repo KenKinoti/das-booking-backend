@@ -16,6 +16,7 @@ import (
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/fxrates"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 )
 
 // KindReceipt is a "payment received" email for one payment.
@@ -1169,5 +1170,6 @@ func (h *Handler) EmailLogList(c *gin.Context) {
 	}
 	list := []EmailLog{}
 	h.DB.Where("organization_id = ? AND invoice_id = ?", org, inv.ID).Order("created_at DESC").Limit(100).Find(&list)
-	ok(c, http.StatusOK, gin.H{"log": list})
+	st := EmailStatuses(h.DB, org, []Invoice{*inv})[inv.ID]
+	ok(c, http.StatusOK, gin.H{"log": list, "summary": st, "viewed_at": inv.ViewedAt, "timezone": orgprefs.Get(h.DB, org).Timezone})
 }

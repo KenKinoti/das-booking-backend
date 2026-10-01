@@ -61,6 +61,10 @@ type SynPlan struct {
 	Sites        int      `json:"sites"`        // active sites on it now
 	Evidence     string   `json:"evidence"`
 	Manual       bool     `json:"manual"`
+	// Home currency at today's rate.
+	MonthlyPriceHome *float64 `json:"monthly_price_home,omitempty"`
+	AnnualPrice      *float64 `json:"annual_price,omitempty"`
+	AnnualPriceHome  *float64 `json:"annual_price_home,omitempty"`
 }
 
 // SynUsagePoint is one snapshot of one site.
@@ -116,16 +120,18 @@ type SynSite struct {
 
 // SynDecision is one recommendation with the numbers behind it.
 type SynDecision struct {
-	Key      string         `json:"key"`
-	Type     string         `json:"type"`
-	Severity string         `json:"severity"` // danger | warning | info | success
-	Title    string         `json:"title"`
-	Body     string         `json:"body"`
-	Domain   string         `json:"domain,omitempty"`
-	Domains  []string       `json:"domains,omitempty"`
-	Impact   float64        `json:"impact"` // AUD per month (+ = costs more / at risk, − = saving)
-	Action   string         `json:"action,omitempty"`
-	Numbers  map[string]any `json:"numbers,omitempty"`
+	Key      string   `json:"key"`
+	Type     string   `json:"type"`
+	Severity string   `json:"severity"` // danger | warning | info | success
+	Title    string   `json:"title"`
+	Body     string   `json:"body"`
+	Domain   string   `json:"domain,omitempty"`
+	Domains  []string `json:"domains,omitempty"`
+	Impact   float64  `json:"impact"` // AUD per month (+ = costs more / at risk, − = saving)
+	// ImpactHome: Impact is in the home currency (margins), not AUD.
+	ImpactHome bool           `json:"impact_home,omitempty"`
+	Action     string         `json:"action,omitempty"`
+	Numbers    map[string]any `json:"numbers,omitempty"`
 }
 
 // SynMonth is one month of spend by category (AUD, basis-dependent).
@@ -140,6 +146,10 @@ type SynMonth struct {
 	Topups   float64 `json:"topups"`  // money added — not an expense
 	Count    int     `json:"count"`
 	TotalHom float64 `json:"total_home"`
+	// The month's AUD → home rate (see fxmonth.go).
+	Rate      float64 `json:"rate"`
+	RateBasis string  `json:"rate_basis,omitempty"`
+	RateLabel string  `json:"rate_label,omitempty"`
 }
 
 // SynSpell is a period with a negative balance.
@@ -224,6 +234,10 @@ type SynergyReport struct {
 	Uploads        []SynergyUpload `json:"uploads"`
 	Alerts         []Alert         `json:"alerts"`
 	Kinds          map[string]int  `json:"kinds"`
+	// FX: today's AUD → home rate (run-rates, plan prices, per-site costs);
+	// month amounts and the spend KPIs use each month's own rate.
+	FX         RateInfo        `json:"fx"`
+	Accounting *AccountingView `json:"accounting,omitempty"`
 }
 
 // SynBalancePt is the account balance at the end of a day.
@@ -721,7 +735,7 @@ func BuildSynergyReport(in SynInput) *SynergyReport {
 	billedBy := map[string][]SynBilledLine{}
 	for _, b := range in.Billed {
 		for d := range domains {
-			if strings.Contains(strings.ToLower(b.Description), d) {
+			if strings.Contains(strings.ToLower(b.Description), d) && isHostingLine(b.Description) {
 				billedBy[d] = append(billedBy[d], b)
 			}
 		}
@@ -1364,7 +1378,7 @@ func synDecisions(rep *SynergyReport, txns []SynergyTxn, plans map[string]*SynPl
 	}
 	if len(below) > 0 {
 		add(SynDecision{Key: "below_cost", Type: "below_cost", Severity: "danger", Title: fmt.Sprintf("%d site%s billed below cost", len(below), plural(len(below))),
-			Body: "Billed per month vs what Synergy charges you: " + strings.Join(below, "; ") + ". Raise the price or move them to a cheaper plan.", Impact: r2(belowGap), Action: "Review prices",
+			Body: "Billed per month vs what Synergy charges you: " + strings.Join(below, "; ") + ". Raise the price or move them to a cheaper plan.", Impact: r2(belowGap), ImpactHome: true, Action: "Review prices",
 			Numbers: map[string]any{"count": len(below), "gap_home": r2(belowGap)}})
 	}
 	// Balance.
@@ -1556,4 +1570,23 @@ func planChangeTitle(net float64, month string) string {
 		return fmt.Sprintf("Plan changes saved %s in %s", audFmt(-net), month)
 	}
 	return fmt.Sprintf("Plan changes cost %s in %s", audFmt(net), month)
+}
+
+// isHostingLine reports whether an invoice line that names a domain is a
+// recurring hosting/domain/email charge (what "billed for hosting" means), as
+// opposed to one-off work such as building or redesigning the website. Lines
+// with neither kind of keyword (just the domain) count as hosting.
+func isHostingLine(desc string) bool {
+	d := strings.ToLower(desc)
+	for _, k := range []string{"hosting", "host ", "cpanel", "server", "ssl", "domain", "renewal", "email", "mailbox", "workspace", "bandwidth", "disk", "plan", "monthly", "per month", "/month", "annual", "subscription", "maintenance", "support"} {
+		if strings.Contains(d, k) {
+			return true
+		}
+	}
+	for _, k := range []string{"design", "develop", "build", "redesign", "setup", "set up", "migration", "logo", "content", "seo", "training", "consult"} {
+		if strings.Contains(d, k) {
+			return false
+		}
+	}
+	return true
 }

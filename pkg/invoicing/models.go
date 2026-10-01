@@ -172,6 +172,8 @@ type Invoice struct {
 	// happened to its receipt email (when one was requested).
 	LastPaymentID string              `json:"last_payment_id,omitempty" gorm:"-"`
 	ReceiptEmail  *ReceiptEmailResult `json:"receipt_email,omitempty" gorm:"-"`
+	// EmailStatus: whether / when emails about it went out (list and detail).
+	EmailStatus *EmailStatus `json:"email_status,omitempty" gorm:"-"`
 }
 
 func (Invoice) TableName() string { return "billing_invoices" }

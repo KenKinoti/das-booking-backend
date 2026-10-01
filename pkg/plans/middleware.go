@@ -94,6 +94,7 @@ func Allowed(a Access, method, path string) (bool, string) {
 type Identity struct {
 	Org  string
 	Role string
+	User string
 }
 
 // TokenIdentity parses the bearer token with the JWT secret. It never
@@ -102,7 +103,8 @@ func TokenIdentity(secret string) func(c *gin.Context) (Identity, bool) {
 	return func(c *gin.Context) (Identity, bool) {
 		if v, ok := c.Get("org_id"); ok && v != nil {
 			role, _ := c.Get("user_role")
-			return Identity{Org: fmt.Sprint(v), Role: fmt.Sprint(role)}, true
+			user, _ := c.Get("user_id")
+			return Identity{Org: fmt.Sprint(v), Role: fmt.Sprint(role), User: fmt.Sprint(user)}, true
 		}
 		h := c.GetHeader("Authorization")
 		if !strings.HasPrefix(h, "Bearer ") {
@@ -123,7 +125,8 @@ func TokenIdentity(secret string) func(c *gin.Context) (Identity, bool) {
 		}
 		org, _ := claims["org_id"].(string)
 		role, _ := claims["role"].(string)
-		return Identity{Org: org, Role: role}, org != ""
+		user, _ := claims["user_id"].(string)
+		return Identity{Org: org, Role: role, User: user}, org != ""
 	}
 }
 
@@ -133,6 +136,9 @@ type Enforcer struct {
 	Identify func(c *gin.Context) (Identity, bool)
 	// Users counts users for the max-users limit (optional).
 	Users func(org string) int64
+	// After runs once the plan allows a module request (business type and
+	// role checks, see pkg/industry). It returns false when it aborted.
+	After func(c *gin.Context, id Identity) bool
 }
 
 // Middleware returns the gin handler. It is safe to install at engine level:
@@ -168,6 +174,9 @@ func (e *Enforcer) Middleware() gin.HandlerFunc {
 					"code": "MODULE_NOT_IN_PLAN", "module": mod,
 					"message": fmt.Sprintf("Your plan does not include the %s module. Upgrade your plan to use it.", ModuleLabel(mod)),
 				}})
+				return
+			}
+			if e.After != nil && !e.After(c, id) {
 				return
 			}
 		}

@@ -107,6 +107,8 @@ func nextReceiptNumber(db *gorm.DB, org string) (string, error) {
 	if n == 0 {
 		s := defaultSettings(org)
 		s.Currency = orgprefs.Currency(db, org)
+		// Tax defaults follow the organisation's country (VAT 16% in Kenya …).
+		s.TaxLabel, s.DefaultTaxRate, s.TaxNumberLabel = orgprefs.DefaultTax(orgprefs.Country(db, org))
 		if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&s).Error; err != nil {
 			return "", err
 		}

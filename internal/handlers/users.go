@@ -240,8 +240,22 @@ type CreateUserRequest struct {
 	FirstName string `json:"first_name" binding:"required"`
 	LastName  string `json:"last_name"`
 	Phone     string `json:"phone"`
-	Role      string `json:"role" binding:"required"`
+	Role      string `json:"role"`
+	// RoleTemplate is one of the organisation's roles (id or key, see
+	// pkg/industry). When given it decides the legacy role stored in Role.
+	RoleTemplate string `json:"role_template"`
 }
+
+// Role templates of the organisation's business type (wired by
+// cmd/production to pkg/industry; nil when the feature is not installed).
+var (
+	// RoleTemplateLegacy returns the users.role a role template maps to.
+	RoleTemplateLegacy func(org, ref string) (string, bool)
+	// AssignRoleTemplate links a user to a role template.
+	AssignRoleTemplate func(org, user, ref, by string) error
+	// ClearRoleTemplate drops a user's template (legacy mapping applies again).
+	ClearRoleTemplate func(org, user string)
+)
 
 // CreateUser adds a user to the caller's organisation. When no password is
 // given a temporary one is generated and returned once in the response.
@@ -260,6 +274,18 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.FirstName = strings.TrimSpace(req.FirstName)
 	req.LastName = strings.TrimSpace(req.LastName)
+	req.RoleTemplate = strings.TrimSpace(req.RoleTemplate)
+	if req.RoleTemplate != "" && RoleTemplateLegacy != nil {
+		legacy, found := RoleTemplateLegacy(orgID, req.RoleTemplate)
+		if !found {
+			userErr(c, http.StatusBadRequest, "VALIDATION_ERROR", "Choose one of your organisation's roles")
+			return
+		}
+		req.Role = legacy
+	}
+	if req.Role == "" {
+		req.Role = "staff"
+	}
 	if !assignableRoles[req.Role] {
 		userErr(c, http.StatusBadRequest, "VALIDATION_ERROR", "Choose a valid role")
 		return
@@ -314,6 +340,16 @@ func (h *Handler) CreateUser(c *gin.Context) {
 		}
 	}
 
+	if req.RoleTemplate != "" && AssignRoleTemplate != nil {
+		if err := AssignRoleTemplate(orgID, user.ID, req.RoleTemplate, c.GetString("user_id")); err != nil {
+			userErr(c, http.StatusInternalServerError, "DATABASE_ERROR", "User created, but the role could not be assigned: "+err.Error())
+			return
+		}
+		h.DB.First(&user, "id = ?", user.ID)
+	} else if ClearRoleTemplate != nil {
+		ClearRoleTemplate(orgID, user.ID)
+	}
+
 	resp := gin.H{"success": true, "data": toUserResponse(user), "message": "User created"}
 	if generated != "" {
 		resp["temporary_password"] = generated
@@ -328,6 +364,8 @@ type UpdateUserRequest struct {
 	Phone     *string `json:"phone,omitempty"`
 	Role      *string `json:"role,omitempty"`
 	IsActive  *bool   `json:"is_active,omitempty"`
+	// RoleTemplate assigns one of the organisation's roles (pkg/industry).
+	RoleTemplate *string `json:"role_template,omitempty"`
 }
 
 // findOrgUser loads a user of the caller's organisation (super admins: any).
@@ -389,6 +427,25 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		userErr(c, http.StatusForbidden, "FORBIDDEN", "Super admin accounts can only be changed by a super admin")
 		return
 	}
+	if req.RoleTemplate != nil && *req.RoleTemplate != "" && RoleTemplateLegacy != nil {
+		if self {
+			userErr(c, http.StatusBadRequest, "INVALID_OPERATION", "You cannot change your own role")
+			return
+		}
+		if !isUserAdmin(currentRole) {
+			userErr(c, http.StatusForbidden, "FORBIDDEN", "Only admins can change roles")
+			return
+		}
+		legacy, found := RoleTemplateLegacy(user.OrganizationID, *req.RoleTemplate)
+		if !found {
+			userErr(c, http.StatusBadRequest, "VALIDATION_ERROR", "Choose one of your organisation's roles")
+			return
+		}
+		if legacy == "staff" && (user.Role == "care_worker" || user.Role == "support_coordinator") {
+			legacy = user.Role
+		}
+		req.Role = &legacy
+	}
 	if self && req.IsActive != nil && !*req.IsActive {
 		userErr(c, http.StatusBadRequest, "INVALID_OPERATION", "You cannot deactivate your own account")
 		return
@@ -449,6 +506,15 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 		if req.IsActive != nil && !*req.IsActive {
 			h.DB.Model(&models.RefreshToken{}).Where("user_id = ?", user.ID).Update("is_revoked", true)
 		}
+	}
+	if req.RoleTemplate != nil && *req.RoleTemplate != "" && AssignRoleTemplate != nil {
+		if err := AssignRoleTemplate(user.OrganizationID, user.ID, *req.RoleTemplate, currentUserID); err != nil {
+			userErr(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+			return
+		}
+	} else if req.Role != nil && *req.Role != user.Role && ClearRoleTemplate != nil {
+		// A plain role change: the legacy mapping picks the template again.
+		ClearRoleTemplate(user.OrganizationID, user.ID)
 	}
 	h.DB.First(user, "id = ?", user.ID)
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": toUserResponse(*user), "message": "User updated"})

@@ -66,7 +66,7 @@ func dbFor(t *testing.T) *gorm.DB {
 			created_at timestamptz, updated_at timestamptz, deleted_at timestamptz)`,
 		`CREATE TABLE IF NOT EXISTS billing_settings (organization_id varchar(255) PRIMARY KEY, currency varchar(3) DEFAULT 'AUD')`,
 		`CREATE TABLE IF NOT EXISTS organization_settings (id varchar(36) PRIMARY KEY, organization_id varchar(36) UNIQUE, timezone varchar(50), currency varchar(3), updated_at timestamptz)`,
-		`CREATE TABLE IF NOT EXISTS plan_subscriptions (id varchar(64) PRIMARY KEY, organization_id varchar(255) UNIQUE, currency varchar(3), default_currency varchar(3))`,
+		`CREATE TABLE IF NOT EXISTS plan_subscriptions (id varchar(64) PRIMARY KEY, organization_id varchar(255) UNIQUE, tier varchar(20), currency varchar(3), default_currency varchar(3))`,
 		`CREATE TABLE IF NOT EXISTS smallbiz_settings (organization_id varchar(64) PRIMARY KEY, currency varchar(3), opening_balance bigint)`,
 	} {
 		if err := db.Exec(s).Error; err != nil {

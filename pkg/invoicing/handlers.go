@@ -210,6 +210,8 @@ func (h *Handler) settingsFor(tx *gorm.DB, org string, lock bool) (*Settings, er
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		s = defaultSettings(org)
 		s.Currency = orgprefs.Currency(tx, org)
+		// Tax defaults follow the organisation's country (VAT 16% in Kenya …).
+		s.TaxLabel, s.DefaultTaxRate, s.TaxNumberLabel = orgprefs.DefaultTax(orgprefs.Country(tx, org))
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&s).Error; err != nil {
 			return nil, err
 		}
@@ -595,6 +597,7 @@ func (h *Handler) List(c *gin.Context) {
 	for i := range list {
 		Derive(&list[i], h.nowFor(c))
 	}
+	h.withEmailStatus(org, list)
 	ok(c, http.StatusOK, gin.H{"invoices": list, "total": total, "page": page, "per_page": per})
 }
 
@@ -608,6 +611,9 @@ func (h *Handler) Get(c *gin.Context) {
 		failErr(c, err)
 		return
 	}
+	one := []Invoice{*inv}
+	h.withEmailStatus(org, one)
+	inv.EmailStatus = one[0].EmailStatus
 	ok(c, http.StatusOK, inv)
 }
 

@@ -209,6 +209,34 @@ type SynergyDomain struct {
 type SynergyHosting struct {
 	ID, Domain, Plan, Status, BillingPeriod string
 	NextRenewal                             *time.Time
+	// Disk usage / limit in MB when the API returns them (not in the public
+	// documentation; read defensively from the common field names).
+	UsageMB, LimitMB *float64
+}
+
+// mbField reads the first numeric field among names (values in MB, or with
+// a GB / MB suffix).
+func mbField(h map[string]any, names ...string) *float64 {
+	for _, n := range names {
+		for k, v := range h {
+			if !strings.EqualFold(k, n) {
+				continue
+			}
+			t := strings.ToUpper(strings.TrimSpace(str(v)))
+			mult := 1.0
+			switch {
+			case strings.HasSuffix(t, "GB"):
+				mult, t = 1024, strings.TrimSpace(strings.TrimSuffix(t, "GB"))
+			case strings.HasSuffix(t, "MB"):
+				t = strings.TrimSpace(strings.TrimSuffix(t, "MB"))
+			}
+			if f, err := strconv.ParseFloat(t, 64); err == nil && f >= 0 {
+				f *= mult
+				return &f
+			}
+		}
+	}
+	return nil
 }
 
 // Domains lists every domain (pages of 500).
@@ -265,7 +293,9 @@ func (c *SynergyClient) Hosting(ctx context.Context) ([]SynergyHosting, error) {
 				st = str(h["status"])
 			}
 			out = append(out, SynergyHosting{ID: id, Domain: strings.ToLower(str(h["domain"])), Plan: str(h["plan"]), Status: st,
-				BillingPeriod: str(h["billingPeriod"]), NextRenewal: ParseDate(str(h["nextRenewalDue"]))})
+				BillingPeriod: str(h["billingPeriod"]), NextRenewal: ParseDate(str(h["nextRenewalDue"])),
+				UsageMB: mbField(h, "diskUsage", "disk_usage", "diskUsed", "disk_used", "usage"),
+				LimitMB: mbField(h, "diskLimit", "disk_limit", "diskQuota", "disk_quota", "diskSpace", "limit")})
 		}
 		if len(list) < 500 {
 			break

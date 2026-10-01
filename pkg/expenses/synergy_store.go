@@ -13,31 +13,32 @@ import (
 
 // SynergyUploadSummary reports what one uploaded Synergy file added.
 type SynergyUploadSummary struct {
-	UploadID     string         `json:"upload_id"`
-	FileType     string         `json:"file_type"` // statement | usage
-	Filename     string         `json:"filename"`
-	RowsRead     int            `json:"rows_read"`
-	New          int            `json:"new"`
-	Duplicates   int            `json:"duplicates"`
-	Updated      int            `json:"updated"`
-	Warnings     []string       `json:"warnings"`
-	PeriodFrom   string         `json:"period_from,omitempty"`
-	PeriodTo     string         `json:"period_to,omitempty"`
-	Months       []string       `json:"months,omitempty"`
-	SnapshotDate string         `json:"snapshot_date,omitempty"`
-	DateSource   string         `json:"date_source,omitempty"` // file name | chosen
-	Opening      *float64       `json:"opening_balance"`
-	Closing      *float64       `json:"closing_balance"`
-	Reconciled   bool           `json:"reconciled"`         // the file's own running balance adds up
-	Continuity   string         `json:"continuity"`         // ok | gap | first — against the statements already stored
-	Gaps         []BalanceGap   `json:"gaps"`               // inside the file and against neighbouring statements
-	Kinds        map[string]int `json:"kinds,omitempty"`    // statement: lines per kind
-	Expenses     float64        `json:"expenses,omitempty"` // statement: debits − service credits (AUD)
-	Topups       float64        `json:"topups,omitempty"`   // statement: money added to the account (AUD)
-	Appeared     []string       `json:"appeared,omitempty"` // usage: sites not in the previous snapshot
-	Gone         []string       `json:"gone,omitempty"`     // usage: sites in the previous snapshot but not this one
-	Previous     string         `json:"previous_snapshot,omitempty"`
-	ItemsUpdated int            `json:"expense_items_updated,omitempty"` // statement expenses refreshed after this upload
+	UploadID     string              `json:"upload_id"`
+	FileType     string              `json:"file_type"` // statement | usage
+	Filename     string              `json:"filename"`
+	RowsRead     int                 `json:"rows_read"`
+	New          int                 `json:"new"`
+	Duplicates   int                 `json:"duplicates"`
+	Updated      int                 `json:"updated"`
+	Warnings     []string            `json:"warnings"`
+	PeriodFrom   string              `json:"period_from,omitempty"`
+	PeriodTo     string              `json:"period_to,omitempty"`
+	Months       []string            `json:"months,omitempty"`
+	SnapshotDate string              `json:"snapshot_date,omitempty"`
+	DateSource   string              `json:"date_source,omitempty"` // file name | chosen
+	Opening      *float64            `json:"opening_balance"`
+	Closing      *float64            `json:"closing_balance"`
+	Reconciled   bool                `json:"reconciled"`         // the file's own running balance adds up
+	Continuity   string              `json:"continuity"`         // ok | gap | first — against the statements already stored
+	Gaps         []BalanceGap        `json:"gaps"`               // inside the file and against neighbouring statements
+	Kinds        map[string]int      `json:"kinds,omitempty"`    // statement: lines per kind
+	Expenses     float64             `json:"expenses,omitempty"` // statement: debits − service credits (AUD)
+	Topups       float64             `json:"topups,omitempty"`   // statement: money added to the account (AUD)
+	Appeared     []string            `json:"appeared,omitempty"` // usage: sites not in the previous snapshot
+	Gone         []string            `json:"gone,omitempty"`     // usage: sites in the previous snapshot but not this one
+	Previous     string              `json:"previous_snapshot,omitempty"`
+	ItemsUpdated int                 `json:"expense_items_updated,omitempty"` // statement expenses refreshed after this upload
+	Accounting   *SynergyApplyResult `json:"accounting,omitempty"`            // what the automatic Synergy expenses did
 }
 
 func monthOf(t time.Time) string { return t.Format("2006-01") }
@@ -140,10 +141,16 @@ func (s *Service) ImportSynergyStatement(org, user, name string, data []byte, do
 		Warnings: sum.Warnings, CreatedBy: user, CreatedAt: now}
 	s.DB.Create(&up)
 	s.syncStatementBalance(org)
-	if n, err := s.RefreshStatementItems(org, user, sum.Months); err == nil {
-		sum.ItemsUpdated = n
+	// Create / update (and, with auto-approve, approve) the Synergy expenses
+	// for the chosen accounting mode — idempotent, so a re-upload updates.
+	if res, err := s.ApplySynergyAccounting(org, user); err == nil {
+		sum.ItemsUpdated = res.Created + res.Updated
+		sum.Accounting = res
+		for _, e := range res.Errors {
+			sum.Warnings = append(sum.Warnings, "Synergy expense: "+e)
+		}
 	} else {
-		sum.Warnings = append(sum.Warnings, "Statement expenses could not be refreshed: "+err.Error())
+		sum.Warnings = append(sum.Warnings, "Synergy expenses could not be created: "+err.Error())
 	}
 	return sum, nil
 }

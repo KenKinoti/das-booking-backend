@@ -317,6 +317,19 @@ type adminInput struct {
 	Password  string `json:"password"`
 }
 
+// Business type hooks (wired to pkg/industry by cmd/production).
+var (
+	// OrgCreated runs after an organisation is created with its business type.
+	OrgCreated func(org, businessType, by string)
+	// OrgTypeChanged runs when a super admin changes an organisation's type.
+	OrgTypeChanged func(org, businessType, by string)
+)
+
+// TypeKeyChanged reports whether a business_type edit is a real change.
+func TypeKeyChanged(before, after string) bool {
+	return strings.TrimSpace(strings.ToLower(before)) != strings.TrimSpace(strings.ToLower(after))
+}
+
 // CreateOrganization creates an organisation and its first admin user.
 func (h *Handler) CreateOrganization(c *gin.Context) {
 	var req struct {
@@ -405,6 +418,11 @@ func (h *Handler) CreateOrganization(c *gin.Context) {
 			fmt.Printf("platform: region for %s: %v\n", org.ID, err)
 		}
 	}
+	// Business type: its modules, words, role templates and the setup wizard
+	// the new admin sees on first sign-in (pkg/industry).
+	if OrgCreated != nil {
+		OrgCreated(org.ID, req.BusinessType, actorID(c))
+	}
 	// Start the organisation on its default plan straight away (same rules the
 	// entitlement middleware applies on first use).
 	if _, err := plans.NewService(h.DB, nil).Subscription(org.ID); err != nil {
@@ -459,6 +477,9 @@ func (h *Handler) UpdateOrganization(c *gin.Context) {
 			fail(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 			return
 		}
+	}
+	if OrgTypeChanged != nil && TypeKeyChanged(before.BusinessType, in.BusinessType) {
+		OrgTypeChanged(id, in.BusinessType, actorID(c))
 	}
 	after, _ := h.loadOrg(id)
 	Audit(h.DB, c, id, "organization.update", "organization", id,

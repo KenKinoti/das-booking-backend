@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/fxrates"
 )
 
 // HasSynergyData reports whether statements or usage reports were uploaded.
@@ -128,7 +129,61 @@ func (s *Service) SynergyReport(org string, today time.Time, basis string) *Syne
 	var ups []SynergyUpload
 	s.DB.Where("organization_id = ?", org).Order("created_at DESC").Limit(20).Find(&ups)
 	rep.Uploads = ups
+	s.synergyHomeAmounts(org, rep, today)
+	rep.Accounting = s.Accounting(org)
 	return rep
+}
+
+// synergyHomeAmounts converts the report's AUD amounts: months (and the
+// spend KPIs) at each month's rate, run-rates / prices at today's rate.
+func (s *Service) synergyHomeAmounts(org string, rep *SynergyReport, today time.Time) {
+	home := rep.Home
+	rep.FX = s.TodayRate(org, "AUD", home)
+	tr := rep.FX.Rate
+	conv := func(v, rate float64) float64 { return fxrates.Convert(v, rate, home) }
+	thisM, lastM := monthOf(today), monthOf(time.Date(today.Year(), today.Month()-1, 1, 0, 0, 0, 0, time.UTC))
+	year := today.Format("2006")
+	var thisH, lastH, ytdH float64
+	for i := range rep.Months {
+		m := &rep.Months[i]
+		t, err := time.Parse("2006-01", m.Month)
+		if err != nil {
+			continue
+		}
+		ri := s.RateFor(org, "AUD", home, t)
+		if ri.Rate <= 0 {
+			ri = rep.FX
+		}
+		m.Rate, m.RateBasis, m.RateLabel = ri.Rate, ri.Basis, ri.Label
+		m.TotalHom = conv(m.Total, ri.Rate)
+		switch {
+		case m.Month == thisM:
+			thisH += m.TotalHom
+		case m.Month == lastM:
+			lastH += m.TotalHom
+		}
+		if strings.HasPrefix(m.Month, year) && m.Month <= thisM {
+			ytdH += m.TotalHom
+		}
+	}
+	if tr <= 0 {
+		return
+	}
+	k := &rep.KPIs
+	k.ThisMonthHome, k.LastMonthHome, k.YTDHome = fxrates.Round(thisH, home), fxrates.Round(lastH, home), fxrates.Round(ytdH, home)
+	k.RunRateHome = conv(k.RunRate, tr)
+	for i := range rep.Plans {
+		p := &rep.Plans[i]
+		if p.MonthlyPrice == nil {
+			continue
+		}
+		mh, a := conv(*p.MonthlyPrice, tr), r2(*p.MonthlyPrice*12)
+		ah := conv(a, tr)
+		p.MonthlyPriceHome, p.AnnualPrice, p.AnnualPriceHome = &mh, &a, &ah
+	}
+	for i := range rep.Sites {
+		rep.Sites[i].CostHome = conv(rep.Sites[i].TotalMonthly, tr)
+	}
 }
 
 // SynergySiteDetail is the drawer of one site.
@@ -280,5 +335,6 @@ func synergySummary(rep *SynergyReport, alerts int) map[string]any {
 		"new_sites": k.NewSites, "cancelled_sites": k.CancelledSites, "balance": k.Balance, "balance_at": k.BalanceAt, "runway_days": k.RunwayDays, "runway_date": k.RunwayDate,
 		"topup_needed": k.TopupNeeded, "over_quota": k.OverQuota, "near_full": k.NearFull, "unbilled": k.Unbilled, "unbilled_cost": k.UnbilledCost,
 		"margin_monthly": k.MarginMonthly, "billed_monthly": k.BilledMonthly, "alerts": alerts, "decisions": len(rep.Decisions), "last_month": k.LastMonth, "this_month": k.ThisMonth,
-		"latest_month": k.LatestMonth}
+		"latest_month": k.LatestMonth, "this_month_home": k.ThisMonthHome, "last_month_home": k.LastMonthHome, "ytd": k.YTD, "ytd_home": k.YTDHome,
+		"fx": rep.FX, "accounting": rep.Accounting}
 }

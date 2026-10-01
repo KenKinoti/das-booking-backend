@@ -60,7 +60,23 @@ func (s *Service) now() time.Time {
 }
 
 // Migrate creates the tables.
-func Migrate(db *gorm.DB) error { return db.AutoMigrate(Models()...) }
+func Migrate(db *gorm.DB) error {
+	if err := db.AutoMigrate(Models()...); err != nil {
+		return err
+	}
+	// Google Workspace invoices: approve automatically when within ±20% of the
+	// last one, unless the vendor's rule was ever set by hand.
+	db.Exec("UPDATE expense_vendors SET auto_approve = true, auto_approve_pct = 20 WHERE key = 'google_workspace' AND COALESCE(auto_approve_pct, 0) = 0")
+	// Daily automatic sync for organisations with a connected source.
+	var orgs []string
+	db.Raw(`SELECT DISTINCT organization_id FROM expense_connections c WHERE kind IN ('gmail','synergy') AND enabled AND COALESCE(secret_enc,'') <> ''
+		AND NOT EXISTS (SELECT 1 FROM expense_connections s WHERE s.organization_id = c.organization_id AND s.kind = 'schedule')`).Scan(&orgs)
+	s := &Service{DB: db}
+	for _, o := range orgs {
+		s.ensureSchedule(o)
+	}
+	return nil
+}
 
 // ValidationError is a user-facing input problem (HTTP 400).
 type ValidationError struct{ Msg string }
@@ -76,7 +92,7 @@ var ErrNotFound = errors.New("not found")
 
 var builtinVendors = []Vendor{
 	{Key: "synergy", Name: "Synergy Wholesale", Category: CatDomains, Senders: []string{"synergywholesale.com"}, Builtin: true, CountFrom: "invoices"},
-	{Key: "google_workspace", Name: "Google Workspace", Category: CatEmail, Senders: []string{"payments-noreply@google.com"}, Builtin: true},
+	{Key: "google_workspace", Name: "Google Workspace", Category: CatEmail, Senders: []string{"payments-noreply@google.com"}, Builtin: true, AutoApprove: true, AutoApprovePct: 20},
 }
 
 // EnsureVendors creates the built-in vendors for an organisation.
@@ -149,6 +165,9 @@ type VendorInput struct {
 	Category  string   `json:"category"`
 	Senders   []string `json:"senders"`
 	CountFrom string   `json:"count_from"`
+	// Auto-approve rule (nil: keep).
+	AutoApprove    *bool    `json:"auto_approve"`
+	AutoApprovePct *float64 `json:"auto_approve_pct"`
 }
 
 // SaveVendor creates (id "") or updates a vendor.
@@ -182,7 +201,19 @@ func (s *Service) SaveVendor(org, id string, in VendorInput) (*Vendor, error) {
 		v.Name = in.Name
 	}
 	v.Category, v.Senders, v.UpdatedAt = in.Category, senders, s.now()
-	if in.CountFrom == "invoices" || in.CountFrom == "statement" {
+	if in.AutoApprove != nil {
+		v.AutoApprove = *in.AutoApprove
+	}
+	if in.AutoApprovePct != nil {
+		if *in.AutoApprovePct < 1 || *in.AutoApprovePct > 100 {
+			return nil, invalid("the auto-approve tolerance must be between 1%% and 100%%")
+		}
+		v.AutoApprovePct = *in.AutoApprovePct
+	}
+	if v.AutoApprove && v.AutoApprovePct == 0 {
+		v.AutoApprovePct = 20
+	}
+	if (in.CountFrom == "invoices" || in.CountFrom == "statement") && v.Key != "synergy" { // Synergy: always the statements (see accounting.go)
 		v.CountFrom = in.CountFrom
 	}
 	return v, s.DB.Save(v).Error
@@ -202,20 +233,25 @@ func (s *Service) convert(org string, it *Item, force bool) {
 	}
 	it.Net = r2(it.Total - it.Tax)
 	if force || it.FxRate <= 0 || it.FxSource == "" {
-		q := s.FX.Quote(org, it.Currency, home)
-		if q.OK() {
-			it.FxRate, it.FxSource = q.Rate, q.Source
+		// The rate of the month the expense is dated in (stored on the item).
+		day := s.now()
+		if it.InvoiceDate != nil {
+			day = *it.InvoiceDate
+		}
+		ri := s.RateFor(org, it.Currency, home, day)
+		if ri.Rate > 0 {
+			it.FxRate, it.FxSource, it.FxBasis, it.FxNote = ri.Rate, ri.Source, ri.Basis, clip(ri.Label, 250)
 			t := s.now()
-			if q.AsOf != nil {
-				t = *q.AsOf
+			if ri.AsOf != nil {
+				t = *ri.AsOf
 			}
 			it.FxDate = &t
 		} else {
-			it.FxRate, it.FxSource = 0, fxrates.SourceMissing
+			it.FxRate, it.FxSource, it.FxBasis, it.FxNote = 0, fxrates.SourceMissing, FxBasisMissing, ri.Label
 		}
 	}
 	if it.Currency == home {
-		it.FxRate, it.FxSource = 1, fxrates.SourceSame
+		it.FxRate, it.FxSource, it.FxBasis, it.FxNote = 1, fxrates.SourceSame, FxBasisSame, ""
 	}
 	it.HomeTotal = fxrates.Convert(it.Total, it.FxRate, home)
 	it.HomeTax = fxrates.Convert(it.Tax, it.FxRate, home)
@@ -340,6 +376,7 @@ func (s *Service) enrich(org string, target, from *Item) {
 			s.convert(org, target, true)
 			upd["total"], upd["tax"], upd["net"], upd["currency"], upd["tax_note"] = target.Total, target.Tax, target.Net, target.Currency, target.TaxNote
 			upd["home_currency"], upd["fx_rate"], upd["fx_source"], upd["fx_date"] = target.HomeCurrency, target.FxRate, target.FxSource, target.FxDate
+			upd["fx_basis"], upd["fx_note"] = target.FxBasis, target.FxNote
 			upd["home_total"], upd["home_tax"], upd["home_net"] = target.HomeTotal, target.HomeTax, target.HomeNet
 			c := math.Max(target.Confidence, from.Confidence)
 			upd["confidence"] = c
@@ -926,13 +963,15 @@ func (s *Service) SaveSynergy(org string, in SynergyInput) (*Connection, error) 
 	if in.Enabled != nil {
 		c.Enabled = *in.Enabled
 	}
-	if in.CountFrom == "invoices" || in.CountFrom == "statement" {
-		if v := s.vendorByKey(org, "synergy"); v != nil {
-			s.DB.Model(&Vendor{}).Where("id = ?", v.ID).Update("count_from", in.CountFrom)
-		}
-	}
+	// in.CountFrom is no longer used: Synergy is always counted from the
+	// statements, as service charges or top-ups (Expenses → Synergy → "How
+	// should Synergy costs count?").
 	c.UpdatedAt = s.now()
-	return c, s.DB.Save(c).Error
+	if err := s.DB.Save(c).Error; err != nil {
+		return c, err
+	}
+	s.ensureSchedule(org)
+	return c, nil
 }
 
 func (s *Service) synergyClient(org string) (*SynergyClient, *Connection, error) {
@@ -977,6 +1016,11 @@ type SyncResult struct {
 	Balance    *float64 `json:"balance,omitempty"`
 	Notes      []string `json:"notes,omitempty"`
 	At         string   `json:"at"`
+	// Gmail: Synergy files routed into Expenses → Synergy, items approved by vendor rules.
+	SynergyStatements int `json:"synergy_statements,omitempty"`
+	SynergyUsage      int `json:"synergy_usage,omitempty"`
+	AutoApproved      int `json:"auto_approved,omitempty"`
+	UsageSnapshots    int `json:"usage_snapshots,omitempty"` // Synergy API: hosting disk usage stored
 
 	createdIDs []string
 }
@@ -1064,10 +1108,14 @@ func (s *Service) SyncSynergy(ctx context.Context, org string) *SyncResult {
 			s.DB.Model(&Renewal{}).Where("id = ?", row.ID).Updates(map[string]any{"active": false, "updated_at": now})
 		}
 	}
+	if n := s.storeAPIUsage(org, hosting); n > 0 {
+		r.UsageSnapshots = n
+		r.Notes = append(r.Notes, fmt.Sprintf("Disk usage of %d hosting service(s) stored from the API", n))
+	}
 	r.Renewals = len(domains) + len(hosting)
 	r.Found = r.Renewals
 	r.OK = true
-	r.Notes = append(r.Notes, "The Synergy Wholesale API has no invoice list — invoices come from Gmail (receipts and statements) or uploads.")
+	r.Notes = append(r.Notes, "The Synergy Wholesale API has no statement or invoice list — Synergy expenses come from the monthly statement (Gmail or upload).")
 	s.finishSync(c, r)
 	return r
 }
@@ -1205,7 +1253,11 @@ func (s *Service) FinishGmail(ctx context.Context, state, code, redirect string)
 		sj, _ := json.Marshal(c.Settings)
 		upd["settings"] = string(sj)
 	}
-	return c.OrganizationID, s.DB.Model(&Connection{}).Where("id = ?", c.ID).Updates(upd).Error
+	if err := s.DB.Model(&Connection{}).Where("id = ?", c.ID).Updates(upd).Error; err != nil {
+		return c.OrganizationID, err
+	}
+	s.ensureSchedule(c.OrganizationID)
+	return c.OrganizationID, nil
 }
 
 // DisconnectGmail forgets the token.
@@ -1269,6 +1321,9 @@ func (s *Service) SyncGmail(ctx context.Context, org string) *SyncResult {
 		// Final state of what this sync stored (a payment stored first can
 		// become a duplicate of the invoice that arrives after it).
 		r.Created, r.Duplicates = 0, 0
+		if len(r.createdIDs) > 0 {
+			r.AutoApproved = s.AutoApproveItems(org, r.createdIDs)
+		}
 		if len(r.createdIDs) > 0 {
 			var rows []struct {
 				Status string
@@ -1411,12 +1466,12 @@ func (s *Service) ingestEmail(ctx context.Context, org string, g *Gmail, mid str
 			sum, ierr := s.importSynergyCSV(org, "", csvAtt.Filename, SourceGmail, kind, data, sd)
 			if ierr != nil {
 				note = "Synergy file could not be imported: " + ierr.Error()
-			} else if kind == SynFileStatement && v != nil && v.CountFrom == "statement" {
-				if _, err := s.CreateStatementExpenses(org, "", StatementExpenseInput{Months: sum.Months}); err != nil {
-					note += " (statement expenses: " + err.Error() + ")"
-				} else {
-					note += "; statement expenses updated in the inbox"
-				}
+			} else if kind == SynFileStatement && sum.Accounting != nil {
+				note += fmt.Sprintf("; Synergy expenses %s", sum.Accounting.Message)
+				r.SynergyStatements++
+			} else if kind == SynFileUsage {
+				note = "Synergy hosting usage report imported into Expenses → Synergy"
+				r.SynergyUsage++
 			}
 			x = Extracted{Kind: KindInvoice, VendorKey: vk, Ignore: note, Method: "csv", Date: when}
 			it, created, err := s.Ingest(org, Incoming{Source: SourceGmail, ExternalID: mid, X: x, Subject: subj, Sender: from, Text: text, DocumentID: doc.ID})
@@ -1493,6 +1548,7 @@ func (s *Service) SyncAll(ctx context.Context, org string) []*SyncResult {
 	if c := s.connection(org, "gmail"); c != nil && c.Enabled && c.SecretEnc != "" {
 		out = append(out, s.SyncGmail(ctx, org))
 	}
+	s.RecordMonthRates(org)
 	s.NotifyAlerts(org)
 	return out
 }
@@ -1505,7 +1561,7 @@ type ApproveInput struct {
 	PaymentMethod string `json:"payment_method"`
 }
 
-var categoryCodes = map[string]string{CatHosting: "6410", CatDomains: "6420", CatEmail: "6430", CatSoftware: "6400", CatSupport: "6440", CatOther: "6990"}
+var categoryCodes = map[string]string{CatHosting: "6410", CatDomains: "6420", CatEmail: "6430", CatSoftware: "6400", CatSupport: "6440", CatPrepaid: "6415", CatOther: "6990"}
 
 // Approve turns an inbox item into a paid (or unpaid) supplier bill.
 func (s *Service) Approve(org, user, id string, in ApproveInput) (*Item, error) {
@@ -1579,7 +1635,7 @@ func (s *Service) Approve(org, user, id string, in ApproveInput) (*Item, error) 
 	}
 	now := s.now()
 	upd := map[string]any{"status": StatusApproved, "approved_at": now, "approved_by": user, "updated_at": now,
-		"home_currency": it.HomeCurrency, "fx_rate": it.FxRate, "fx_source": it.FxSource, "fx_date": it.FxDate,
+		"home_currency": it.HomeCurrency, "fx_rate": it.FxRate, "fx_source": it.FxSource, "fx_date": it.FxDate, "fx_basis": it.FxBasis, "fx_note": it.FxNote,
 		"home_total": it.HomeTotal, "home_tax": it.HomeTax, "home_net": it.HomeNet, "net": it.Net}
 
 	// A statement expense: a line per domain, a payment per charge month.
@@ -2132,7 +2188,83 @@ func (s *Service) Renewals(org string, within int) []Renewal {
 			out[i].DaysLeft = &d
 		}
 	}
+	s.renewalCosts(org, out)
 	return out
+}
+
+// periodMonths reads a billing period: "yearly" / "1 Year/s" → 12, "6 months" → 6, "monthly" → 1.
+func periodMonths(p, kind string) int {
+	p = strings.ToLower(strings.TrimSpace(p))
+	n := 1
+	if m := regexp.MustCompile(`(\d+)`).FindStringSubmatch(p); m != nil {
+		fmt.Sscanf(m[1], "%d", &n)
+	}
+	switch {
+	case strings.Contains(p, "year") || strings.Contains(p, "annual"):
+		return n * 12
+	case strings.Contains(p, "month"):
+		return n
+	case p == "" && kind == "domain":
+		return 12
+	}
+	return 1
+}
+
+// renewalCosts fills the derived cost fields (estimates for hosting from the
+// plan's learned monthly price; home amounts at today's rate).
+func (s *Service) renewalCosts(org string, out []Renewal) {
+	if len(out) == 0 {
+		return
+	}
+	home := s.Home(org)
+	var plans map[string]*SynPlan
+	rates := map[string]RateInfo{}
+	for i := range out {
+		r := &out[i]
+		r.PeriodMonths = periodMonths(r.BillingPeriod, r.Kind)
+		switch r.PeriodMonths {
+		case 12:
+			r.PeriodLabel = "year"
+		case 1:
+			r.PeriodLabel = "month"
+		default:
+			r.PeriodLabel = fmt.Sprintf("%d months", r.PeriodMonths)
+		}
+		cost := r.Cost
+		if cost == nil && r.Kind == "hosting" && r.Plan != "" {
+			if plans == nil {
+				var txns []SynergyTxn
+				var snaps []SynergyUsage
+				var manual []SynergyPlan
+				s.DB.Where("organization_id = ?", org).Find(&txns)
+				s.DB.Where("organization_id = ?", org).Find(&snaps)
+				s.DB.Where("organization_id = ?", org).Find(&manual)
+				plans, _ = LearnPlans(txns, snaps, manual)
+			}
+			if pl := plans[planKey(r.Plan)]; pl != nil && pl.MonthlyPrice != nil {
+				v := r2(*pl.MonthlyPrice * float64(r.PeriodMonths))
+				r.CostEstimate, cost = &v, &v
+				if r.Currency == "" {
+					r.Currency = "AUD"
+				}
+			}
+		}
+		if cost == nil {
+			continue
+		}
+		m := r2(*cost / float64(r.PeriodMonths))
+		r.Monthly = &m
+		cur := nonEmpty(r.Currency, home)
+		ri, ok := rates[cur]
+		if !ok {
+			ri = s.TodayRate(org, cur, home)
+			rates[cur] = ri
+		}
+		if ri.Rate > 0 {
+			hc, hm := fxrates.Convert(*cost, ri.Rate, home), fxrates.Convert(m, ri.Rate, home)
+			r.HomeCost, r.HomeMonthly, r.HomeCurrency, r.RateLabel = &hc, &hm, home, ri.Label
+		}
+	}
 }
 
 // RenewalInput edits / creates a renewal.
@@ -2454,7 +2586,10 @@ func (s *Service) DashboardFor(org string, today time.Time, from, to string) *Da
 			upcoming = append(upcoming, r)
 			if *r.DaysLeft >= 0 && *r.DaysLeft <= 30 {
 				renew30++
-				if r.Cost != nil {
+				switch {
+				case r.HomeCost != nil:
+					renew30Cost += *r.HomeCost // incl. hosting estimated from the plan price
+				case r.Cost != nil:
 					renew30Cost += toHome(*r.Cost, r.Currency)
 				}
 			}

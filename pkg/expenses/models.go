@@ -54,11 +54,12 @@ const (
 	CatEmail    = "email"
 	CatSoftware = "software"
 	CatOther    = "other"
+	CatPrepaid  = "prepaid" // Synergy top-ups counted as the expense (Synergy accounting "topups")
 	// CatSupport ("support") is declared in synergy_parse.go: Synergy priority tickets.
 )
 
 // Categories lists the categories in display order.
-var Categories = []string{CatHosting, CatDomains, CatEmail, CatSoftware, CatSupport, CatOther}
+var Categories = []string{CatHosting, CatDomains, CatEmail, CatSoftware, CatSupport, CatPrepaid, CatOther}
 
 // CategoryLabels are the human names (also the expense-account names).
 var CategoryLabels = map[string]string{
@@ -67,20 +68,25 @@ var CategoryLabels = map[string]string{
 	CatEmail:    "Email & Workspace",
 	CatSoftware: "Software & Subscriptions",
 	CatSupport:  "Support Fees",
+	CatPrepaid:  "Synergy prepaid hosting",
 	CatOther:    "Other Expenses",
 }
 
 // Vendor is a supplier whose costs are tracked here.
 type Vendor struct {
-	ID             string    `json:"id" gorm:"type:varchar(64);primaryKey"`
-	OrganizationID string    `json:"organization_id" gorm:"type:varchar(255);not null;uniqueIndex:idx_expv_org_key,priority:1"`
-	Key            string    `json:"key" gorm:"type:varchar(64);not null;uniqueIndex:idx_expv_org_key,priority:2"` // synergy | google_workspace | custom-…
-	Name           string    `json:"name" gorm:"type:varchar(255);not null"`
-	Category       string    `json:"category" gorm:"type:varchar(32);not null;default:'other'"` // default category
-	Senders        []string  `json:"senders" gorm:"type:text;serializer:json"`                  // email addresses / domains that send its bills
-	Builtin        bool      `json:"builtin"`
-	FinanceVendor  string    `json:"finance_vendor_id" gorm:"type:varchar(64)"` // finance vendors.id used for bills
-	CountFrom      string    `json:"count_from" gorm:"type:varchar(20)"`        // synergy: invoices (default) | statement
+	ID             string   `json:"id" gorm:"type:varchar(64);primaryKey"`
+	OrganizationID string   `json:"organization_id" gorm:"type:varchar(255);not null;uniqueIndex:idx_expv_org_key,priority:1"`
+	Key            string   `json:"key" gorm:"type:varchar(64);not null;uniqueIndex:idx_expv_org_key,priority:2"` // synergy | google_workspace | custom-…
+	Name           string   `json:"name" gorm:"type:varchar(255);not null"`
+	Category       string   `json:"category" gorm:"type:varchar(32);not null;default:'other'"` // default category
+	Senders        []string `json:"senders" gorm:"type:text;serializer:json"`                  // email addresses / domains that send its bills
+	Builtin        bool     `json:"builtin"`
+	FinanceVendor  string   `json:"finance_vendor_id" gorm:"type:varchar(64)"` // finance vendors.id used for bills
+	CountFrom      string   `json:"count_from" gorm:"type:varchar(20)"`        // synergy: invoices (default) | statement
+	// AutoApprove: approve new invoices from this vendor automatically when the
+	// amount is within ±AutoApprovePct % of the last approved one (same currency).
+	AutoApprove    bool      `json:"auto_approve"`
+	AutoApprovePct float64   `json:"auto_approve_pct"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -125,6 +131,8 @@ type Item struct {
 	HomeTotal    float64    `json:"home_total"`
 	HomeTax      float64    `json:"home_tax"`
 	HomeNet      float64    `json:"home_net"`
+	FxBasis      string     `json:"fx_basis" gorm:"type:varchar(12)"` // same | month | backfilled | manual | today
+	FxNote       string     `json:"fx_note" gorm:"type:varchar(255)"` // e.g. "1 AUD = 85.4 KES · live · Sep 2026 rate (30 Sep 2026)"
 
 	Confidence float64  `json:"confidence"`                     // 0..1
 	Method     string   `json:"method" gorm:"type:varchar(20)"` // api | rules | pdf | csv | ai | manual
@@ -264,6 +272,16 @@ type Renewal struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 	CustomerName   string     `json:"customer_name,omitempty" gorm:"-"`
 	DaysLeft       *int       `json:"days_left,omitempty" gorm:"-"`
+	// Derived: the cost per billing period and per month, in the renewal's
+	// currency and at today's rate in the home currency.
+	CostEstimate *float64 `json:"cost_estimate,omitempty" gorm:"-"` // when Cost is unknown: from the plan's monthly price
+	PeriodMonths int      `json:"period_months,omitempty" gorm:"-"`
+	PeriodLabel  string   `json:"period_label,omitempty" gorm:"-"` // "year" | "6 months" | "month"
+	Monthly      *float64 `json:"monthly,omitempty" gorm:"-"`
+	HomeCost     *float64 `json:"home_cost,omitempty" gorm:"-"`
+	HomeMonthly  *float64 `json:"home_monthly,omitempty" gorm:"-"`
+	HomeCurrency string   `json:"home_currency,omitempty" gorm:"-"`
+	RateLabel    string   `json:"rate_label,omitempty" gorm:"-"`
 }
 
 // TableName is fixed.
@@ -284,5 +302,5 @@ func (AlertLog) TableName() string { return "expense_alert_log" }
 
 // Models lists the tables for AutoMigrate.
 func Models() []interface{} {
-	return append([]interface{}{&Vendor{}, &Item{}, &Allocation{}, &Document{}, &Connection{}, &Renewal{}, &AlertLog{}}, SynergyModels()...)
+	return append([]interface{}{&Vendor{}, &Item{}, &Allocation{}, &Document{}, &Connection{}, &Renewal{}, &AlertLog{}, &AccountingPrefs{}, &FxMonth{}}, SynergyModels()...)
 }

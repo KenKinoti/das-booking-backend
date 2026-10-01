@@ -128,6 +128,7 @@ func (h *Handler) dashboard(c *gin.Context) {
 	if !okk {
 		return
 	}
+	h.S.EnsureSynergyBackfill(o)
 	ok(c, h.S.DashboardFor(o, reqtz.Now(c), c.Query("from"), c.Query("to")))
 }
 

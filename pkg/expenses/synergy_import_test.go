@@ -448,6 +448,9 @@ func TestSynergyUploadDedupeAndStatementExpenses(t *testing.T) {
 		t.Fatalf("gap %+v %v", g.Synergy, err)
 	}
 	db.Where("organization_id = ? AND upload_id = ?", org, g.Synergy.UploadID).Delete(&SynergyTxn{})
+	if _, err := s.ApplySynergyAccounting(org, "u1"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Usage reports: date from the file name; a chosen date overrides.
 	u1 := uploadFixture(t, s, org, fxUse01, nil)
@@ -475,36 +478,37 @@ func TestSynergyUploadDedupeAndStatementExpenses(t *testing.T) {
 		t.Fatalf("report %+v", rep.KPIs)
 	}
 
-	// A Synergy receipt approved from Gmail in September (a $45 top-up).
+	// The uploads created and approved the statement expenses automatically
+	// (default: service charges by charge date, auto-approve on).
 	v := s.synergyVendor(org)
+	if v.CountFrom != "statement" {
+		t.Fatalf("Synergy should be counted from statements: %q", v.CountFrom)
+	}
+	pv, err := s.StatementExpenses(org, StatementExpenseInput{})
+	if err != nil || len(pv.Groups) != 4 || !near(pv.Total, 238.0-0.02) {
+		t.Fatalf("preview %+v %v", pv, err)
+	}
+	want := map[string]float64{"2026-08|hosting": 121.95, "2026-08|domains": 11.5, "2026-09|hosting": 94.58, "2026-09|support": 9.95}
+	for _, g := range pv.Groups {
+		if !near(g.Total, want[g.Key]) || g.Change != "unchanged" || g.ItemStatus != StatusApproved {
+			t.Errorf("group %s = %.2f %s %s", g.Key, g.Total, g.Change, g.ItemStatus)
+		}
+	}
+	// A Synergy receipt entered by hand for a counted month cannot be approved (count once).
 	amt, date := 45.0, "2026-09-30"
 	rcpt, err := s.CreateManual(org, ItemInput{VendorID: &v.ID, InvoiceDate: &date, Total: &amt})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Approve(org, "u1", rcpt.ID, ApproveInput{}); err != nil {
-		t.Fatal(err)
-	}
-	pv, err := s.StatementExpenses(org, StatementExpenseInput{})
-	if err != nil || len(pv.Groups) != 4 || !near(pv.Total, 238.0-0.02) || len(pv.Overlaps) != 1 || !strings.Contains(pv.Overlaps[0].Match, "$45.00 top-up on 30 Sep") {
-		t.Fatalf("preview %+v %v", pv, err)
-	}
-	want := map[string]float64{"2026-08|hosting": 121.95, "2026-08|domains": 11.5, "2026-09|hosting": 94.58, "2026-09|support": 9.95}
-	for _, g := range pv.Groups {
-		if !near(g.Total, want[g.Key]) {
-			t.Errorf("group %s = %.2f", g.Key, g.Total)
-		}
-	}
-	// Without choosing the statement as the source of truth: refused (count once).
-	if _, err := s.CreateStatementExpenses(org, "u1", StatementExpenseInput{Approve: true}); err == nil || !strings.Contains(err.Error(), "twice") {
-		t.Fatalf("double count not refused: %v", err)
+	if _, err := s.Approve(org, "u1", rcpt.ID, ApproveInput{}); err == nil || !strings.Contains(err.Error(), "already counted from the statement") {
+		t.Fatalf("count-once guard: %v", err)
 	}
 	res, err := s.CreateStatementExpenses(org, "u1", StatementExpenseInput{UseStatement: true, Approve: true})
-	if err != nil || res.Created != 4 || res.Approved != 4 || res.Ignored != 1 || len(res.Errors) != 0 || res.CountFrom != "statement" {
+	if err != nil || res.Created != 0 || res.Unchanged != 4 || res.Ignored != 1 || len(res.Errors) != 0 || res.CountFrom != "statement" {
 		t.Fatalf("create %+v %v", res, err)
 	}
 	if it, _ := s.Get(org, rcpt.ID); it.Status != StatusIgnored || it.BillID != "" {
-		t.Fatalf("receipt should be un-approved and ignored: %+v", it)
+		t.Fatalf("receipt should be ignored: %+v", it)
 	}
 	// One bill per month × category, line per domain, payments on the charge dates.
 	var items []Item
@@ -534,17 +538,11 @@ func TestSynergyUploadDedupeAndStatementExpenses(t *testing.T) {
 	if !near(billTotal, 237.98) {
 		t.Fatalf("bills total %.2f", billTotal)
 	}
-	// A new Synergy receipt from Gmail is ignored automatically now; approving
-	// one entered by hand for a counted month is refused.
+	// A new Synergy receipt from Gmail is ignored automatically now.
 	d30 := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
 	gm, _, err := s.Ingest(org, Incoming{Source: SourceGmail, ExternalID: "gmail-rcpt-20", VendorID: v.ID, X: Extracted{Kind: KindReceipt, Total: 20, Currency: "AUD", Date: &d30, InvoiceNumber: "2746999"}})
 	if err != nil || gm.Status != StatusIgnored || !strings.Contains(gm.Notes, "counted from the monthly statement") {
 		t.Fatalf("gmail receipt should be ignored when counting statements: %+v %v", gm, err)
-	}
-	amt2, date2 := 20.0, "2026-09-30"
-	r2i, _ := s.CreateManual(org, ItemInput{VendorID: &v.ID, InvoiceDate: &date2, Total: &amt2})
-	if _, err := s.Approve(org, "u1", r2i.ID, ApproveInput{}); err == nil || !strings.Contains(err.Error(), "already counted from the statement") {
-		t.Fatalf("guard %v", err)
 	}
 	// Re-upload changes nothing; switching to the service basis regroups and re-approves.
 	uploadFixture(t, s, org, fxAug, nil)
@@ -552,9 +550,10 @@ func TestSynergyUploadDedupeAndStatementExpenses(t *testing.T) {
 	if len(items) != 4 {
 		t.Fatalf("re-upload created items: %d", len(items))
 	}
-	res, err = s.CreateStatementExpenses(org, "u1", StatementExpenseInput{Basis: "service", Approve: true})
-	if err != nil || len(res.Errors) != 0 {
-		t.Fatalf("service basis %+v %v", res, err)
+	basis := "service"
+	ar, err := s.SaveAccounting(org, "u1", AccountingInput{Basis: &basis})
+	if err != nil || len(ar.Errors) != 0 {
+		t.Fatalf("service basis %+v %v", ar, err)
 	}
 	var svc []Item
 	db.Where("organization_id = ? AND source = ? AND status = ?", org, synStatementSource, StatusApproved).Find(&svc)
@@ -571,5 +570,21 @@ func TestSynergyUploadDedupeAndStatementExpenses(t *testing.T) {
 	b, _ := s.Fin.GetBill(org, oct.BillID)
 	if b.BillDate.Format(dayFmt) != "2026-10-01" || b.Payments[0].PaymentDate.Format(dayFmt) != "2026-09-25" {
 		t.Fatalf("accrual bill date / cash payment date %v %v", b.BillDate, b.Payments[0].PaymentDate)
+	}
+}
+
+func TestIsHostingLine(t *testing.T) {
+	cases := map[string]bool{
+		"example.co.ke hosting (Oct 2026)":           true,
+		"example.co.ke":                              true,
+		"Domain renewal example.co.ke 1 year":        true,
+		"Website design & development example.co.ke": false,
+		"example.co.ke website build":                false,
+		"Monthly maintenance example.co.ke":          true,
+	}
+	for in, want := range cases {
+		if got := isHostingLine(in); got != want {
+			t.Errorf("isHostingLine(%q) = %v, want %v", in, got, want)
+		}
 	}
 }

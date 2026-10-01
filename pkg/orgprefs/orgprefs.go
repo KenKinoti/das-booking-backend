@@ -303,6 +303,9 @@ func mirror(tx *gorm.DB, org string, p Prefs) error {
 // Migrate adds the columns (models.Organization declares them too) and
 // backfills organisations that have none.
 func Migrate(db *gorm.DB) error {
+	if err := db.AutoMigrate(&OrgNotice{}); err != nil {
+		return err
+	}
 	if !hasTable(db, "organizations") {
 		return nil
 	}
