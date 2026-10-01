@@ -595,6 +595,7 @@ type contactInput struct {
 	CCInvoices       *bool   `json:"cc_invoices"`
 	CCQuotes         *bool   `json:"cc_quotes"`
 	CCReminders      *bool   `json:"cc_reminders"`
+	CCReceipts       *bool   `json:"cc_receipts"`
 	CCBookings       *bool   `json:"cc_bookings"`
 	IsPrimaryBilling *bool   `json:"is_primary_billing"`
 	Notes            *string `json:"notes"`
@@ -622,6 +623,10 @@ func (in contactInput) apply(ct *models.CustomerContact) {
 		if f.src != nil {
 			*f.dst = *f.src
 		}
+	}
+	if in.CCReceipts != nil {
+		v := *in.CCReceipts
+		ct.CCReceipts = &v
 	}
 }
 
@@ -678,7 +683,7 @@ func (h *Handler) saveContact(ct *models.CustomerContact, create bool) error {
 			return tx.Select("*").Create(ct).Error
 		}
 		return tx.Model(&models.CustomerContact{}).Where("id = ? AND organization_id = ?", ct.ID, ct.OrganizationID).
-			Select("name", "email", "phone", "role", "cc_invoices", "cc_quotes", "cc_reminders", "cc_bookings", "is_primary_billing", "notes", "updated_at").
+			Select("name", "email", "phone", "role", "cc_invoices", "cc_quotes", "cc_reminders", "cc_receipts", "cc_bookings", "is_primary_billing", "notes", "updated_at").
 			Updates(ct).Error
 	})
 }
@@ -708,7 +713,7 @@ func (h *Handler) CreateCustomerContact(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid contact: " + err.Error()})
 		return
 	}
-	ct := models.CustomerContact{ID: uuid.NewString(), CustomerID: cu.ID, OrganizationID: orgID, CCInvoices: true}
+	ct := models.CustomerContact{ID: uuid.NewString(), CustomerID: cu.ID, OrganizationID: orgID, CCInvoices: true, CCReceipts: boolPtr(true)}
 	in.apply(&ct)
 	if status, msg := h.validateContact(&ct); status != 0 {
 		ct.ID = ""
@@ -800,3 +805,5 @@ func BackfillCustomerCountries(db *gorm.DB) (int64, error) {
 	}
 	return total, nil
 }
+
+func boolPtr(b bool) *bool { return &b }

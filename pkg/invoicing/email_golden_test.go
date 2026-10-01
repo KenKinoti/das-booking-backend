@@ -31,7 +31,7 @@ func goldenDoc(docType, status string) *Invoice {
 		inv.Items = append(inv.Items, InvoiceItem{ID: string(rune('a' + i)), Description: it.d, Quantity: it.q, UnitPrice: it.p, TaxRate: 16, TaxName: "VAT"})
 	}
 	if docType == TypeInvoice {
-		inv.Payments = []Payment{{ID: "p1", Amount: 20000, Date: d("2026-09-02"), Method: "mobile_money", IsDeposit: true, Reference: "QJK7XY"}}
+		inv.Payments = []Payment{{ID: "p1", Amount: 20000, Date: d("2026-09-02"), Method: "mobile_money", IsDeposit: true, Reference: "QJK7XY", ReceiptNumber: "RCT-0007"}}
 	}
 	Recalculate(inv)
 	ApplyPayments(inv, d("2026-09-02"))
@@ -70,7 +70,7 @@ func goldenView(kind string, today time.Time) EmailView {
 func attachmentName(kind string, inv *Invoice) (a mail.Attachment) {
 	a.Filename = PDFFilename(inv)
 	if kind == KindReceipt {
-		a.Filename = "Receipt-" + a.Filename
+		a.Filename = ReceiptFilename(inv, inv.Payments[0])
 	}
 	a.Data = []byte("%PDF")
 	return

@@ -375,7 +375,7 @@ func (d *pdfDoc) header(b PDFBusiness, title, number, stamp string) {
 	d.font("", 11, cMuted)
 	d.CellFormat(rw, 6, number, "", 2, "R", false, 0, "")
 	if stamp != "" {
-		col := map[string]rgb{"PAID": {22, 163, 74}, "OVERDUE": {220, 38, 38}, "VOID": {110, 118, 140}, "ACCEPTED": {22, 163, 74}, "DRAFT": {110, 118, 140}, "PARTIALLY PAID": {217, 119, 6}}[stamp]
+		col := map[string]rgb{"PAID": {22, 163, 74}, "OVERDUE": {220, 38, 38}, "VOID": {110, 118, 140}, "ACCEPTED": {22, 163, 74}, "DRAFT": {110, 118, 140}, "PARTIALLY PAID": {217, 119, 6}, "PAID IN FULL": {22, 163, 74}, "CANCELLED": {220, 38, 38}}[stamp]
 		d.font("B", 9, col)
 		w := d.GetStringWidth(stamp) + 6
 		d.Ln(2)
@@ -781,6 +781,8 @@ func PaymentMethodLabel(m string) string {
 		return "Mobile money"
 	case "cheque":
 		return "Cheque"
+	case "flutterwave":
+		return "Flutterwave"
 	case "paypal":
 		return "PayPal"
 	case "stripe":
@@ -791,46 +793,155 @@ func PaymentMethodLabel(m string) string {
 	return m
 }
 
-// RenderReceiptPDF renders a receipt for one payment on an invoice.
+// ReceiptOptions mark a receipt cancelled (its payment was removed).
+type ReceiptOptions struct {
+	CancelledAt  *time.Time
+	CancelReason string
+}
+
+// RenderReceiptPDF renders the receipt for one payment on an invoice.
 func RenderReceiptPDF(inv *Invoice, p Payment, b PDFBusiness) ([]byte, error) {
-	d := newPDF("Receipt "+inv.Number, b.Name, b.Accent, inv.Currency, "Receipt for "+inv.Number)
+	return RenderReceipt(inv, p, b, ReceiptOptions{})
+}
+
+// RenderReceipt renders a payment receipt: receipt number, date, who paid,
+// the amount in figures and words, method / reference, the invoice and what
+// was paid and left to pay as at this payment, notes, and a PAID IN FULL,
+// CANCELLED or "Revised" mark.
+func RenderReceipt(inv *Invoice, p Payment, b PDFBusiness, o ReceiptOptions) ([]byte, error) {
+	number := p.ReceiptNumber
+	if number == "" {
+		number = "For " + inv.Number
+	}
+	f := figuresAt(inv, p)
+	footer := "Receipt " + p.ReceiptNumber + " · " + inv.Number
+	if p.ReceiptNumber == "" {
+		footer = "Receipt for " + inv.Number
+	}
+	d := newPDF("Receipt "+strings.TrimPrefix(number, "For "), b.Name, b.Accent, inv.Currency, footer)
 	d.AddPage()
-	d.header(b, "Receipt", "For "+inv.Number, "")
+	stamp := ""
+	switch {
+	case o.CancelledAt != nil:
+		stamp = "CANCELLED"
+	case f.Balance <= 0:
+		stamp = "PAID IN FULL"
+	}
+	d.header(b, "Receipt", number, stamp)
+	if o.CancelledAt != nil || p.RevisedAt != nil {
+		d.SetX(d.left)
+		if o.CancelledAt != nil {
+			d.fill(rgb{254, 226, 226})
+			d.font("B", 9.5, rgb{185, 28, 28})
+			msg := "Cancelled " + pdfDate(*o.CancelledAt) + " — this payment was removed from invoice " + inv.Number + ". This receipt is no longer valid."
+			if strings.TrimSpace(o.CancelReason) != "" {
+				msg += " Reason: " + strings.TrimSpace(o.CancelReason)
+			}
+			for _, l := range d.lines(msg, d.width-8) {
+				d.SetX(d.left)
+				d.CellFormat(d.width, 6, "  "+l, "", 2, "L", true, 0, "")
+			}
+		} else {
+			d.font("B", 9.5, rgb{180, 83, 9})
+			d.CellFormat(d.width, 6, "Revised "+pdfDate(*p.RevisedAt)+" — this replaces any earlier copy of receipt "+p.ReceiptNumber+".", "", 2, "L", false, 0, "")
+		}
+		d.Ln(3)
+	}
+
+	// Received from / receipt details.
+	colW := d.width / 2
+	y0 := d.GetY()
+	d.SetXY(d.left, y0)
 	d.font("B", 7.5, cMuted)
-	d.SetX(d.left)
-	d.CellFormat(d.width, 5, "RECEIVED FROM", "", 2, "L", false, 0, "")
+	d.CellFormat(colW, 5, "RECEIVED FROM", "", 2, "L", false, 0, "")
 	d.font("B", 11, cInk)
 	d.SetX(d.left)
-	d.CellFormat(d.width, 6, inv.ClientName, "", 2, "L", false, 0, "")
-	d.Ln(4)
+	d.CellFormat(colW, 6, inv.ClientName, "", 2, "L", false, 0, "")
+	d.font("", 9, cMuted)
+	for _, l := range append(nonEmpty(inv.ClientEmail, inv.ClientPhone), d.lines(inv.ClientAddress, colW-4)...) {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		d.SetX(d.left)
+		d.CellFormat(colW, 4.4, l, "", 2, "L", false, 0, "")
+	}
+	leftEnd := d.GetY()
+	d.SetY(y0)
+	rx := d.left + colW + 6
+	rw := colW - 6
+	d.kv(rx, rw, "Receipt no.", firstNonBlank(p.ReceiptNumber, "—"), false, cInk)
+	d.kv(rx, rw, "Payment date", pdfDate(p.Date), false, cInk)
+	d.kv(rx, rw, "Method", PaymentMethodLabel(p.Method), false, cInk)
+	if p.Reference != "" {
+		d.kv(rx, rw, "Reference", p.Reference, false, cInk)
+	}
+	d.SetY(math.Max(leftEnd, d.GetY()) + 5)
+
+	// Amount received.
 	by := d.GetY()
 	d.fill(tint(d.accent, 0.9))
-	d.Rect(d.left, by, d.width, 16, "F")
-	d.SetXY(d.left+4, by)
+	d.Rect(d.left, by, d.width, 24, "F")
+	d.SetXY(d.left+5, by+2)
 	d.font("B", 10, cInk)
-	d.CellFormat(d.width/2, 16, "Amount received", "", 0, "L", false, 0, "")
-	d.font("B", 16, d.accent)
-	d.CellFormat(d.width/2-8, 16, d.money(p.Amount), "", 1, "R", false, 0, "")
-	d.Ln(4)
-	x, w := d.left, d.width
-	d.kv(x, w, "Payment date", pdfDate(p.Date), false, cInk)
-	d.kv(x, w, "Method", PaymentMethodLabel(p.Method), false, cInk)
-	if p.Reference != "" {
-		d.kv(x, w, "Reference", p.Reference, false, cInk)
+	d.CellFormat(d.width/2, 10, "Amount received", "", 0, "L", false, 0, "")
+	d.font("B", 18, d.accent)
+	d.CellFormat(d.width/2-10, 10, d.money(p.Amount), "", 1, "R", false, 0, "")
+	d.SetX(d.left + 5)
+	d.font("", 9, cInk)
+	words := AmountInWords(p.Amount, inv.Currency)
+	for _, l := range d.lines("In words: "+words, d.width-10) {
+		d.SetX(d.left + 5)
+		d.CellFormat(d.width-10, 4.8, l, "", 2, "L", false, 0, "")
 	}
-	d.kv(x, w, "Invoice", inv.Number, false, cInk)
-	d.kv(x, w, "Invoice total", d.money(inv.Total), false, cInk)
-	d.kv(x, w, "Paid to date", d.money(inv.AmountPaid), false, cInk)
-	d.kv(x, w, "Balance due", d.money(inv.BalanceDue), true, d.accent)
-	d.Ln(6)
+	d.SetY(math.Max(d.GetY(), by+24) + 6)
+
+	// Invoice position as at this payment.
+	d.font("B", 7.5, cMuted)
+	d.SetX(d.left)
+	d.CellFormat(d.width, 5, "APPLIED TO INVOICE "+strings.ToUpper(inv.Number), "", 2, "L", false, 0, "")
+	x, w := d.left, d.width
+	d.kv(x, w, "Invoice number", inv.Number, false, cInk)
+	d.kv(x, w, "Invoice date", pdfDate(inv.IssueDate), false, cInk)
+	d.kv(x, w, "Invoice total", d.money(f.Total), false, cInk)
+	if inv.CreditsApplied > 0 {
+		d.kv(x, w, "Credits applied", "−"+d.money(inv.CreditsApplied), false, cInk)
+	}
+	if inv.WriteOffAmount > 0 {
+		d.kv(x, w, "Written off", "−"+d.money(inv.WriteOffAmount), false, cInk)
+	}
+	d.kv(x, w, "Total paid to date", d.money(f.PaidToDate), false, cInk)
+	d.draw(cLine)
+	d.Line(x, d.GetY()+0.5, d.right, d.GetY()+0.5)
+	d.Ln(1)
+	if f.Balance <= 0 {
+		d.kv(x, w, "Balance remaining", "Paid in full", true, rgb{22, 163, 74})
+	} else {
+		d.kv(x, w, "Balance remaining", d.money(f.Balance), true, d.accent)
+	}
+	d.Ln(5)
+	d.para("Notes", p.Notes, d.left, d.width)
+	d.ensure(12)
 	d.font("", 9, cMuted)
 	d.SetX(d.left)
-	d.MultiCell(d.width, 5, "Thank you for your payment.", "", "L", false)
+	thanks := "Thank you for your payment."
+	if b.Email != "" {
+		thanks += " Questions about this receipt? Contact " + b.Email + "."
+	}
+	d.MultiCell(d.width, 5, thanks, "", "L", false)
 	var buf bytes.Buffer
 	if err := d.Output(&buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func firstNonBlank(v ...string) string {
+	for _, s := range v {
+		if strings.TrimSpace(s) != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------- data

@@ -97,7 +97,7 @@ func (h *Handler) view(c *gin.Context, s *Settings) gin.H {
 		"enabled": s.Enabled, "provider": "flutterwave", "mode": s.Mode, "public_key": s.PublicKey,
 		"secret_key": Mask(s.SecretKey), "encryption_key": Mask(s.EncryptionKey), "webhook_hash": Mask(s.WebhookHash),
 		"methods": s.Methods, "fee_bearer": s.FeeBearer, "allow_partial": s.AllowPartial, "min_partial": s.MinPartial,
-		"fees": fees, "fee_tax_percent": s.FeeTaxPercent, "ready": s.Ready(),
+		"fees": fees, "fee_tax_percent": s.FeeTaxPercent, "ready": s.Ready(), "auto_receipt": !s.NoAutoReceipt,
 		"last_test_at": s.LastTestAt, "last_test_ok": s.LastTestOK, "last_test_message": s.LastTestMessage,
 		"updated_at":  s.UpdatedAt,
 		"webhook_url": webhookURL(c.Request), "api_base_url": BaseURL(),
@@ -133,6 +133,7 @@ type settingsInput struct {
 	MinPartial    *float64   `json:"min_partial"`
 	Fees          *[]FeeRule `json:"fees"`
 	FeeTaxPercent *float64   `json:"fee_tax_percent"`
+	AutoReceipt   *bool      `json:"auto_receipt"`
 	ResetFees     bool       `json:"reset_fees"`
 }
 
@@ -199,6 +200,9 @@ func (in settingsInput) apply(s *Settings) (map[string]string, error) {
 	}
 	if in.AllowPartial != nil {
 		s.AllowPartial = *in.AllowPartial
+	}
+	if in.AutoReceipt != nil {
+		s.NoAutoReceipt = !*in.AutoReceipt
 	}
 	if in.MinPartial != nil {
 		if *in.MinPartial < 0 {

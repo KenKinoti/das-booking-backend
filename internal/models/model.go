@@ -120,6 +120,7 @@ type CustomerContact struct {
 	CCInvoices       bool           `json:"cc_invoices" gorm:"not null;default:false"` // handlers default new contacts to true
 	CCQuotes         bool           `json:"cc_quotes" gorm:"not null;default:false"`
 	CCReminders      bool           `json:"cc_reminders" gorm:"not null;default:false"`
+	CCReceipts       *bool          `json:"cc_receipts" gorm:"not null;default:true"` // receipts (default on); a pointer so false isn't replaced by the default
 	CCBookings       bool           `json:"cc_bookings" gorm:"not null;default:false"`
 	IsPrimaryBilling bool           `json:"is_primary_billing" gorm:"not null;default:false"`
 	Notes            string         `json:"notes" gorm:"type:text"`

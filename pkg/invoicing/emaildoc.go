@@ -36,7 +36,17 @@ var Placeholders = []struct{ Name, Help string }{
 	{"link", "Client view link"}, {"pay_link", "Online payment link"}, {"reference", "Reference"},
 	{"payment_amount", "Receipt: amount received"}, {"payment_date", "Receipt: payment date"}, {"payment_method", "Receipt: method"},
 	{"balance_sentence", "Receipt: balance remaining / paid in full"},
+	{"receipt_number", "Receipt: receipt number"}, {"amount_received", "Receipt: amount received"},
+	{"invoice_number", "Invoice number"}, {"client_name", "Client name"}, {"business_name", "Your business name"},
 }
+
+// ReceiptPlaceholders are the placeholders offered for receipt templates.
+var ReceiptPlaceholders = []string{"receipt_number", "amount_received", "balance_due", "invoice_number", "client_name", "business_name", "payment_date", "payment_method", "balance_sentence", "link"}
+
+const (
+	defaultReceiptSubject = "Receipt {{receipt_number}} — payment received for invoice {{invoice_number}}"
+	defaultReceiptMessage = "Hi {{client_name}},\n\nThank you — we've received your payment of {{amount_received}} for invoice {{invoice_number}} on {{payment_date}} ({{payment_method}}).\n\n{{balance_sentence}}\n\nYour receipt {{receipt_number}} is attached for your records.\n\n{{business_name}}"
+)
 
 var placeholderRe = regexp.MustCompile(`\{\{\s*([A-Za-z0-9_.]+)\s*\}\}`)
 
@@ -83,6 +93,7 @@ func emailVars(doc *Invoice, business, viewURL, payURL string, pay *Payment) map
 		"tax": m(doc.TaxTotal), "discount": m(doc.DiscountTotal), "shipping": m(doc.ShippingAmount),
 		"currency": doc.Currency, "issue_date": pdfDate(doc.IssueDate), "due_date": pdfDate(doc.DueDate),
 		"days_overdue": strconv.Itoa(doc.DaysOverdue), "link": viewURL, "pay_link": payURL,
+		"invoice_number": doc.Number, "client_name": doc.ClientName, "business_name": business,
 	}
 	if payURL == "" {
 		v["pay_link"] = viewURL
@@ -96,10 +107,19 @@ func emailVars(doc *Invoice, business, viewURL, payURL string, pay *Payment) map
 		v["balance_sentence"] = "The remaining balance is " + m(doc.BalanceDue) + ", due " + pdfDate(doc.DueDate) + "."
 	}
 	if pay != nil {
+		f := figuresAt(doc, *pay)
 		v["payment_amount"] = m(pay.Amount)
+		v["amount_received"] = m(pay.Amount)
 		v["payment_date"] = pdfDate(pay.Date)
 		v["payment_method"] = PaymentMethodLabel(pay.Method)
 		v["payment_reference"] = pay.Reference
+		v["receipt_number"] = pay.ReceiptNumber
+		v["balance_due"], v["amount_due"], v["amount_paid"] = m(f.Balance), m(f.Balance), m(f.PaidToDate)
+		if f.Balance <= 0 {
+			v["balance_sentence"] = "This invoice is now paid in full."
+		} else {
+			v["balance_sentence"] = "The remaining balance is " + m(f.Balance) + ", due " + pdfDate(doc.DueDate) + "."
+		}
 	}
 	return v
 }
@@ -139,8 +159,13 @@ func defaultTemplates(s *Settings, doc *Invoice, kind string) (string, string) {
 			message = "Hi {{client}},\n\nThis is a friendly reminder that invoice {{number}} for {{amount_due}} is due on {{due_date}}.\n\nYou can view and pay it online: {{link}}\n\nIf you've already paid, please ignore this message.\n\nThank you,\n{{business}}"
 		}
 	case KindReceipt:
-		subject = "Payment received — Invoice {{number}}"
-		message = "Hi {{client}},\n\nThank you — we've received your payment of {{payment_amount}} for invoice {{number}}.\n\n{{balance_sentence}}\n\nYour receipt is attached for your records.\n\n{{business}}"
+		subject, message = s.ReceiptSubject, s.ReceiptMessage
+		if strings.TrimSpace(subject) == "" {
+			subject = defaultReceiptSubject
+		}
+		if strings.TrimSpace(message) == "" {
+			message = defaultReceiptMessage
+		}
 	}
 	return subject, message
 }
@@ -181,11 +206,7 @@ func kindOf(inv *Invoice, requested string) string {
 
 // resolveRecipients merges the To / CC / BCC lists as the send dialog does.
 func (h *Handler) resolveRecipients(org string, inv *Invoice, kind string, in sendInput, mcfg mail.Config, viaMail bool) (string, []string, []string, []string, error) {
-	rkind := kind
-	if kind == KindReceipt {
-		rkind = KindInvoice
-	}
-	sugTo, sugCC := h.recipientsFor(org, inv, rkind)
+	sugTo, sugCC := h.recipientsFor(org, inv, kind)
 	to := strings.TrimSpace(in.To)
 	if to == "" && sugTo != nil {
 		to = sugTo.Email
@@ -265,6 +286,9 @@ func (h *Handler) buildEmail(tx *gorm.DB, c *gin.Context, inv *Invoice, in sendI
 	}
 	vars := emailVars(&doc, b.Business.Name, b.ViewURL, b.PayURL, b.Payment)
 	subjT, msgT := defaultTemplates(s, &doc, kind)
+	if kind == KindReceipt && b.Payment.RevisedAt != nil {
+		subjT = "Revised: " + subjT
+	}
 	if strings.TrimSpace(in.Subject) != "" {
 		subjT = in.Subject
 	}
@@ -296,7 +320,7 @@ func (h *Handler) buildEmail(tx *gorm.DB, c *gin.Context, inv *Invoice, in sendI
 	if kind == KindReceipt {
 		data, perr := RenderReceiptPDF(&doc, *b.Payment, b.Business)
 		b.PDFErr = perr
-		b.Attachment = mail.Attachment{Filename: "Receipt-" + strings.TrimSuffix(PDFFilename(&doc), ".pdf") + ".pdf", ContentType: "application/pdf", Data: data}
+		b.Attachment = mail.Attachment{Filename: ReceiptFilename(&doc, *b.Payment), ContentType: "application/pdf", Data: data}
 	} else {
 		data, perr := h.DocumentPDF(tx, &doc, base)
 		b.PDFErr = perr
@@ -350,19 +374,33 @@ func (h *Handler) emailView(doc *Invoice, kind string, b *builtEmail, replyNote,
 		v.Facts = []EmailRow{{Label: "Quote number", Value: doc.Number}, {Label: "Issue date", Value: pdfDate(doc.IssueDate)}, {Label: "Valid until", Value: due}}
 		v.Preheader = fmt.Sprintf("Quote %s · %s · valid until %s", doc.Number, m(doc.Total), due)
 	case KindReceipt:
+		p := *b.Payment
+		f := figuresAt(doc, p)
 		v.DocLabel = "Payment receipt"
-		v.AmountLabel, v.Amount = "Payment received", m(b.Payment.Amount)
-		if doc.BalanceDue <= 0 {
-			v.StatusLine, v.StatusTone = "Paid in full — thank you", "ok"
+		if p.ReceiptNumber != "" {
+			v.Number = p.ReceiptNumber
+		}
+		v.AmountLabel, v.Amount = "Payment received — thank you", m(p.Amount)
+		if f.Balance <= 0 {
+			v.StatusLine, v.StatusTone = "Paid in full", "ok"
 		} else {
-			v.StatusLine, v.StatusTone = "Balance remaining "+m(doc.BalanceDue), "info"
+			v.StatusLine, v.StatusTone = "Balance remaining "+m(f.Balance), "info"
 		}
-		v.Facts = []EmailRow{{Label: "Invoice", Value: doc.Number}, {Label: "Payment date", Value: pdfDate(b.Payment.Date)}, {Label: "Method", Value: PaymentMethodLabel(b.Payment.Method)}}
-		if b.Payment.Reference != "" {
-			v.Facts = append(v.Facts, EmailRow{Label: "Reference", Value: b.Payment.Reference})
+		if p.RevisedAt != nil {
+			v.StatusLine += " · revised " + pdfDate(*p.RevisedAt)
 		}
-		v.Facts = append(v.Facts, EmailRow{Label: "Invoice total", Value: m(doc.Total)}, EmailRow{Label: "Paid to date", Value: m(doc.AmountPaid)})
-		v.Preheader = fmt.Sprintf("Thank you — %s received for invoice %s", m(b.Payment.Amount), doc.Number)
+		if p.ReceiptNumber != "" {
+			v.Facts = append(v.Facts, EmailRow{Label: "Receipt no.", Value: p.ReceiptNumber})
+		}
+		v.Facts = append(v.Facts, EmailRow{Label: "Invoice", Value: doc.Number}, EmailRow{Label: "Payment date", Value: pdfDate(p.Date)}, EmailRow{Label: "Method", Value: PaymentMethodLabel(p.Method)})
+		if p.Reference != "" {
+			v.Facts = append(v.Facts, EmailRow{Label: "Reference", Value: p.Reference})
+		}
+		v.Facts = append(v.Facts, EmailRow{Label: "Invoice total", Value: m(f.Total)}, EmailRow{Label: "Paid to date", Value: m(f.PaidToDate)})
+		v.Preheader = fmt.Sprintf("Thank you — %s received for invoice %s", m(p.Amount), doc.Number)
+		if p.ReceiptNumber != "" {
+			v.Preheader += " · receipt " + p.ReceiptNumber
+		}
 	default:
 		v.DocLabel = title
 		if kind == KindReminder {
@@ -562,7 +600,8 @@ func knownAmounts(doc *Invoice, pay *Payment) []float64 {
 		out = append(out, it.LineTotal, it.UnitPrice, it.LineTax, it.LineSubtotal)
 	}
 	if pay != nil {
-		out = append(out, pay.Amount)
+		f := figuresAt(doc, *pay)
+		out = append(out, pay.Amount, f.PaidToDate, f.Balance)
 	}
 	return out
 }
@@ -1024,6 +1063,9 @@ func (h *Handler) EmailDraft(c *gin.Context) {
 	biz := PDFBusinessFor(h.DB, s, org).Name
 	vars := emailVars(&doc, biz, view, payURL, pay)
 	subjT, msgT := defaultTemplates(s, &doc, kind)
+	if kind == KindReceipt && pay.RevisedAt != nil {
+		subjT = "Revised: " + subjT
+	}
 	ph := []gin.H{}
 	for _, p := range Placeholders {
 		ph = append(ph, gin.H{"name": p.Name, "help": p.Help, "value": vars[p.Name]})

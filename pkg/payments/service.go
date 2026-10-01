@@ -446,6 +446,9 @@ func (s *Service) Complete(ctx context.Context, txRef, flwID string) (*Outcome, 
 	if OnTransaction != nil && out.Tx != nil && (out.Recorded || (out.Tx.Status == TxFailed && t.Status != TxFailed)) {
 		OnTransaction(s.DB, out.Tx, out.Recorded)
 	}
+	if AfterRecorded != nil && out.Recorded && out.Tx != nil && out.Tx.InvoicePaymentID != "" {
+		AfterRecorded(s.DB, out.Tx)
+	}
 	return out, nil
 }
 
@@ -453,6 +456,18 @@ func (s *Service) Complete(ctx context.Context, txRef, flwID string) (*Outcome, 
 // payment (recorded=true) or marks an attempt failed (recorded=false). It is
 // the extension point for notifications; it must not block for long.
 var OnTransaction func(db *gorm.DB, t *Transaction, recorded bool)
+
+// AfterRecorded, when set, is called once after an online payment has been
+// recorded on its invoice (e.g. to email the client a receipt). It runs
+// after the transaction is committed; it must not block for long.
+var AfterRecorded func(db *gorm.DB, t *Transaction)
+
+// AutoReceipt reports whether org wants a receipt emailed after each online
+// payment (Settings → Online payments; on by default).
+func AutoReceipt(db *gorm.DB, org string) bool {
+	s, err := LoadSettings(db, org)
+	return err == nil && !s.NoAutoReceipt
+}
 
 func firstNonEmpty(v ...string) string {
 	for _, s := range v {

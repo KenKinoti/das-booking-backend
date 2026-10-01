@@ -448,6 +448,20 @@ func TestToolsEndToEnd(t *testing.T) {
 	if paid["balance_due"].(float64) != 200 {
 		t.Fatalf("payment %v", paid)
 	}
+	rcpt, _ := paid["payment"].(map[string]any)
+	if rcpt == nil || rcpt["receipt_number"] == "" {
+		t.Fatalf("payment should come back with its receipt number: %v", paid)
+	}
+	// Correct the payment by receipt number; the balance follows.
+	edited := e.tool(tok, "invoices_update_payment", map[string]any{"number": inv["number"], "receipt_number": rcpt["receipt_number"], "amount": 50, "reason": "typo"})
+	if edited["balance_due"].(float64) != 170 || edited["changed"] != true || edited["payment"].(map[string]any)["receipt_number"] != rcpt["receipt_number"] {
+		t.Fatalf("update payment %v", edited)
+	}
+	// Without outgoing email the receipt can't be sent: a clear tool error.
+	if code, out := e.rpc(tok, "tools/call", map[string]any{"name": "invoices_send_receipt", "arguments": map[string]any{"invoice_id": inv["id"]}}); code != 200 ||
+		out["result"].(map[string]any)["isError"] != true || !strings.Contains(fmt.Sprint(out["result"]), "receipt") {
+		t.Fatalf("send receipt without email: %d %v", code, out)
+	}
 
 	// A deposit already received is recorded as a payment.
 	dep := e.tool(tok, "invoices_create", map[string]any{"customer_id": cid, "items": []any{map[string]any{"description": "Deposit job", "quantity": 1, "unit_price": 100, "tax_rate": 0}},

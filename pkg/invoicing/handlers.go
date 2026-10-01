@@ -1,6 +1,7 @@
 package invoicing
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/csv"
 	"encoding/hex"
@@ -95,6 +96,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/invoices/:id/accept", h.Accept)
 	r.POST("/invoices/:id/decline", h.Decline)
 	r.POST("/invoices/:id/payments", h.AddPayment)
+	r.PUT("/invoices/:id/payments/:paymentId", h.UpdatePayment)
 	r.DELETE("/invoices/:id/payments/:paymentId", h.DeletePayment)
 	r.POST("/invoices/:id/regenerate-link", h.RegenerateLink)
 	r.GET("/invoices/:id/pdf", h.PDF)
@@ -228,7 +230,7 @@ func (h *Handler) settingsFor(tx *gorm.DB, org string, lock bool) (*Settings, er
 func defaultSettings(org string) Settings {
 	return Settings{
 		OrganizationID: org, TaxNumberLabel: "ABN", AccentColor: "#4f46e5", Currency: "AUD",
-		InvoicePrefix: "INV-", NextInvoiceNumber: 1001, QuotePrefix: "QUO-", NextQuoteNumber: 1001,
+		InvoicePrefix: "INV-", NextInvoiceNumber: 1001, QuotePrefix: "QUO-", NextQuoteNumber: 1001, ReceiptPrefix: "RCT-", NextReceiptNumber: 1,
 		NumberPadding: 4, DefaultDueDays: 14, QuoteValidDays: 30, DefaultTaxRate: 10, TaxLabel: "GST",
 		DefaultTerms: "Payment is due within 14 days of the invoice date.",
 		EmailSubject: "{{type}} {{number}} from {{business}}",
@@ -341,7 +343,15 @@ type invoiceInput struct {
 	Items              []itemInput `json:"items"`
 	// Deposit is money already received for this invoice (optional). It is
 	// recorded as a real payment when the invoice is saved.
-	Deposit *paymentInput `json:"deposit"`
+	Deposit *depositInput `json:"deposit"`
+}
+
+// depositInput is the editor's "Already paid / deposit" section. With
+// payment_id it edits that existing deposit in place (no duplicate).
+type depositInput struct {
+	paymentInput
+	PaymentID string `json:"payment_id"`
+	Reason    string `json:"reason"`
 }
 
 func (in *invoiceInput) apply(inv *Invoice, s *Settings, now time.Time) error {
@@ -662,7 +672,10 @@ func (h *Handler) Create(c *gin.Context) {
 			h.log(tx, inv, "sent", "Marked as sent", user)
 		}
 		if in.Deposit != nil && inv.DocType == TypeInvoice {
-			if err := h.recordPayment(tx, inv, *in.Deposit, user, true); err != nil {
+			if in.Deposit.PaymentID != "" {
+				return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "A new invoice has no deposit to edit"}
+			}
+			if err := h.recordPayment(tx, inv, in.Deposit.paymentInput, user, true); err != nil {
 				return err
 			}
 		}
@@ -707,7 +720,15 @@ func (h *Handler) Update(c *gin.Context) {
 		if err := h.finishAmounts(tx, inv, in.rateInput, prevCur, prevBase); err != nil {
 			return err
 		}
-		if inv.DocType == TypeInvoice && inv.Total+0.004 < inv.AmountPaid {
+		paidAfter := inv.AmountPaid
+		if in.Deposit != nil && in.Deposit.PaymentID != "" {
+			for _, p := range inv.Payments {
+				if p.ID == in.Deposit.PaymentID {
+					paidAfter += roundCur(in.Deposit.Amount, inv.Currency) - p.Amount
+				}
+			}
+		}
+		if inv.DocType == TypeInvoice && inv.Total+0.004 < paidAfter {
 			return &apiError{http.StatusConflict, "TOTAL_BELOW_PAID", "The new total is less than the amount already paid"}
 		}
 		if err := tx.Where("invoice_id = ?", inv.ID).Delete(&InvoiceItem{}).Error; err != nil {
@@ -726,12 +747,31 @@ func (h *Handler) Update(c *gin.Context) {
 			return err
 		}
 		h.log(tx, inv, "updated", "Details updated", user)
-		if in.Deposit != nil && in.Deposit.Amount != 0 {
+		if in.Deposit != nil && (in.Deposit.Amount != 0 || in.Deposit.PaymentID != "") {
 			fresh, err := h.load(tx, org, inv.ID, false)
 			if err != nil {
 				return err
 			}
-			if err := h.recordPayment(tx, fresh, *in.Deposit, user, true); err != nil {
+			if pid := in.Deposit.PaymentID; pid != "" {
+				// Edit the saved deposit in place.
+				d := in.Deposit
+				amt, ref, notes := d.Amount, d.Reference, d.Notes
+				edit := paymentEditInput{Amount: &amt, Reference: &ref, Reason: d.Reason}
+				if strings.TrimSpace(d.Date) != "" {
+					date := d.Date
+					edit.Date = &date
+				}
+				if strings.TrimSpace(d.Method) != "" {
+					m := d.Method
+					edit.Method = &m
+				}
+				if notes != "" {
+					edit.Notes = &notes
+				}
+				if _, _, err := h.editPayment(tx, fresh, pid, edit, user); err != nil {
+					return err
+				}
+			} else if err := h.recordPayment(tx, fresh, in.Deposit.paymentInput, user, true); err != nil {
 				return err
 			}
 		}
@@ -832,7 +872,53 @@ func (h *Handler) Send(c *gin.Context) {
 	}
 	var in sendInput
 	_ = c.ShouldBindJSON(&in)
-	user := ctxString(c, "user_id")
+	res, err := h.sendEmail(c, org, c.Param("id"), in, ctxString(c, "user_id"))
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	built, entry := res.Built, res.Log
+	skipped := built.Skipped
+	if skipped == nil {
+		skipped = []string{}
+	}
+	bccOut := built.BCC
+	if bccOut == nil {
+		bccOut = []string{}
+	}
+	ccOut := built.CC
+	if ccOut == nil {
+		ccOut = []string{}
+	}
+	resp := gin.H{"invoice": res.Invoice, "emailed": entry.Status == "sent", "to": built.To, "cc": ccOut, "bcc": bccOut, "kind": built.Kind, "skipped": skipped,
+		"subject": built.Subject, "message": built.Message, "checks": res.Checks, "log_id": entry.ID, "message_id": entry.MessageID}
+	if s := h.sender(org); s != nil {
+		resp["sender"] = s
+	}
+	if built.PDFErr == nil && built.Attachment.Filename != "" {
+		resp["attachment"] = built.Attachment.Filename
+		resp["view_url"] = built.ViewURL
+		resp["pay_url"] = built.PayURL
+	}
+	ok(c, http.StatusOK, resp)
+}
+
+// sendResult is one completed send.
+type sendResult struct {
+	Invoice *Invoice
+	Built   *builtEmail
+	Log     *EmailLog
+	Checks  []Check
+	Emailed bool
+}
+
+// sendEmail runs the pre-send checks and sends (or records) one email about
+// invoice invID. c may be nil for background sends (no request origin).
+func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, user string) (*sendResult, error) {
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
 	mcfg, viaMail := h.mailConfig(org)
 	configured := h.emailEnabled(org)
 	if in.Mode == "email" && !configured {
@@ -840,8 +926,7 @@ func (h *Handler) Send(c *gin.Context) {
 		if viaMail && mcfg.Problem != "" {
 			msg = "Email sending isn't ready: " + mcfg.Problem
 		}
-		fail(c, http.StatusServiceUnavailable, "SMTP_NOT_CONFIGURED", msg)
-		return
+		return nil, &apiError{http.StatusServiceUnavailable, "SMTP_NOT_CONFIGURED", msg}
 	}
 	useEmail := configured && in.Mode != "mailto"
 	mode := "mailto"
@@ -853,7 +938,7 @@ func (h *Handler) Send(c *gin.Context) {
 	var entry *EmailLog
 	var checks []Check
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
-		inv, err := h.load(tx, org, c.Param("id"), false)
+		inv, err := h.load(tx, org, invID, false)
 		if err != nil {
 			return err
 		}
@@ -891,7 +976,7 @@ func (h *Handler) Send(c *gin.Context) {
 				msg := mail.Message{To: []string{b.To}, CC: b.CC, BCC: b.BCC, Subject: b.Subject, Text: b.Text, HTML: b.HTML,
 					Attachments: []mail.Attachment{b.Attachment}, MessageID: mail.NewMessageID(mcfg.FromEmail), ReplyTo: mcfg.ReplyTo}
 				entry.MessageID = msg.MessageID
-				sendErr = h.Mail.SendWith(c.Request.Context(), org, mcfg, msg)
+				sendErr = h.Mail.SendWith(ctx, org, mcfg, msg)
 			default:
 				if m, isHTML := h.Mailer.(HTMLMailer); isHTML {
 					sendErr = m.SendHTML(b.To, b.CC, b.Subject, b.Text, b.HTML)
@@ -933,7 +1018,14 @@ func (h *Handler) Send(c *gin.Context) {
 		msg := recipientsMessage(rec)
 		switch kind {
 		case KindReceipt:
-			what := "Receipt for " + FormatMoney(b.Payment.Amount, inv.Currency)
+			what := "Receipt"
+			if b.Payment.ReceiptNumber != "" {
+				what += " " + b.Payment.ReceiptNumber
+			}
+			if b.Payment.RevisedAt != nil {
+				what = "Revised " + strings.ToLower(what[:1]) + what[1:]
+			}
+			what += " (" + FormatMoney(b.Payment.Amount, inv.Currency) + ")"
 			if rec.Emailed {
 				msg = what + " emailed to " + rec.To
 			} else {
@@ -970,32 +1062,9 @@ func (h *Handler) Send(c *gin.Context) {
 		}
 	}
 	if err != nil {
-		failErr(c, err)
-		return
+		return nil, err
 	}
-	skipped := built.Skipped
-	if skipped == nil {
-		skipped = []string{}
-	}
-	bccOut := built.BCC
-	if bccOut == nil {
-		bccOut = []string{}
-	}
-	ccOut := built.CC
-	if ccOut == nil {
-		ccOut = []string{}
-	}
-	resp := gin.H{"invoice": out, "emailed": entry.Status == "sent", "to": built.To, "cc": ccOut, "bcc": bccOut, "kind": built.Kind, "skipped": skipped,
-		"subject": built.Subject, "message": built.Message, "checks": checks, "log_id": entry.ID, "message_id": entry.MessageID}
-	if s := h.sender(org); s != nil {
-		resp["sender"] = s
-	}
-	if built.PDFErr == nil && built.Attachment.Filename != "" {
-		resp["attachment"] = built.Attachment.Filename
-		resp["view_url"] = built.ViewURL
-		resp["pay_url"] = built.PayURL
-	}
-	ok(c, http.StatusOK, resp)
+	return &sendResult{Invoice: out, Built: built, Log: entry, Checks: checks, Emailed: entry.Status == "sent"}, nil
 }
 
 func (h *Handler) logRecipients(tx *gorm.DB, inv *Invoice, typ, msg, user string, rec *Recipients) {
@@ -1216,7 +1285,7 @@ func (h *Handler) Convert(c *gin.Context) {
 	user := ctxString(c, "user_id")
 	// Optional body: {"deposit": {amount, date, method, reference}}
 	var body struct {
-		Deposit *paymentInput `json:"deposit"`
+		Deposit *depositInput `json:"deposit"`
 	}
 	if c.Request.ContentLength != 0 {
 		if err := c.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
@@ -1250,7 +1319,7 @@ func (h *Handler) Convert(c *gin.Context) {
 			if err != nil {
 				return err
 			}
-			if err := h.recordPayment(tx, fresh, *body.Deposit, user, true); err != nil {
+			if err := h.recordPayment(tx, fresh, body.Deposit.paymentInput, user, true); err != nil {
 				return err
 			}
 		}
@@ -1275,19 +1344,58 @@ type paymentInput struct {
 	keepMethod bool
 }
 
+type addPaymentInput struct {
+	paymentInput
+	// EmailReceipt emails the receipt to the client after recording.
+	EmailReceipt bool   `json:"email_receipt"`
+	AppURL       string `json:"app_url"`
+}
+
+// AddPayment serves POST /invoices/:id/payments. The response is the
+// invoice, with last_payment_id and (when email_receipt) receipt_email.
 func (h *Handler) AddPayment(c *gin.Context) {
-	var in paymentInput
+	org, okk := h.org(c)
+	if !okk {
+		return
+	}
+	var in addPaymentInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request: "+err.Error())
 		return
 	}
-	h.simpleAction(c, func(tx *gorm.DB, inv *Invoice, user string) error {
-		return h.recordPayment(tx, inv, in, user, false)
+	user := ctxString(c, "user_id")
+	var out *Invoice
+	var pid string
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		inv, err := h.lockedLoad(tx, org, c.Param("id"))
+		if err != nil {
+			return err
+		}
+		if err := h.recordPayment(tx, inv, in.paymentInput, user, false); err != nil {
+			return err
+		}
+		pid = inv.Payments[len(inv.Payments)-1].ID
+		out, err = h.load(tx, org, inv.ID, true)
+		return err
 	})
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	var rec *ReceiptEmailResult
+	if in.EmailReceipt {
+		r := h.emailReceipt(c, org, out.ID, pid, user, in.AppURL)
+		rec = &r
+		if o, err := h.load(h.DB, org, out.ID, true); err == nil {
+			out = o
+		}
+	}
+	out.LastPaymentID, out.ReceiptEmail = pid, rec
+	ok(c, http.StatusOK, out)
 }
 
 // PaymentMethods are the accepted payment methods.
-var PaymentMethods = []string{"bank_transfer", "card", "cash", "mobile_money", "cheque", "paypal", "stripe", "other"}
+var PaymentMethods = []string{"cash", "bank_transfer", "card", "mobile_money", "cheque", "flutterwave", "paypal", "stripe", "other"}
 
 func validMethod(m string) bool {
 	for _, x := range PaymentMethods {
@@ -1316,19 +1424,14 @@ func (h *Handler) recordPayment(tx *gorm.DB, inv *Invoice, in paymentInput, user
 	if amt <= 0 {
 		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", what + " amount must be greater than zero"}
 	}
-	if deposit && math.Abs(amt-in.Amount) > 1e-9 {
-		d := currency.Decimals(inv.Currency)
-		msg := fmt.Sprintf("%s amounts can have at most %d decimal places", inv.Currency, d)
-		if d == 0 {
-			msg = inv.Currency + " amounts can't have decimals"
-		}
-		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", msg}
+	if !in.keepMethod && math.Abs(amt-in.Amount) > 1e-9 {
+		return decimalsError(inv.Currency)
 	}
 	if amt > inv.BalanceDue+0.4/math.Pow10(currency.Decimals(inv.Currency)) {
 		if deposit {
 			return &apiError{http.StatusBadRequest, "OVERPAYMENT", fmt.Sprintf("The amount already paid can't be more than the invoice total (%s %s)", inv.Currency, fmtAmount(inv.BalanceDue, inv.Currency))}
 		}
-		return &apiError{http.StatusBadRequest, "OVERPAYMENT", fmt.Sprintf("Payment exceeds the balance due (%s %s)", inv.Currency, fmtAmount(inv.BalanceDue, inv.Currency))}
+		return &apiError{http.StatusBadRequest, "OVERPAYMENT", fmt.Sprintf("This is more than the balance due (%s). Overpayments aren't recorded — enter at most %s, or edit the invoice first.", FormatMoney(inv.BalanceDue, inv.Currency), FormatMoney(inv.BalanceDue, inv.Currency))}
 	}
 	d, err := parseDate(in.Date)
 	if err != nil {
@@ -1337,28 +1440,20 @@ func (h *Handler) recordPayment(tx *gorm.DB, inv *Invoice, in paymentInput, user
 	if d.IsZero() {
 		d = dateOnly(h.now())
 	}
-	if deposit && d.After(dateOnly(h.now()).AddDate(0, 0, 1)) {
+	if !in.keepMethod && d.After(dateOnly(h.now()).AddDate(0, 0, 1)) {
 		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", what + " date can't be in the future"}
 	}
-	method := strings.ToLower(strings.TrimSpace(in.Method))
-	method = strings.NewReplacer(" ", "_", "-", "_").Replace(method)
+	method := normalizeMethod(in.Method)
 	if in.keepMethod {
 		method = strings.TrimSpace(in.Method)
 	}
-	switch method {
-	case "":
+	if method == "" {
 		method = "bank_transfer"
 		if deposit {
 			method = "cash"
 		}
-	case "mpesa", "m_pesa", "mobile", "mobilemoney":
-		method = "mobile_money"
-	case "bank", "transfer", "eft":
-		method = "bank_transfer"
-	case "credit_card", "debit_card":
-		method = "card"
 	}
-	if deposit && !validMethod(method) {
+	if !in.keepMethod && !validMethod(method) {
 		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Choose a payment method: " + strings.ReplaceAll(strings.Join(PaymentMethods, ", "), "_", " ")}
 	}
 	if len(in.Reference) > 255 {
@@ -1390,8 +1485,14 @@ func methodText(m string, raw bool) string {
 	return strings.ReplaceAll(m, "_", " ")
 }
 
+// DeletePayment serves DELETE /invoices/:id/payments/:paymentId[?reason=].
+// The payment's receipt is kept as "Cancelled" for old links.
 func (h *Handler) DeletePayment(c *gin.Context) {
 	pid := c.Param("paymentId")
+	reason := strings.TrimSpace(c.Query("reason"))
+	if len(reason) > 500 {
+		reason = reason[:500]
+	}
 	h.simpleAction(c, func(tx *gorm.DB, inv *Invoice, user string) error {
 		idx := -1
 		for i, p := range inv.Payments {
@@ -1406,12 +1507,27 @@ func (h *Handler) DeletePayment(c *gin.Context) {
 		if err := tx.Delete(&Payment{}, "id = ?", pid).Error; err != nil {
 			return err
 		}
+		h.cancelReceipt(tx, p, user, reason)
 		inv.Payments = append(inv.Payments[:idx], inv.Payments[idx+1:]...)
 		ApplyPayments(inv, h.now())
 		if err := tx.Model(&Invoice{}).Where("id = ?", inv.ID).Updates(map[string]interface{}{"amount_paid": inv.AmountPaid, "balance_due": inv.BalanceDue, "status": inv.Status, "paid_at": inv.PaidAt}).Error; err != nil {
 			return err
 		}
-		h.log(tx, inv, "payment_removed", fmt.Sprintf("Payment of %s %s removed", inv.Currency, fmtAmount(p.Amount, inv.Currency)), user)
+		what := "Payment"
+		if p.IsDeposit {
+			what = "Deposit"
+		}
+		msg := fmt.Sprintf("%s of %s %s removed", what, inv.Currency, fmtAmount(p.Amount, inv.Currency))
+		if p.ReceiptNumber != "" {
+			msg += " · receipt " + p.ReceiptNumber + " cancelled"
+		}
+		if PaymentOrigin(p) == OriginOnline {
+			msg += " · it was paid online (Flutterwave) — refund it there if needed"
+		}
+		if reason != "" {
+			msg += " (" + reason + ")"
+		}
+		h.log(tx, inv, "payment_removed", msg, user)
 		return nil
 	})
 }
@@ -1679,11 +1795,18 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	if !okk {
 		return
 	}
-	var in Settings
-	if err := c.ShouldBindJSON(&in); err != nil {
+	raw, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
+	if err != nil {
 		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request: "+err.Error())
 		return
 	}
+	var in Settings
+	var present map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &in); err != nil {
+		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request: "+err.Error())
+		return
+	}
+	_ = json.Unmarshal(raw, &present)
 	if in.NextInvoiceNumber < 1 || in.NextQuoteNumber < 1 {
 		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Next numbers must be positive")
 		return
@@ -1711,6 +1834,38 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 	if in.Currency != cur.Currency {
 		if _, err := orgprefs.Set(h.DB, org, orgprefs.Input{Currency: in.Currency}, orgprefs.SourceUser); err != nil {
 			fail(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+			return
+		}
+	}
+	// Receipt numbering and templates: callers that don't send them (older
+	// clients, partial updates) keep the stored values.
+	if _, ok := present["receipt_prefix"]; !ok {
+		in.ReceiptPrefix = cur.ReceiptPrefix
+	}
+	if v, ok := present["next_receipt_number"]; !ok || string(v) == "null" {
+		in.NextReceiptNumber = cur.NextReceiptNumber
+	} else if in.NextReceiptNumber < 1 {
+		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "The next receipt number must be 1 or more")
+		return
+	}
+	if _, ok := present["receipt_subject"]; !ok {
+		in.ReceiptSubject = cur.ReceiptSubject
+	}
+	if _, ok := present["receipt_message"]; !ok {
+		in.ReceiptMessage = cur.ReceiptMessage
+	}
+	in.ReceiptPrefix = strings.TrimSpace(in.ReceiptPrefix)
+	if len(in.ReceiptPrefix) > 20 {
+		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "The receipt prefix can be at most 20 characters")
+		return
+	}
+	if len(in.ReceiptSubject) > 255 {
+		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "The receipt subject is too long (255 characters max)")
+		return
+	}
+	for _, t := range []string{in.ReceiptSubject, in.ReceiptMessage} {
+		if _, missing := fillTemplate(t, receiptTemplateVars()); len(missing) > 0 {
+			fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Unknown placeholder in the receipt template: {{"+missing[0]+"}}")
 			return
 		}
 	}

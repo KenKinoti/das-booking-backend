@@ -84,6 +84,7 @@ func init() {
 			"cc_invoices":        tBool("CC this contact on invoices (default true for new contacts)"),
 			"cc_quotes":          tBool("CC on quotes"),
 			"cc_reminders":       tBool("CC on payment reminders"),
+			"cc_receipts":        tBool("CC on payment receipts (default true)"),
 			"cc_bookings":        tBool("CC on booking emails"),
 			"is_primary_billing": tBool("Make this the primary billing contact (invoices are sent To this address)"),
 			"notes":              tStr("Notes"),
@@ -204,7 +205,7 @@ func customersGet(c *Ctx, a map[string]any) (any, error) {
 	}
 	contacts := []map[string]any{}
 	for _, ct := range tList(tData(v), "contacts") {
-		contacts = append(contacts, tPick(ct, "id", "name", "email", "phone", "role", "cc_invoices", "cc_quotes", "cc_reminders", "cc_bookings", "is_primary_billing"))
+		contacts = append(contacts, tPick(ct, "id", "name", "email", "phone", "role", "cc_invoices", "cc_quotes", "cc_reminders", "cc_receipts", "cc_bookings", "is_primary_billing"))
 	}
 	out["contacts"] = contacts
 	bookings := []map[string]any{}
@@ -285,7 +286,7 @@ func customersUpdate(c *Ctx, a map[string]any) (any, error) {
 
 func contactBody(a map[string]any) map[string]any {
 	body := map[string]any{}
-	copyArgs(body, a, "name", "email", "phone", "role", "cc_invoices", "cc_quotes", "cc_reminders", "cc_bookings", "is_primary_billing", "notes")
+	copyArgs(body, a, "name", "email", "phone", "role", "cc_invoices", "cc_quotes", "cc_reminders", "cc_receipts", "cc_bookings", "is_primary_billing", "notes")
 	return body
 }
 
@@ -298,7 +299,7 @@ func customersAddContact(c *Ctx, a map[string]any) (any, error) {
 		return nil, err
 	}
 	ct := tObjOf(v, "contact")
-	out := tPick(ct, "id", "customer_id", "name", "email", "phone", "role", "cc_invoices", "cc_quotes", "cc_reminders", "cc_bookings", "is_primary_billing")
+	out := tPick(ct, "id", "customer_id", "name", "email", "phone", "role", "cc_invoices", "cc_quotes", "cc_reminders", "cc_receipts", "cc_bookings", "is_primary_billing")
 	out["url"] = tURL("/customers?customer=" + argStr(a, "customer_id"))
 	return out, nil
 }
@@ -316,7 +317,7 @@ func customersUpdateContact(c *Ctx, a map[string]any) (any, error) {
 		return nil, err
 	}
 	ct := tObjOf(v, "contact")
-	out := tPick(ct, "id", "customer_id", "name", "email", "phone", "role", "cc_invoices", "cc_quotes", "cc_reminders", "cc_bookings", "is_primary_billing")
+	out := tPick(ct, "id", "customer_id", "name", "email", "phone", "role", "cc_invoices", "cc_quotes", "cc_reminders", "cc_receipts", "cc_bookings", "is_primary_billing")
 	out["url"] = tURL("/customers?customer=" + argStr(a, "customer_id"))
 	return out, nil
 }

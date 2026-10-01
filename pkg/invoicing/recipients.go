@@ -58,6 +58,7 @@ type contactRow struct {
 	CCInvoices       bool
 	CCQuotes         bool
 	CCReminders      bool
+	CCReceipts       bool
 	IsPrimaryBilling bool
 }
 
@@ -89,7 +90,13 @@ func (h *Handler) loadContacts(org, customerID string) []contactRow {
 	if customerID == "" || !h.hasTable("customer_contacts") {
 		return out
 	}
-	h.DB.Table("customer_contacts").Select("name, email, role, cc_invoices, cc_quotes, cc_reminders, is_primary_billing").
+	cols := "name, email, role, cc_invoices, cc_quotes, cc_reminders, is_primary_billing"
+	if h.DB.Migrator().HasColumn("customer_contacts", "cc_receipts") {
+		cols += ", cc_receipts"
+	} else {
+		cols += ", cc_invoices AS cc_receipts"
+	}
+	h.DB.Table("customer_contacts").Select(cols).
 		Where("organization_id = ? AND customer_id = ? AND deleted_at IS NULL", org, customerID).
 		Order("is_primary_billing DESC, created_at ASC").Scan(&out)
 	return out
@@ -101,6 +108,8 @@ func (c contactRow) wants(kind string) bool {
 		return c.CCQuotes
 	case KindReminder:
 		return c.CCReminders
+	case KindReceipt:
+		return c.CCReceipts
 	default:
 		return c.CCInvoices
 	}
@@ -175,6 +184,9 @@ func suggest(clientEmail string, contacts []contactRow, docCC []string, kind str
 	}
 	for _, e := range docCC {
 		if c, ok := byEmail[strings.ToLower(strings.TrimSpace(e))]; ok {
+			if kind == KindReceipt && !c.CCReceipts {
+				continue // the contact doesn't want receipts
+			}
 			add(Recipient{Email: e, Name: c.Name, Role: c.Role, Source: "contact"})
 		} else {
 			add(Recipient{Email: e, Source: "document"})
@@ -223,7 +235,7 @@ func (h *Handler) Recipients(c *gin.Context) {
 		failErr(c, err)
 		return
 	}
-	kind := kindFor(inv, c.Query("kind"))
+	kind := kindOf(inv, c.Query("kind"))
 	to, cc := h.recipientsFor(org, inv, kind)
 	out := gin.H{"kind": kind, "to": to, "cc": cc, "bcc": []Recipient{}, "email_enabled": h.emailEnabled(org)}
 	if s := h.sender(org); s != nil {

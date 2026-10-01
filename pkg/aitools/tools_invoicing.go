@@ -1,6 +1,7 @@
 package aitools
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 )
@@ -116,18 +117,67 @@ func init() {
 	Register(Tool{
 		Name:  "invoices_add_payment",
 		Title: "Record invoice payment",
-		Description: "Records a payment received against an invoice (full or partial). The invoice becomes partial or paid " +
-			"automatically. Amount cannot exceed the balance due. Returns the new status and balance.",
+		Description: "Records a payment received against an invoice (full or partial — any amount up to the balance due; " +
+			"overpayments are refused). The invoice becomes partial or paid automatically and the payment gets a receipt " +
+			"number (e.g. RCT-0001). email_receipt=true emails the PDF receipt to the client (billing contact + contacts " +
+			"copied on receipts). Returns the new status, balance, receipt number and whether the receipt was emailed.",
 		InputSchema: tObj(map[string]any{
-			"invoice_id": tStr("Invoice id"),
-			"amount":     tNum("Amount received in the invoice currency. Leave out to pay the full balance."),
-			"date":       tDate("Payment date (default today)"),
-			"method":     tEnum("Payment method (default bank_transfer)", "bank_transfer", "cash", "card", "cheque", "mobile_money", "paypal", "stripe", "other"),
-			"reference":  tStr("Payment reference / transaction id"),
-			"notes":      tStr("Notes"),
+			"invoice_id":    tStr("Invoice id"),
+			"amount":        tNum("Amount received in the invoice currency. Leave out to pay the full balance."),
+			"date":          tDate("Payment date (default today; can't be in the future)"),
+			"method":        tEnum("Payment method (default bank_transfer)", "bank_transfer", "cash", "card", "cheque", "mobile_money", "flutterwave", "paypal", "stripe", "other"),
+			"reference":     tStr("Payment reference / transaction id, e.g. an M-Pesa code"),
+			"notes":         tStr("Notes (shown on the receipt)"),
+			"email_receipt": tBool("Email the receipt to the client (needs outgoing email to be set up)"),
 		}, "invoice_id"),
 		Module:  "invoicing",
 		Handler: invoicesAddPayment,
+	})
+	Register(Tool{
+		Name:  "invoices_update_payment",
+		Title: "Edit invoice payment",
+		Description: "Corrects a payment already recorded on an invoice (incl. a deposit): amount, date, method, reference, " +
+			"notes, with an optional reason that is logged (\"Payment edited: KSh 5,000 → KSh 7,500 (reason)\"). The total of " +
+			"all payments can't exceed the invoice total; paid / partial / sent status and the balance are recalculated. The " +
+			"receipt keeps its number and is marked revised. Online (Flutterwave) and imported (Zoho) payments only allow " +
+			"reference and notes. Pick the payment by payment_id or receipt_number (or leave both out when there is only one). " +
+			"email_receipt=true emails the revised receipt to the client.",
+		InputSchema: tObj(map[string]any{
+			"invoice_id":     tStr("Invoice id"),
+			"number":         tStr("Invoice number, e.g. INV-1001 (instead of invoice_id)"),
+			"payment_id":     tStr("Payment id"),
+			"receipt_number": tStr("Receipt number, e.g. RCT-0003 (instead of payment_id)"),
+			"amount":         tNum("New amount in the invoice currency"),
+			"date":           tDate("New payment date (can't be in the future)"),
+			"method":         tEnum("New payment method", "bank_transfer", "cash", "card", "cheque", "mobile_money", "flutterwave", "paypal", "stripe", "other"),
+			"reference":      tStr("New reference"),
+			"notes":          tStr("New notes"),
+			"reason":         tStr("Why it was changed (logged on the invoice)"),
+			"email_receipt":  tBool("Email the revised receipt to the client"),
+		}),
+		Module:  "invoicing",
+		Handler: invoicesUpdatePayment,
+	})
+	Register(Tool{
+		Name:  "invoices_send_receipt",
+		Title: "Email payment receipt",
+		Description: "Emails the receipt for one payment to the client: professional email with the PDF receipt attached " +
+			"(e.g. RCT-0001.pdf), amount received, receipt and invoice numbers, balance remaining or paid in full, and a View " +
+			"invoice button. Recipients default to the billing contact, contacts copied on receipts and the email settings' " +
+			"Always CC/BCC. The pre-send checks run first (wrong amounts in the message are refused). Logged in the invoice's " +
+			"Emails tab. Pick the payment by payment_id or receipt_number (or leave both out when there is only one).",
+		InputSchema: tObj(map[string]any{
+			"invoice_id":     tStr("Invoice id"),
+			"number":         tStr("Invoice number, e.g. INV-1001 (instead of invoice_id)"),
+			"payment_id":     tStr("Payment id"),
+			"receipt_number": tStr("Receipt number, e.g. RCT-0003"),
+			"to":             tStr("Recipient email (default: the billing contact / client email)"),
+			"cc":             tArr("CC emails. Leave out to use the defaults; [] for none.", tStr("email")),
+			"subject":        tStr("Subject (default from Invoice settings → receipt template)"),
+			"message":        tStr("Message (default from the receipt template)"),
+		}),
+		Module:  "invoicing",
+		Handler: invoicesSendReceipt,
 	})
 	Register(Tool{
 		Name:  "invoices_send",
@@ -511,13 +561,134 @@ func invoicesAddPayment(c *Ctx, a map[string]any) (any, error) {
 		amt = tF(inv, "balance_due")
 	}
 	body := map[string]any{"amount": amt}
-	copyArgs(body, a, "date", "method", "reference", "notes")
+	copyArgs(body, a, "date", "method", "reference", "notes", "email_receipt")
+	if AppURL() != "" {
+		body["app_url"] = AppURL()
+	}
 	v, err := c.api("POST", "/invoicing/invoices/"+url.PathEscape(tS(inv, "id"))+"/payments", nil, body)
 	if err != nil {
 		return nil, err
 	}
-	out := invoiceBrief(tObjOf(v))
+	d := tObjOf(v)
+	out := invoiceBrief(d)
 	out["payment_recorded"] = amt
+	pid := tS(d, "last_payment_id")
+	if p := paymentByID(d, pid); p != nil {
+		out["payment"] = paymentBrief(p)
+	}
+	if r, ok := d["receipt_email"].(map[string]any); ok {
+		out["receipt_email"] = r
+	}
+	return out, nil
+}
+
+// paymentByID finds a payment on an invoice response.
+func paymentByID(inv map[string]any, id string) map[string]any {
+	for _, p := range tList(inv, "payments") {
+		if tS(p, "id") == id {
+			return p
+		}
+	}
+	return nil
+}
+
+func paymentBrief(p map[string]any) map[string]any {
+	m := tPick(p, "id", "receipt_number", "amount", "method", "reference", "notes", "is_deposit", "origin", "lock_reason", "revised_at")
+	if d := tDay(tS(p, "date")); d != "" {
+		m["date"] = d
+	}
+	return m
+}
+
+// findPayment loads the invoice and picks the payment by payment_id or
+// receipt_number (or the only / latest payment when neither is given).
+func (c *Ctx) findPayment(a map[string]any) (map[string]any, map[string]any, error) {
+	inv, err := c.loadInvoice(a, "invoice_id")
+	if err != nil {
+		return nil, nil, err
+	}
+	full, err := c.get("/invoicing/invoices/"+url.PathEscape(tS(inv, "id")), nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	d := tObjOf(full)
+	list := tList(d, "payments")
+	if len(list) == 0 {
+		return nil, nil, tErr("%s has no payments", tS(d, "number"))
+	}
+	pid, rn := argStr(a, "payment_id"), argStr(a, "receipt_number")
+	for _, p := range list {
+		if (pid != "" && tS(p, "id") == pid) || (rn != "" && strings.EqualFold(tS(p, "receipt_number"), rn)) {
+			return d, p, nil
+		}
+	}
+	if pid != "" || rn != "" {
+		return nil, nil, tErr("payment not found on %s", tS(d, "number"))
+	}
+	if len(list) > 1 {
+		nums := []string{}
+		for _, p := range list {
+			nums = append(nums, tS(p, "receipt_number")+" ("+fmt.Sprint(p["amount"])+")")
+		}
+		return nil, nil, tErr("%s has several payments — pass payment_id or receipt_number: %s", tS(d, "number"), strings.Join(nums, ", "))
+	}
+	return d, list[0], nil
+}
+
+func invoicesUpdatePayment(c *Ctx, a map[string]any) (any, error) {
+	inv, p, err := c.findPayment(a)
+	if err != nil {
+		return nil, err
+	}
+	body := map[string]any{}
+	copyArgs(body, a, "amount", "date", "method", "reference", "notes", "reason", "email_receipt")
+	if AppURL() != "" {
+		body["app_url"] = AppURL()
+	}
+	v, err := c.api("PUT", "/invoicing/invoices/"+url.PathEscape(tS(inv, "id"))+"/payments/"+url.PathEscape(tS(p, "id")), nil, body)
+	if err != nil {
+		return nil, err
+	}
+	d := tObjOf(v)
+	newInv := tObjOf(d, "invoice")
+	out := invoiceBrief(newInv)
+	out["changed"] = d["changed"]
+	if np := paymentByID(newInv, tS(p, "id")); np != nil {
+		out["payment"] = paymentBrief(np)
+	}
+	out["previous_amount"] = p["amount"]
+	if r, ok := d["receipt_email"].(map[string]any); ok {
+		out["receipt_email"] = r
+	}
+	return out, nil
+}
+
+func invoicesSendReceipt(c *Ctx, a map[string]any) (any, error) {
+	inv, p, err := c.findPayment(a)
+	if err != nil {
+		return nil, err
+	}
+	body := map[string]any{"mode": "email", "kind": "receipt", "payment_id": tS(p, "id")}
+	copyArgs(body, a, "to", "subject", "message")
+	if argHas(a, "cc") {
+		body["cc"] = argStrList(a, "cc")
+	}
+	if AppURL() != "" {
+		body["app_url"] = AppURL()
+	}
+	v, err := c.Call("POST", "/invoicing/invoices/"+url.PathEscape(tS(inv, "id"))+"/send", nil, body)
+	if err != nil {
+		if ae, ok := err.(*APIError); ok && ae.Status == 503 {
+			return nil, &ToolError{Msg: "Outgoing email isn't set up for this organisation (Settings → Outgoing email), so the receipt wasn't sent. The receipt PDF can be downloaded from the invoice's payments list."}
+		}
+		return nil, &ToolError{Msg: ErrorText(err)}
+	}
+	d := tObjOf(v)
+	out := invoiceBrief(tObjOf(d, "invoice"))
+	out["payment"] = paymentBrief(p)
+	for k, val := range tPick(d, "emailed", "to", "cc", "bcc", "subject", "attachment", "skipped") {
+		out[k] = val
+	}
 	return out, nil
 }
 

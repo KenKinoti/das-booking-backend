@@ -35,6 +35,9 @@ type Settings struct {
 	MinPartial     float64   `json:"min_partial"`
 	Fees           []FeeRule `json:"fees" gorm:"type:text;serializer:json"`
 	FeeTaxPercent  float64   `json:"fee_tax_percent"`
+	// NoAutoReceipt turns off "Automatically email a receipt after an online
+	// payment" (on by default; stored inverted so new rows default to on).
+	NoAutoReceipt bool `json:"-"`
 	// Result of the last "Test connection".
 	LastTestAt      *time.Time `json:"last_test_at"`
 	LastTestOK      bool       `json:"last_test_ok"`

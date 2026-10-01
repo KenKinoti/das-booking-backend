@@ -37,33 +37,40 @@ const (
 
 // Settings holds per-organisation invoicing configuration.
 type Settings struct {
-	OrganizationID      string    `json:"organization_id" gorm:"type:varchar(255);primaryKey"`
-	BusinessName        string    `json:"business_name" gorm:"type:varchar(255)"`
-	Email               string    `json:"email" gorm:"type:varchar(255)"`
-	Phone               string    `json:"phone" gorm:"type:varchar(50)"`
-	Website             string    `json:"website" gorm:"type:varchar(255)"`
-	Address             string    `json:"address" gorm:"type:text"`
-	TaxNumber           string    `json:"tax_number" gorm:"type:varchar(100)"`
-	TaxNumberLabel      string    `json:"tax_number_label" gorm:"type:varchar(50);default:'ABN'"`
-	LogoURL             string    `json:"logo_url" gorm:"type:text"`
-	AccentColor         string    `json:"accent_color" gorm:"type:varchar(20);default:'#4f46e5'"`
-	Currency            string    `json:"currency" gorm:"type:varchar(3);default:'AUD'"`
-	InvoicePrefix       string    `json:"invoice_prefix" gorm:"type:varchar(20);default:'INV-'"`
-	NextInvoiceNumber   int       `json:"next_invoice_number" gorm:"default:1001"`
-	QuotePrefix         string    `json:"quote_prefix" gorm:"type:varchar(20);default:'QUO-'"`
-	NextQuoteNumber     int       `json:"next_quote_number" gorm:"default:1001"`
-	NumberPadding       int       `json:"number_padding" gorm:"default:4"`
-	DefaultDueDays      int       `json:"default_due_days" gorm:"default:14"`
-	QuoteValidDays      int       `json:"quote_valid_days" gorm:"default:30"`
-	DefaultTaxRate      float64   `json:"default_tax_rate" gorm:"default:10"`
-	TaxLabel            string    `json:"tax_label" gorm:"type:varchar(30);default:'GST'"`
-	PricesIncludeTax    bool      `json:"prices_include_tax" gorm:"default:false"`
-	DefaultNotes        string    `json:"default_notes" gorm:"type:text"`
-	DefaultTerms        string    `json:"default_terms" gorm:"type:text"`
-	PaymentInstructions string    `json:"payment_instructions" gorm:"type:text"`
-	EmailSubject        string    `json:"email_subject" gorm:"type:varchar(255)"`
-	EmailMessage        string    `json:"email_message" gorm:"type:text"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	OrganizationID      string  `json:"organization_id" gorm:"type:varchar(255);primaryKey"`
+	BusinessName        string  `json:"business_name" gorm:"type:varchar(255)"`
+	Email               string  `json:"email" gorm:"type:varchar(255)"`
+	Phone               string  `json:"phone" gorm:"type:varchar(50)"`
+	Website             string  `json:"website" gorm:"type:varchar(255)"`
+	Address             string  `json:"address" gorm:"type:text"`
+	TaxNumber           string  `json:"tax_number" gorm:"type:varchar(100)"`
+	TaxNumberLabel      string  `json:"tax_number_label" gorm:"type:varchar(50);default:'ABN'"`
+	LogoURL             string  `json:"logo_url" gorm:"type:text"`
+	AccentColor         string  `json:"accent_color" gorm:"type:varchar(20);default:'#4f46e5'"`
+	Currency            string  `json:"currency" gorm:"type:varchar(3);default:'AUD'"`
+	InvoicePrefix       string  `json:"invoice_prefix" gorm:"type:varchar(20);default:'INV-'"`
+	NextInvoiceNumber   int     `json:"next_invoice_number" gorm:"default:1001"`
+	QuotePrefix         string  `json:"quote_prefix" gorm:"type:varchar(20);default:'QUO-'"`
+	NextQuoteNumber     int     `json:"next_quote_number" gorm:"default:1001"`
+	NumberPadding       int     `json:"number_padding" gorm:"default:4"`
+	DefaultDueDays      int     `json:"default_due_days" gorm:"default:14"`
+	QuoteValidDays      int     `json:"quote_valid_days" gorm:"default:30"`
+	DefaultTaxRate      float64 `json:"default_tax_rate" gorm:"default:10"`
+	TaxLabel            string  `json:"tax_label" gorm:"type:varchar(30);default:'GST'"`
+	PricesIncludeTax    bool    `json:"prices_include_tax" gorm:"default:false"`
+	DefaultNotes        string  `json:"default_notes" gorm:"type:text"`
+	DefaultTerms        string  `json:"default_terms" gorm:"type:text"`
+	PaymentInstructions string  `json:"payment_instructions" gorm:"type:text"`
+	EmailSubject        string  `json:"email_subject" gorm:"type:varchar(255)"`
+	EmailMessage        string  `json:"email_message" gorm:"type:text"`
+	// Receipts: every payment gets a number ReceiptPrefix + NextReceiptNumber
+	// (padded like documents, e.g. RCT-0001); the receipt email's subject and
+	// message templates ("" = the built-in default).
+	ReceiptPrefix     string    `json:"receipt_prefix" gorm:"type:varchar(20);default:'RCT-'"`
+	NextReceiptNumber int       `json:"next_receipt_number" gorm:"default:1"`
+	ReceiptSubject    string    `json:"receipt_subject" gorm:"type:varchar(255)"`
+	ReceiptMessage    string    `json:"receipt_message" gorm:"type:text"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 func (Settings) TableName() string { return "billing_settings" }
@@ -161,6 +168,10 @@ type Invoice struct {
 	// Derived fields (not stored)
 	DisplayStatus string `json:"display_status" gorm:"-"`
 	DaysOverdue   int    `json:"days_overdue" gorm:"-"`
+	// Set on POST /payments responses: the payment just recorded and what
+	// happened to its receipt email (when one was requested).
+	LastPaymentID string              `json:"last_payment_id,omitempty" gorm:"-"`
+	ReceiptEmail  *ReceiptEmailResult `json:"receipt_email,omitempty" gorm:"-"`
 }
 
 func (Invoice) TableName() string { return "billing_invoices" }
@@ -205,10 +216,22 @@ type Payment struct {
 	// (entered in the invoice editor or when converting a quote).
 	IsDeposit bool `json:"is_deposit" gorm:"default:false"`
 	// Source / ExternalID: payments imported from another system (pkg/zoho).
-	Source     string    `json:"source,omitempty" gorm:"type:varchar(20)"`
-	ExternalID string    `json:"external_id,omitempty" gorm:"type:varchar(100)"`
-	CreatedBy  string    `json:"created_by" gorm:"type:varchar(255)"`
-	CreatedAt  time.Time `json:"created_at"`
+	Source     string `json:"source,omitempty" gorm:"type:varchar(20)"`
+	ExternalID string `json:"external_id,omitempty" gorm:"type:varchar(100)"`
+	// ReceiptNumber is the payment's receipt number (per organisation, see
+	// Settings.ReceiptPrefix); assigned when the payment is created and kept
+	// when it is edited. RevisedAt / RevisedBy: the last edit.
+	ReceiptNumber string     `json:"receipt_number" gorm:"type:varchar(40);index"`
+	RevisedAt     *time.Time `json:"revised_at"`
+	RevisedBy     string     `json:"revised_by,omitempty" gorm:"type:varchar(255)"`
+	CreatedBy     string     `json:"created_by" gorm:"type:varchar(255)"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     *time.Time `json:"updated_at"`
+
+	// Derived (not stored): manual | deposit | online | import, and why the
+	// amount and date can't be edited (online and imported payments).
+	Origin     string `json:"origin" gorm:"-"`
+	LockReason string `json:"lock_reason,omitempty" gorm:"-"`
 }
 
 func (Payment) TableName() string { return "billing_payments" }
@@ -239,7 +262,7 @@ func (Activity) TableName() string { return "billing_activities" }
 
 // Models lists everything that needs migrating.
 func Models() []interface{} {
-	return []interface{}{&Settings{}, &TaxRate{}, &Invoice{}, &InvoiceItem{}, &Payment{}, &Activity{}, &EmailLog{}, &Attachment{}}
+	return []interface{}{&Settings{}, &TaxRate{}, &Invoice{}, &InvoiceItem{}, &Payment{}, &Activity{}, &EmailLog{}, &Attachment{}, &CancelledReceipt{}}
 }
 
 // EmailLog records every email about a document (sent, test or failed) with

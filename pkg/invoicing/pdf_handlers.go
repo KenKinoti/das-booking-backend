@@ -139,21 +139,33 @@ func (h *Handler) PublicPDF(c *gin.Context) {
 
 func (h *Handler) receipt(c *gin.Context, inv *Invoice) {
 	pid := c.Param("paymentId")
+	s, err := h.settingsFor(h.DB, inv.OrganizationID, false)
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	biz := PDFBusinessFor(h.DB, s, inv.OrganizationID)
 	for _, p := range inv.Payments {
 		if p.ID == pid {
-			s, err := h.settingsFor(h.DB, inv.OrganizationID, false)
-			if err != nil {
-				failErr(c, err)
-				return
-			}
-			data, err := RenderReceiptPDF(inv, p, PDFBusinessFor(h.DB, s, inv.OrganizationID))
+			data, err := RenderReceiptPDF(inv, p, biz)
 			if err != nil {
 				fail(c, http.StatusInternalServerError, "PDF_FAILED", "Could not create the receipt")
 				return
 			}
-			sendPDF(c, "Receipt-"+strings.TrimSuffix(PDFFilename(inv), ".pdf")+".pdf", data)
+			sendPDF(c, ReceiptFilename(inv, p), data)
 			return
 		}
+	}
+	// A removed payment: its receipt is shown as cancelled.
+	if p, cr := h.cancelledReceipt(inv, pid); p != nil {
+		at := cr.CancelledAt
+		data, err := RenderReceipt(inv, *p, biz, ReceiptOptions{CancelledAt: &at, CancelReason: cr.Reason})
+		if err != nil {
+			fail(c, http.StatusInternalServerError, "PDF_FAILED", "Could not create the receipt")
+			return
+		}
+		sendPDF(c, ReceiptFilename(inv, *p), data)
+		return
 	}
 	fail(c, http.StatusNotFound, "NOT_FOUND", "Payment not found")
 }
