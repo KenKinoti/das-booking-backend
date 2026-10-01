@@ -51,31 +51,77 @@ func (f *flexBool) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// parseNum parses "1,234.50", "10%", "$12", "(5.00)".
+// parseNum parses "1,234.50", "10%", "$12", "(5.00)", "AUD 250.00",
+// "KES 1,500.00", "1.234,50 €" and "1e3".
 func parseNum(s string) (float64, bool) {
+	v, _, ok := parseMoney(s)
+	return v, ok
+}
+
+// parseMoney parses an amount that may carry a currency code or symbol
+// ("KES 1,500.00", "1500 AUD", "$12", "€1.234,50"). cur is the 3-letter code
+// when one was written. Letters are never kept as part of the number (the old
+// parser kept "E" for exponents, so "KES 1,500.00" or "EUR 10" became 0).
+func parseMoney(s string) (v float64, cur string, ok bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return 0, false
+		return 0, "", false
+	}
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return f, "", true // plain numbers, including JSON exponents
 	}
 	neg := false
 	if strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") {
 		neg = true
 		s = s[1 : len(s)-1]
 	}
-	s = strings.Map(func(r rune) rune {
-		if (r >= '0' && r <= '9') || r == '.' || r == '-' || r == 'e' || r == 'E' {
-			return r
+	// A currency code before or after the number.
+	letters := strings.Builder{}
+	var num strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9', r == '.', r == ',':
+			num.WriteRune(r)
+		case r == '-' || r == '\u2212':
+			neg = !neg
+		case (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z'):
+			letters.WriteRune(r)
 		}
-		return -1
-	}, s)
-	v, err := strconv.ParseFloat(s, 64)
+	}
+	if l := strings.ToUpper(letters.String()); len(l) == 3 {
+		cur = l
+	}
+	n := num.String()
+	if n == "" {
+		return 0, "", false
+	}
+	lastDot, lastComma := strings.LastIndex(n, "."), strings.LastIndex(n, ",")
+	switch {
+	case lastDot >= 0 && lastComma >= 0:
+		if lastComma > lastDot { // 1.234,50
+			n = strings.ReplaceAll(n, ".", "")
+			n = strings.Replace(n, ",", ".", 1)
+		} else { // 1,234.50
+			n = strings.ReplaceAll(n, ",", "")
+		}
+	case lastComma >= 0:
+		// One comma followed by 1–2 digits is a decimal comma ("12,5"); otherwise thousands ("1,500").
+		if strings.Count(n, ",") == 1 && len(n)-lastComma-1 != 3 {
+			n = strings.Replace(n, ",", ".", 1)
+		} else {
+			n = strings.ReplaceAll(n, ",", "")
+		}
+	case strings.Count(n, ".") > 1: // 1.234.567
+		n = strings.ReplaceAll(n, ".", "")
+	}
+	f, err := strconv.ParseFloat(n, 64)
 	if err != nil {
-		return 0, false
+		return 0, cur, false
 	}
 	if neg {
-		v = -v
+		f = -f
 	}
-	return v, true
+	return f, cur, true
 }
 
 type zAddress struct {
@@ -167,16 +213,36 @@ func (p zPerson) norm() Person {
 }
 
 type zItem struct {
-	ItemID        flexStr `json:"item_id"`
-	Name          flexStr `json:"name"`
-	Description   flexStr `json:"description"`
-	Rate          flexNum `json:"rate"`
-	Unit          flexStr `json:"unit"`
-	SKU           flexStr `json:"sku"`
-	TaxName       flexStr `json:"tax_name"`
-	TaxPercentage flexNum `json:"tax_percentage"`
-	ProductType   flexStr `json:"product_type"`
-	Status        flexStr `json:"status"`
+	ItemID        flexStr   `json:"item_id"`
+	Name          flexStr   `json:"name"`
+	Description   flexStr   `json:"description"`
+	Rate          flexStr   `json:"rate"`       // selling price (Zoho base currency)
+	SalesRate     flexStr   `json:"sales_rate"` // some Zoho apps / older payloads
+	PricebookRate flexNum   `json:"pricebook_rate"`
+	PurchaseRate  flexNum   `json:"purchase_rate"`
+	Unit          flexStr   `json:"unit"`
+	SKU           flexStr   `json:"sku"`
+	TaxName       flexStr   `json:"tax_name"`
+	TaxPercentage flexNum   `json:"tax_percentage"`
+	ProductType   flexStr   `json:"product_type"`
+	Status        flexStr   `json:"status"`
+	CurrencyCode  flexStr   `json:"currency_code"`
+	InclusiveA    *flexBool `json:"is_inclusive_tax"`
+	InclusiveB    *flexBool `json:"is_tax_inclusive"`
+	InclusiveC    *flexBool `json:"tax_inclusive"`
+}
+
+// itemRate picks the selling price: "rate" (Zoho's item selling price),
+// then "sales_rate". Never pricebook_rate (a customer price list) or
+// purchase_rate (the cost). Rates may arrive as "AUD 1,500.00".
+func itemRate(rate, sales string) (float64, string) {
+	if v, cur, ok := parseMoney(rate); ok && v != 0 {
+		return v, cur
+	}
+	if v, cur, ok := parseMoney(sales); ok {
+		return v, cur
+	}
+	return 0, ""
 }
 
 func (z zItem) norm() Item {
@@ -184,8 +250,21 @@ func (z zItem) norm() Item {
 	if t != "goods" {
 		t = "service"
 	}
-	return Item{ExtID: string(z.ItemID), Name: string(z.Name), Description: string(z.Description), Rate: float64(z.Rate), Unit: string(z.Unit),
-		SKU: string(z.SKU), TaxName: string(z.TaxName), TaxPercent: float64(z.TaxPercentage), Type: t, Active: !strings.EqualFold(string(z.Status), "inactive")}
+	rate, cur := itemRate(string(z.Rate), string(z.SalesRate))
+	if c := strings.ToUpper(strings.TrimSpace(string(z.CurrencyCode))); c != "" {
+		cur = c
+	}
+	var incl *bool
+	for _, b := range []*flexBool{z.InclusiveA, z.InclusiveB, z.InclusiveC} {
+		if b != nil {
+			v := bool(*b)
+			incl = &v
+			break
+		}
+	}
+	return Item{ExtID: string(z.ItemID), Name: string(z.Name), Description: string(z.Description), Rate: rate, Unit: string(z.Unit),
+		SKU: string(z.SKU), TaxName: string(z.TaxName), TaxPercent: float64(z.TaxPercentage), Type: t, Active: !strings.EqualFold(string(z.Status), "inactive"),
+		Currency: cur, TaxInclusive: incl, PurchaseRate: float64(z.PurchaseRate)}
 }
 
 type zLine struct {

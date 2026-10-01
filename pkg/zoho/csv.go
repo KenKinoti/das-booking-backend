@@ -90,7 +90,10 @@ var itemFields = []Field{
 	{Key: "name", Label: "Name", Required: true, Aliases: []string{"Item Name", "Name", "Product Name", "Service Name"}},
 	{Key: "sku", Label: "SKU", Aliases: []string{"SKU", "Code", "Item Code"}},
 	{Key: "description", Label: "Description", Aliases: []string{"Description", "Sales Description", "Item Description"}},
-	{Key: "rate", Label: "Rate / price", Aliases: []string{"Rate", "Selling Price", "Sales Rate", "Price", "Unit Price"}},
+	{Key: "rate", Label: "Rate / selling price", Aliases: []string{"Rate", "Selling Price", "Sales Rate", "Sales Price", "Price", "Unit Price"}},
+	{Key: "currency", Label: "Currency", Aliases: []string{"Currency Code", "Currency"}},
+	{Key: "tax_inclusive", Label: "Price includes tax", Aliases: []string{"Is Inclusive Tax", "Is Tax Inclusive", "Tax Inclusive", "Rate Includes Tax", "Price Includes Tax"}},
+	{Key: "purchase_rate", Label: "Purchase rate (cost, not imported as price)", Aliases: []string{"Purchase Rate", "Purchase Price", "Cost Price", "Cost"}},
 	{Key: "unit", Label: "Unit", Aliases: []string{"Usage unit", "Usage Unit", "Unit"}},
 	{Key: "tax_name", Label: "Tax name", Aliases: []string{"Tax Name", "Tax"}},
 	{Key: "tax_pct", Label: "Tax %", Aliases: []string{"Tax Percentage", "Tax %", "Tax Rate"}},
@@ -401,9 +404,19 @@ func BuildDataset(uploads []Upload, dayFirst bool) (*Dataset, error) {
 			if typ != "goods" {
 				typ = "service"
 			}
-			ds.Items = append(ds.Items, Item{ExtID: t.get(r, "item_id"), Name: name, Description: t.get(r, "description"), Rate: t.num(r, "rate"),
+			// "AUD 250.00" / "KES 1,500.00": Zoho writes the currency in the Rate column.
+			rate, cur, _ := parseMoney(t.get(r, "rate"))
+			if c := strings.ToUpper(t.get(r, "currency")); len(c) == 3 {
+				cur = c
+			}
+			it := Item{ExtID: t.get(r, "item_id"), Name: name, Description: t.get(r, "description"), Rate: rate, Currency: cur,
 				Unit: t.get(r, "unit"), SKU: t.get(r, "sku"), TaxName: t.get(r, "tax_name"), TaxPercent: t.num(r, "tax_pct"), Type: typ,
-				Active: !strings.EqualFold(t.get(r, "status"), "inactive"), Row: i + 2})
+				Active: !strings.EqualFold(t.get(r, "status"), "inactive"), PurchaseRate: t.num(r, "purchase_rate"), Row: i + 2}
+			if v := strings.TrimSpace(t.get(r, "tax_inclusive")); v != "" {
+				b := truthy(v) || strings.EqualFold(v, "inclusive") || strings.EqualFold(v, "tax inclusive")
+				it.TaxInclusive = &b
+			}
+			ds.Items = append(ds.Items, it)
 		}
 	}
 

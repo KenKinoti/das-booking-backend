@@ -98,7 +98,14 @@ type Item struct {
 	TaxPercent  float64 `json:"tax_percent"`
 	Type        string  `json:"type"` // service | goods
 	Active      bool    `json:"active"`
-	Row         int     `json:"-"`
+	// Currency the rate is in, when the source says so ("AUD 250.00" in
+	// Item.csv, a Currency column). Zoho prices items in the Zoho
+	// organisation's base currency; "" → that base currency.
+	Currency string `json:"currency,omitempty"`
+	// TaxInclusive: the rate already includes tax (nil: not stated).
+	TaxInclusive *bool   `json:"tax_inclusive,omitempty"`
+	PurchaseRate float64 `json:"purchase_rate,omitempty"` // informational; never used as the price
+	Row          int     `json:"-"`
 }
 
 // Line is a document line.
@@ -220,7 +227,28 @@ type Options struct {
 	ContinueNumbering *bool `json:"continue_numbering"`
 	// RequestsPerMinute caps API calls (default 90; Zoho allows 100).
 	RequestsPerMinute int `json:"requests_per_minute,omitempty"`
+	// ItemPrices: how item prices land in the catalog.
+	ItemPrices ItemPriceOptions `json:"item_prices"`
 }
+
+// ItemPriceOptions: Zoho items are priced in the Zoho organisation's base
+// currency, which may not be the home currency here.
+type ItemPriceOptions struct {
+	// Mode: "keep" (default) stores the price in its own currency (the
+	// service gets that currency); "convert" converts to the home currency at Rate.
+	Mode string `json:"mode,omitempty"`
+	// Rate: home-currency units per 1 source unit (convert mode).
+	Rate       float64 `json:"rate,omitempty"`
+	RateSource string  `json:"rate_source,omitempty"` // live | fallback | manual
+	// Currency the source prices are in when the file doesn't say (CSV);
+	// "" → the Zoho base currency (API) or the home currency (files).
+	Currency string `json:"currency,omitempty"`
+	// IncludeTax: prices include tax (applies when the item doesn't say).
+	IncludeTax bool `json:"include_tax,omitempty"`
+}
+
+// Convert reports whether prices are converted to the home currency.
+func (o ItemPriceOptions) Convert() bool { return o.Mode == "convert" && o.Rate > 0 }
 
 func (o Options) want(ent string) bool {
 	if o.Entities == nil {
@@ -246,6 +274,7 @@ type Preview struct {
 	Warnings     []string        `json:"warnings"`
 	Numbering    []NumberPreview `json:"numbering"`
 	Partial      bool            `json:"partial,omitempty"` // API: counts from list pages only
+	ItemPricing  *ItemPricing    `json:"item_pricing,omitempty"`
 	BuiltAt      string          `json:"built_at"`
 }
 
@@ -259,6 +288,29 @@ type EntityPreview struct {
 	Matches int                 `json:"matches"`
 	Columns []string            `json:"columns"`
 	Sample  []map[string]string `json:"sample"`
+}
+
+// ItemPricing shows how item prices will be imported (preview).
+type ItemPricing struct {
+	SourceCurrency string         `json:"source_currency"`
+	HomeCurrency   string         `json:"home_currency"`
+	Detected       bool           `json:"detected"` // currency read from the data (not assumed)
+	Rate           float64        `json:"rate"`     // suggested: home units per 1 source unit
+	RateSource     string         `json:"rate_source"`
+	RateProvider   string         `json:"rate_provider"`
+	RateWarning    string         `json:"rate_warning,omitempty"`
+	Items          []ItemPriceRow `json:"items"`
+	Total          int            `json:"total"`
+	Currencies     map[string]int `json:"currencies,omitempty"` // items per currency
+}
+
+// ItemPriceRow is one item's source price.
+type ItemPriceRow struct {
+	Name         string  `json:"name"`
+	Price        float64 `json:"price"`
+	Currency     string  `json:"currency"`
+	TaxInclusive *bool   `json:"tax_inclusive,omitempty"`
+	TaxPercent   float64 `json:"tax_percent,omitempty"`
 }
 
 // Duplicate is a source record that matches one already here.

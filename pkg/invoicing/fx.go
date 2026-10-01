@@ -32,7 +32,11 @@ func (h *Handler) fx() *fxrates.Service {
 // Currency conversion rules
 //
 //   - Catalog prices (services, products) are in the organisation's home
-//     currency (pkg/orgprefs). A document in another currency converts them at
+//     currency (pkg/orgprefs), unless the service has its own currency (e.g.
+//     kept in AUD from a Zoho import): then the line's original currency is
+//     that currency — same as the document: no conversion; otherwise it is
+//     converted at the market rate original → document currency
+//     (reconvertOtherCurrencies, on drafts when the rate is updated). A document in another currency converts them at
 //     the document's exchange rate: unit price = round(original × rate) to the
 //     document currency's minor units; the original price and currency are kept
 //     on the line.
@@ -169,6 +173,22 @@ func reconvertLines(inv *Invoice) {
 	}
 }
 
+// reconvertOtherCurrencies re-prices catalog lines whose original currency is
+// neither the document nor the home currency (a service priced in its own
+// currency) at today's original → document rate.
+func (h *Handler) reconvertOtherCurrencies(inv *Invoice) {
+	for i := range inv.Items {
+		it := &inv.Items[i]
+		oc := strings.ToUpper(it.OriginalCurrency)
+		if it.OriginalUnitPrice == nil || oc == "" || oc == inv.Currency || oc == inv.BaseCurrency || !currency.IsSupported(oc) {
+			continue
+		}
+		if q := h.fx().Quote(inv.OrganizationID, oc, inv.Currency); q.OK() {
+			it.UnitPrice = fxrates.Convert(*it.OriginalUnitPrice, q.Rate, inv.Currency)
+		}
+	}
+}
+
 // setBaseTotal fills TotalBase from Total and the locked rate.
 func setBaseTotal(inv *Invoice) {
 	switch {
@@ -263,6 +283,7 @@ func (h *Handler) LockRate(c *gin.Context) {
 		}
 		if inv.Status == StatusDraft {
 			reconvertLines(inv)
+			h.reconvertOtherCurrencies(inv)
 		}
 		Recalculate(inv)
 		ApplyPayments(inv, h.now())
@@ -340,10 +361,14 @@ func RateText(inv *Invoice) string {
 // finishAmounts locks the exchange rate after an edit, re-prices converted
 // catalog lines at it and recalculates every total (incl. TotalBase).
 func (h *Handler) finishAmounts(tx *gorm.DB, inv *Invoice, in rateInput, prevCurrency, prevBase string) error {
-	if _, err := h.lockRate(tx, inv, in, prevCurrency, prevBase); err != nil {
+	changed, err := h.lockRate(tx, inv, in, prevCurrency, prevBase)
+	if err != nil {
 		return err
 	}
 	reconvertLines(inv)
+	if changed && inv.Status == StatusDraft {
+		h.reconvertOtherCurrencies(inv)
+	}
 	Recalculate(inv)
 	ApplyPayments(inv, h.now())
 	setBaseTotal(inv)

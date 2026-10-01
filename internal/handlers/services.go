@@ -8,8 +8,26 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 	"gorm.io/gorm"
 )
+
+// Service prices carry their own currency (e.g. kept in AUD from a Zoho
+// import while the organisation works in KES). An empty currency means the
+// organisation's home currency; responses always fill it in.
+
+func (h *Handler) fillServiceCurrency(org string, list []models.Service) {
+	home := ""
+	for i := range list {
+		if list[i].Currency == "" {
+			if home == "" {
+				home = strings.ToUpper(orgprefs.Currency(h.DB, org))
+			}
+			list[i].Currency = home
+		}
+	}
+}
 
 // GetServices retrieves all services for the organization
 func (h *Handler) GetServices(c *gin.Context) {
@@ -69,6 +87,7 @@ func (h *Handler) GetServices(c *gin.Context) {
 		return
 	}
 
+	h.fillServiceCurrency(orgID, services)
 	c.JSON(http.StatusOK, gin.H{"services": services})
 }
 
@@ -91,7 +110,9 @@ func (h *Handler) GetService(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"service": service})
+	one := []models.Service{service}
+	h.fillServiceCurrency(orgID, one)
+	c.JSON(http.StatusOK, gin.H{"service": one[0]})
 }
 
 // serviceInput is the writable part of a service.
@@ -103,6 +124,8 @@ type serviceInput struct {
 	Price           *float64 `json:"price"`
 	IsActive        *bool    `json:"is_active"`
 	RequiresVehicle *bool    `json:"requires_vehicle"`
+	Currency        *string  `json:"currency"`
+	PriceInclTax    *bool    `json:"price_includes_tax"`
 }
 
 func (in serviceInput) validate(requireAll bool) string {
@@ -121,6 +144,9 @@ func (in serviceInput) validate(requireAll bool) string {
 		if in.Price == nil || *in.Price < 0 {
 			return "Price must be zero or more"
 		}
+	}
+	if in.Currency != nil && *in.Currency != "" && !currency.IsSupported(strings.ToUpper(strings.TrimSpace(*in.Currency))) {
+		return "Choose a supported currency"
 	}
 	return ""
 }
@@ -160,6 +186,13 @@ func (h *Handler) CreateService(c *gin.Context) {
 	}
 	if in.RequiresVehicle != nil {
 		service.RequiresVehicle = *in.RequiresVehicle
+	}
+	service.Currency = strings.ToUpper(orgprefs.Currency(h.DB, orgID))
+	if in.Currency != nil && strings.TrimSpace(*in.Currency) != "" {
+		service.Currency = strings.ToUpper(strings.TrimSpace(*in.Currency))
+	}
+	if in.PriceInclTax != nil {
+		service.PriceIncludesTax = *in.PriceInclTax
 	}
 	if h.serviceNameTaken(orgID, service.Name, service.Category, "") {
 		c.JSON(http.StatusConflict, gin.H{"error": "A service with this name already exists in this category"})
@@ -234,6 +267,12 @@ func (h *Handler) UpdateService(c *gin.Context) {
 	if in.RequiresVehicle != nil {
 		updates["requires_vehicle"] = *in.RequiresVehicle
 	}
+	if in.Currency != nil {
+		updates["currency"] = strings.ToUpper(strings.TrimSpace(*in.Currency))
+	}
+	if in.PriceInclTax != nil {
+		updates["price_includes_tax"] = *in.PriceInclTax
+	}
 	if len(updates) > 0 {
 		if err := h.DB.Model(&models.Service{}).Where("id = ? AND organization_id = ?", id, orgID).Updates(updates).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update service"})
@@ -241,7 +280,9 @@ func (h *Handler) UpdateService(c *gin.Context) {
 		}
 	}
 	h.DB.Where("id = ?", id).First(&service)
-	c.JSON(http.StatusOK, gin.H{"service": service})
+	one := []models.Service{service}
+	h.fillServiceCurrency(orgID, one)
+	c.JSON(http.StatusOK, gin.H{"service": one[0]})
 }
 
 // DeleteService soft deletes a service
@@ -310,7 +351,9 @@ func (h *Handler) ToggleServiceStatus(c *gin.Context) {
 	}
 
 	service.IsActive = newStatus
-	c.JSON(http.StatusOK, gin.H{"service": service})
+	one := []models.Service{service}
+	h.fillServiceCurrency(orgID, one)
+	c.JSON(http.StatusOK, gin.H{"service": one[0]})
 }
 
 // GetServiceCategories returns the organisation's categories with counts.
@@ -426,14 +469,16 @@ func (h *Handler) DuplicateService(c *gin.Context) {
 
 	// Create a copy
 	newService := models.Service{
-		OrganizationID:  originalService.OrganizationID,
-		Name:            originalService.Name + " (Copy)",
-		Description:     originalService.Description,
-		Category:        originalService.Category,
-		Duration:        originalService.Duration,
-		Price:           originalService.Price,
-		IsActive:        true,
-		RequiresVehicle: originalService.RequiresVehicle,
+		OrganizationID:   originalService.OrganizationID,
+		Name:             originalService.Name + " (Copy)",
+		Description:      originalService.Description,
+		Category:         originalService.Category,
+		Duration:         originalService.Duration,
+		Price:            originalService.Price,
+		Currency:         originalService.Currency,
+		PriceIncludesTax: originalService.PriceIncludesTax,
+		IsActive:         true,
+		RequiresVehicle:  originalService.RequiresVehicle,
 	}
 
 	// Ensure name doesn't conflict

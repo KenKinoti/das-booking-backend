@@ -2315,6 +2315,11 @@ func (s *Service) DashboardFor(org string, today time.Time, from, to string) *Da
 	pytd, _ := sumNet(charges, pys, today.AddDate(-1, 0, 0))
 
 	subs := DetectSubscriptions(charges, today)
+	if links := s.RecurringBillLinks(org); len(links) > 0 {
+		for i := range subs {
+			subs[i].RecurringBillID = links[subs[i].Key]
+		}
+	}
 	var annual, monthly float64
 	activeSubs := 0
 	for _, sb := range subs {

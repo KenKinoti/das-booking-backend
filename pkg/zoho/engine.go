@@ -16,6 +16,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/fxrates"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/invoicing"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
 )
@@ -1001,6 +1003,52 @@ func (e *Engine) previewFiles(r *run) (*Preview, error) {
 	return pv, nil
 }
 
+// fx returns the shared exchange-rate service.
+func (e *Engine) fx() *fxrates.Service {
+	if invoicing.FX != nil {
+		return invoicing.FX
+	}
+	return &fxrates.Service{DB: e.DB}
+}
+
+// itemPricing describes the items' source prices and suggests a rate.
+func (e *Engine) itemPricing(im *Importer, items []Item) *ItemPricing {
+	src := im.itemSource()
+	ip := &ItemPricing{SourceCurrency: src, HomeCurrency: im.Home, Detected: im.Opts.ItemPrices.Currency != "" || (im.SrcBase != "" && im.RefSource == "zoho" && im.SrcBase != im.Home), Items: []ItemPriceRow{}, Total: len(items), Currencies: map[string]int{}}
+	for _, it := range items {
+		cur := strings.ToUpper(firstNonEmpty(it.Currency, src))
+		if it.Currency != "" {
+			ip.Detected = true
+		}
+		ip.Currencies[cur]++
+		if len(ip.Items) < 500 {
+			ip.Items = append(ip.Items, ItemPriceRow{Name: it.Name, Price: it.Rate, Currency: cur, TaxInclusive: it.TaxInclusive, TaxPercent: it.TaxPercent})
+		}
+	}
+	// Files without a currency: the most common written currency is the source.
+	if im.Opts.ItemPrices.Currency == "" {
+		best, n := "", 0
+		for c, k := range ip.Currencies {
+			if k > n || (k == n && c < best) {
+				best, n = c, k
+			}
+		}
+		if best != "" && best != src && ip.Detected {
+			ip.SourceCurrency = best
+		}
+	}
+	if ip.SourceCurrency != ip.HomeCurrency {
+		q := e.fx().Quote(im.Org, ip.SourceCurrency, ip.HomeCurrency)
+		if q.OK() {
+			ip.Rate, ip.RateSource, ip.RateProvider = q.Rate, q.Source, q.Provider
+		}
+		ip.RateWarning = q.Warning
+	} else {
+		ip.Rate, ip.RateSource = 1, fxrates.SourceSame
+	}
+	return ip
+}
+
 // buildPreview counts, samples and matches records against existing data.
 func (e *Engine) buildPreview(im *Importer, items []Item, contacts []Contact, docs []Doc, warnings []string) *Preview {
 	im.load()
@@ -1017,10 +1065,14 @@ func (e *Engine) buildPreview(im *Importer, items []Item, contacts []Contact, do
 				ep.New++
 			}
 			if len(ep.Sample) < 5 {
-				ep.Sample = append(ep.Sample, map[string]string{"Name": it.Name, "Rate": fmt.Sprintf("%.2f", it.Rate), "Tax": strings.TrimSpace(it.TaxName)})
+				ep.Sample = append(ep.Sample, map[string]string{"Name": it.Name, "Rate": strings.TrimSpace(firstNonEmpty(it.Currency, im.itemSource()) + " " + fmt.Sprintf("%.2f", it.Rate)), "Tax": strings.TrimSpace(it.TaxName)})
 			}
 		}
 		pv.Entities = append(pv.Entities, ep)
+		pv.ItemPricing = e.itemPricing(im, items)
+		if ip := pv.ItemPricing; ip.SourceCurrency != ip.HomeCurrency {
+			pv.Warnings = append(pv.Warnings, fmt.Sprintf("Zoho item prices are in %s; your home currency here is %s. Choose under \"Item prices\" whether to keep them in %s or convert them to %s.", ip.SourceCurrency, ip.HomeCurrency, ip.SourceCurrency, ip.HomeCurrency))
+		}
 	}
 	noEmail := 0
 	if len(contacts) > 0 {

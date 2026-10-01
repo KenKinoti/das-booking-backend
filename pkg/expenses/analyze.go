@@ -57,7 +57,10 @@ type Subscription struct {
 	NextAmount float64  `json:"next_amount"` // home, ex tax
 	Annualised float64  `json:"annualised"`  // home, ex tax
 	Status     string   `json:"status"`      // active | overdue | lapsed
-	next       time.Time
+	// RecurringBillID is the recurring bill (Finance → Bills → Recurring)
+	// this subscription was linked to, if any.
+	RecurringBillID string `json:"recurring_bill_id,omitempty"`
+	next            time.Time
 }
 
 func serviceKey(c Charge) string {

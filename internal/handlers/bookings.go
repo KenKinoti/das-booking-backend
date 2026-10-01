@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/bookingmail"
 	"gorm.io/gorm"
 )
 
@@ -132,6 +133,17 @@ func (h *Handler) bookingValidateRefs(orgID, customerID string, vehicleID, staff
 		}
 	}
 	return 0, ""
+}
+
+// bookingSnapshot copies the fields staff emails compare (start/end, staff,
+// status) so later in-place updates of the model don't change it.
+func bookingSnapshot(b models.Booking) *models.Booking {
+	cp := b
+	if b.StaffID != nil {
+		v := *b.StaffID
+		cp.StaffID = &v
+	}
+	return &cp
 }
 
 // GetBookings retrieves all bookings for the organization with optional filters.
@@ -314,6 +326,7 @@ func (h *Handler) CreateBooking(c *gin.Context) {
 
 	h.bookingPreload(h.DB.Where("id = ?", booking.ID)).First(&booking)
 	h.notifyBooking(c, &booking, "created", "")
+	bookingmail.Created(&booking, c.GetString("user_id"))
 	c.JSON(http.StatusCreated, gin.H{"booking": booking})
 }
 
@@ -440,6 +453,7 @@ func (h *Handler) UpdateBooking(c *gin.Context) {
 	}
 
 	prevStatus := booking.Status
+	before := bookingSnapshot(booking)
 	finalStatus := booking.Status
 	if s, ok := updates["status"].(string); ok {
 		finalStatus = s
@@ -475,6 +489,7 @@ func (h *Handler) UpdateBooking(c *gin.Context) {
 	var fresh models.Booking
 	h.bookingPreload(h.DB.Where("id = ?", booking.ID)).First(&fresh)
 	h.notifyBooking(c, &fresh, "status", prevStatus)
+	bookingmail.Updated(before, &fresh, c.GetString("user_id"))
 	c.JSON(http.StatusOK, gin.H{"booking": fresh})
 }
 
@@ -487,7 +502,7 @@ func (h *Handler) DeleteBooking(c *gin.Context) {
 	}
 
 	var booking models.Booking
-	if err := h.DB.Where("id = ? AND organization_id = ?", c.Param("id"), orgID).First(&booking).Error; err != nil {
+	if err := h.bookingPreload(h.DB.Where("id = ? AND organization_id = ?", c.Param("id"), orgID)).First(&booking).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Booking not found"})
 			return
@@ -496,10 +511,11 @@ func (h *Handler) DeleteBooking(c *gin.Context) {
 		return
 	}
 
-	if err := h.DB.Delete(&booking).Error; err != nil {
+	if err := h.DB.Delete(&models.Booking{}, "id = ?", booking.ID).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete booking"})
 		return
 	}
+	bookingmail.Deleted(bookingSnapshot(booking), c.GetString("user_id"))
 
 	c.JSON(http.StatusOK, gin.H{"message": "Booking deleted successfully"})
 }
@@ -627,6 +643,7 @@ func (h *Handler) UpdateBookingStatus(c *gin.Context) {
 	}
 
 	prevStatus := booking.Status
+	before := bookingSnapshot(booking)
 	if err := h.DB.Model(&booking).Update("status", request.Status).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update booking status"})
 		return
@@ -635,5 +652,6 @@ func (h *Handler) UpdateBookingStatus(c *gin.Context) {
 	var fresh models.Booking
 	h.bookingPreload(h.DB.Where("id = ?", booking.ID)).First(&fresh)
 	h.notifyBooking(c, &fresh, "status", prevStatus)
+	bookingmail.Updated(before, &fresh, c.GetString("user_id"))
 	c.JSON(http.StatusOK, gin.H{"booking": fresh})
 }

@@ -94,17 +94,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	// Generate JWT token
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.ID,
-		"email":   user.Email,
-		"role":    user.Role,
-		"org_id":  user.OrganizationID,
-		"exp":     time.Now().Add(h.Config.JWTExpiry).Unix(),
-		"iat":     time.Now().Unix(),
-	})
-
-	tokenString, err := token.SignedString([]byte(h.Config.JWTSecret))
+	resp, err := h.IssueSession(c, &user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -116,42 +106,55 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	// Generate refresh token
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    resp,
+		"message": "Login successful",
+	})
+}
+
+// IssueSession creates the normal DASYIN session for an authenticated user:
+// an access token, a stored refresh token, last-login time and the user with
+// branding. Password sign-in and single sign-on (pkg/sso) both use it.
+func (h *Handler) IssueSession(c *gin.Context, user *models.User) (*LoginResponse, error) {
+	now := time.Now()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": user.ID,
+		"email":   user.Email,
+		"role":    user.Role,
+		"org_id":  user.OrganizationID,
+		"exp":     now.Add(h.Config.JWTExpiry).Unix(),
+		"iat":     now.Unix(),
+	})
+	tokenString, err := token.SignedString([]byte(h.Config.JWTSecret))
+	if err != nil {
+		return nil, err
+	}
+
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID,
 		"type":    "refresh",
 		"jti":     uuid.NewString(),
-		"exp":     time.Now().Add(h.Config.RefreshTokenExpiry).Unix(),
-		"iat":     time.Now().Unix(),
+		"exp":     now.Add(h.Config.RefreshTokenExpiry).Unix(),
+		"iat":     now.Unix(),
 	})
-
 	refreshTokenString, err := refreshToken.SignedString([]byte(h.Config.JWTSecret))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error": gin.H{
-				"code":    "TOKEN_GENERATION_ERROR",
-				"message": "Failed to generate refresh token",
-			},
-		})
-		return
+		return nil, err
 	}
 
 	// Save refresh token to database
-	refreshTokenModel := models.RefreshToken{
+	h.DB.Create(&models.RefreshToken{
 		UserID:    user.ID,
 		Token:     refreshTokenString,
-		ExpiresAt: time.Now().Add(h.Config.RefreshTokenExpiry),
+		ExpiresAt: now.Add(h.Config.RefreshTokenExpiry),
 		IsRevoked: false,
-	}
-	h.DB.Create(&refreshTokenModel)
+	})
 
 	// Update last login time
-	now := time.Now()
 	user.LastLoginAt = &now
-	h.DB.Save(&user)
+	h.DB.Model(&models.User{}).Where("id = ?", user.ID).UpdateColumn("last_login_at", now)
 
-	// Convert to response format
 	userResponse := UserResponse{
 		ID:             user.ID,
 		Email:          user.Email,
@@ -167,16 +170,12 @@ func (h *Handler) Login(c *gin.Context) {
 	}
 	h.withBranding(c, &userResponse, user.OrganizationID)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": LoginResponse{
-			Token:        tokenString,
-			RefreshToken: refreshTokenString,
-			User:         userResponse,
-			ExpiresIn:    int(h.Config.JWTExpiry.Seconds()),
-		},
-		"message": "Login successful",
-	})
+	return &LoginResponse{
+		Token:        tokenString,
+		RefreshToken: refreshTokenString,
+		User:         userResponse,
+		ExpiresIn:    int(h.Config.JWTExpiry.Seconds()),
+	}, nil
 }
 
 func (h *Handler) RefreshToken(c *gin.Context) {

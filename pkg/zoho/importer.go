@@ -312,6 +312,41 @@ func (im *Importer) ImportTaxes(taxes []TaxRate) {
 
 // ---------- items ----------
 
+// itemSource is the currency item prices are in when an item doesn't say:
+// the chosen one, else the Zoho base currency, else the home currency.
+func (im *Importer) itemSource() string {
+	return strings.ToUpper(firstNonEmpty(im.Opts.ItemPrices.Currency, im.SrcBase, im.Home))
+}
+
+// ItemPrice is the catalog price for an item: in its own currency ("keep"),
+// or converted to the home currency at the chosen rate ("convert").
+func (im *Importer) ItemPrice(it Item) (price float64, cur string, inclTax bool) {
+	src := strings.ToUpper(firstNonEmpty(it.Currency, im.itemSource()))
+	if !currency.IsSupported(src) {
+		src = im.Home
+	}
+	inclTax = im.Opts.ItemPrices.IncludeTax
+	if it.TaxInclusive != nil {
+		inclTax = *it.TaxInclusive
+	}
+	if im.Opts.ItemPrices.Convert() && src != im.Home && src == im.itemSource() {
+		return fxrates.Round(it.Rate*im.Opts.ItemPrices.Rate, im.Home), im.Home, inclTax
+	}
+	return fxrates.Round(it.Rate, src), src, inclTax
+}
+
+// itemHash fingerprints the item and the pricing choice (a different
+// conversion re-writes the price on re-sync).
+func (im *Importer) itemHash(it Item) string {
+	p, c, t := im.ItemPrice(it)
+	return hashOf(struct {
+		Item
+		P float64
+		C string
+		T bool
+	}{it, p, c, t})
+}
+
 // UpsertItem adds an item to the services catalog (when chosen).
 func (im *Importer) UpsertItem(it Item) {
 	im.load()
@@ -323,9 +358,10 @@ func (im *Importer) UpsertItem(it Item) {
 	if ext == "" {
 		ext = "name:" + lowerTrim(it.Name)
 	}
-	hash := hashOf(it)
+	hash := im.itemHash(it)
 	ref := im.ref(entItemRef, ext)
-	svc := models.Service{Name: cut(it.Name, 255), Description: it.Description, Category: "Zoho Books items", Duration: 0, Price: math.Round(it.Rate*100) / 100, IsActive: it.Active}
+	price, cur, incl := im.ItemPrice(it)
+	svc := models.Service{Name: cut(it.Name, 255), Description: it.Description, Category: "Zoho Books items", Duration: 0, Price: price, Currency: cur, PriceIncludesTax: incl, IsActive: it.Active}
 	if im.RefSource != "zoho" {
 		svc.Category = "Imported items"
 	}
@@ -340,7 +376,7 @@ func (im *Importer) UpsertItem(it Item) {
 		}
 		err := im.DB.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Model(&models.Service{}).Where("id = ?", ref.LocalID).Updates(map[string]interface{}{
-				"name": svc.Name, "description": svc.Description, "price": svc.Price, "is_active": svc.IsActive}).Error; err != nil {
+				"name": svc.Name, "description": svc.Description, "price": svc.Price, "currency": svc.Currency, "price_includes_tax": svc.PriceIncludesTax, "is_active": svc.IsActive}).Error; err != nil {
 				return err
 			}
 			return im.saveRef(tx, ref, entItemRef, ext, ref.LocalID, it.Name, hash, "", false)

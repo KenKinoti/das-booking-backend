@@ -47,6 +47,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	g.GET("/zoho/organizations", h.admin, h.Organizations)
 	g.PUT("/zoho/organization", h.admin, h.ChooseOrganization)
 	g.POST("/zoho/preview", h.admin, h.PreviewAPI)
+	g.POST("/zoho/fix-prices", h.admin, h.FixItemPrices)
 
 	g.GET("/fields", h.Fields)
 	g.POST("/files", h.admin, h.UploadFiles)

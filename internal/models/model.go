@@ -157,18 +157,23 @@ type Vehicle struct {
 
 // Service represents services offered by the business
 type Service struct {
-	ID              string         `json:"id" gorm:"type:varchar(255);primaryKey"`
-	OrganizationID  string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
-	Name            string         `json:"name" gorm:"type:varchar(255);not null"`
-	Description     string         `json:"description" gorm:"type:text"`
-	Category        string         `json:"category" gorm:"type:varchar(100);not null;index"` // maintenance, repair, beauty, etc.
-	Duration        int            `json:"duration" gorm:"not null"`                         // Duration in minutes
-	Price           float64        `json:"price" gorm:"type:decimal(10,2);not null"`
-	IsActive        bool           `json:"is_active" gorm:"default:true;index"`
-	RequiresVehicle bool           `json:"requires_vehicle" gorm:"default:false"` // For garage services
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `json:"-" gorm:"index"`
+	ID             string  `json:"id" gorm:"type:varchar(255);primaryKey"`
+	OrganizationID string  `json:"organization_id" gorm:"type:varchar(255);not null;index"`
+	Name           string  `json:"name" gorm:"type:varchar(255);not null"`
+	Description    string  `json:"description" gorm:"type:text"`
+	Category       string  `json:"category" gorm:"type:varchar(100);not null;index"` // maintenance, repair, beauty, etc.
+	Duration       int     `json:"duration" gorm:"not null"`                         // Duration in minutes
+	Price          float64 `json:"price" gorm:"type:decimal(10,2);not null"`
+	// Currency of Price (ISO code). "" = the organisation's home currency
+	// (rows created before prices carried a currency).
+	Currency string `json:"currency" gorm:"type:varchar(3);not null;default:''"`
+	// PriceIncludesTax: Price is tax-inclusive (e.g. imported from Zoho that way).
+	PriceIncludesTax bool           `json:"price_includes_tax" gorm:"not null;default:false"`
+	IsActive         bool           `json:"is_active" gorm:"default:true;index"`
+	RequiresVehicle  bool           `json:"requires_vehicle" gorm:"default:false"` // For garage services
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	DeletedAt        gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Relationships
 	Organization Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID"`
