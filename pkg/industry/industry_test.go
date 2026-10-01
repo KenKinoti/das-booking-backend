@@ -146,6 +146,9 @@ func TestDecideCodes(t *testing.T) {
 		{tech, "DELETE", "/api/v1/bookings/b1", "ROLE_FORBIDDEN", false},
 		{tech, "GET", "/api/v1/bookings", "", true},
 		{tech, "PATCH", "/api/v1/bookings/b1/status", "", true},
+		// Calendar file and add-to-calendar links of a booking follow the booking's rules.
+		{tech, "GET", "/api/v1/bookings/b1/calendar.ics", "", true},
+		{tech, "GET", "/api/v1/bookings/b1/calendar-links", "", true},
 		{tech, "GET", "/api/v1/inventory/products", "", false},
 		{tech, "GET", "/api/v1/customers", "", false}, // shared look-up (read any)
 		{tech, "POST", "/api/v1/customers", "ROLE_FORBIDDEN", false},
@@ -339,7 +342,8 @@ func router(t *testing.T, svc *Service) *gin.Engine {
 	}
 	r.Use(e.Middleware())
 	echo := func(c *gin.Context) { c.JSON(200, gin.H{"staff_id": c.Query("staff_id"), "path": c.Request.URL.Path}) }
-	for _, p := range []string{"/api/v1/bookings", "/api/v1/bookings/:id", "/api/v1/bookings/:id/status", "/api/v1/events", "/api/v1/invoicing/invoices", "/api/v1/inventory/products"} {
+	for _, p := range []string{"/api/v1/bookings", "/api/v1/bookings/:id", "/api/v1/bookings/:id/status", "/api/v1/bookings/:id/calendar.ics", "/api/v1/bookings/:id/calendar-links",
+		"/api/v1/events", "/api/v1/invoicing/invoices", "/api/v1/inventory/products"} {
 		r.GET(p, echo)
 		r.POST(p, echo)
 		r.PUT(p, echo)
@@ -422,6 +426,18 @@ func TestMiddlewareAndOwnScope(t *testing.T) {
 	}
 	if code, body := call(r, "PUT", "/api/v1/bookings/"+theirs, f, f.tech, "staff"); code != 403 || errCode(body) != "ROLE_FORBIDDEN" {
 		t.Fatalf("technician edit other booking: %d %v", code, body)
+	}
+	// The calendar file and links of a booking: own ones only.
+	for _, leaf := range []string{"/calendar.ics", "/calendar-links"} {
+		if code, _ := call(r, "GET", "/api/v1/bookings/"+mine+leaf, f, f.tech, "staff"); code != 200 {
+			t.Fatalf("technician own %s: %d", leaf, code)
+		}
+		if code, body := call(r, "GET", "/api/v1/bookings/"+theirs+leaf, f, f.tech, "staff"); code != 403 || errCode(body) != "ROLE_FORBIDDEN" {
+			t.Fatalf("technician other booking's %s: %d %v", leaf, code, body)
+		}
+		if code, _ := call(r, "GET", "/api/v1/bookings/"+theirs+leaf, f, f.admin, "admin"); code != 200 {
+			t.Fatalf("owner %s: %d", leaf, code)
+		}
 	}
 	if code, _ := call(r, "GET", "/api/v1/inventory/products", f, f.tech, "staff"); code != 200 {
 		t.Fatalf("technician parts: %d", code)

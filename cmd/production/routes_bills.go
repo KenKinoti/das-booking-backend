@@ -17,14 +17,18 @@ import (
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/dbstatus"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/expenses"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/fxrates"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/industry"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/recurbills"
 )
 
 // Recurring bills + bill reminders (/api/v1/finance/recurring…,
-// /api/v1/finance/bill-reminders…) and staff booking emails
-// (/api/v1/booking-emails…).
+// /api/v1/finance/bill-reminders…), staff booking emails
+// (/api/v1/booking-emails…) and booking calendar files / feeds
+// (/api/v1/bookings/:id/calendar.ics, /api/v1/public/bookings/:id/calendar.ics,
+// /api/v1/public/calendar/<token>.ics).
 //
-// Env: PUBLIC_APP_URL (links in emails), PUBLIC_API_URL (logo URL),
+// Env: PUBLIC_APP_URL (links in emails), PUBLIC_API_URL (logo URL and the
+// public calendar links in emails), JWT_SECRET (signs the calendar links),
 // RECURRING_BILLS_SCHEDULER=off and BOOKING_AGENDA_SCHEDULER=off disable the
 // background runs.
 func init() {
@@ -54,8 +58,20 @@ func init() {
 
 		n := bookingmail.New(db)
 		n.AppURL, n.LogoURL = appURL, logo
+		// Calendar links: signed with the server secret, served from this API.
+		n.APIURL, n.Secret = branding.BaseURL(nil), []byte(cfg.JWTSecret)
+		ind := industryService(db)
+		n.Terms = func(org string) map[string]string {
+			st, err := ind.Settings(org)
+			if err != nil || !st.Confirmed {
+				return industry.DefaultTerms()
+			}
+			return industry.Terms(ind.Type(st.TypeKey))
+		}
 		bookingmail.Default = n
-		(&bookingmail.Handler{N: n}).RegisterRoutes(auth)
+		bh := &bookingmail.Handler{N: n}
+		bh.RegisterRoutes(auth)
+		bh.RegisterCalendarRoutes(auth, public)
 		if !strings.EqualFold(os.Getenv("BOOKING_AGENDA_SCHEDULER"), "off") {
 			n.StartScheduler(context.Background())
 		}

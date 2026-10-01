@@ -56,14 +56,25 @@ type EmailView struct {
 	StatusLine  string // "Part-paid — KSh 100.00 received"
 	StatusTone  string // ok | warn | danger | info
 
-	Facts     []EmailRow
-	Actions   []EmailAction
+	Facts   []EmailRow
+	Actions []EmailAction
+	// Groups are labelled rows of smaller, secondary buttons under the main
+	// actions (e.g. "Add to calendar"); the buttons wrap on narrow screens.
+	Groups    []EmailActionGroup
 	Lines     []EmailLine
 	MoreLines int
 	Totals    []EmailRow
 	Note      string // "A PDF copy (INV-1001.pdf) is attached."
 	FXNote    string // "Amounts in USD. Converted from KES at …"
 	ReplyTo   string // who a reply reaches
+}
+
+// EmailActionGroup is a labelled row of secondary buttons with optional small
+// text links underneath.
+type EmailActionGroup struct {
+	Label   string
+	Actions []EmailAction
+	Links   []EmailAction
 }
 
 var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -133,6 +144,50 @@ func button(a EmailAction, accent string) string {
 	fill := `fillcolor="` + bg + `"`
 	return fmt.Sprintf(`<td style="padding:0 10px 10px 0"><!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="%[1]s" style="height:46px;v-text-anchor:middle;width:%[6]dpx;" arcsize="18%%" strokecolor="%[4]s" strokeweight="2px" %[7]s><w:anchorlock/><center style="color:%[3]s;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">%[5]s</center></v:roundrect><![endif]--><!--[if !mso]><!-- --><a href="%[1]s" class="%[8]s" style="display:inline-block;background:%[2]s;color:%[3]s;border:2px solid %[4]s;border-radius:8px;padding:12px 22px;font:600 15px/20px %[9]s;text-decoration:none;mso-hide:all">%[5]s</a><!--<![endif]--></td>`,
 		esc(a.URL), bg, fg, border, esc(a.Label), width, fill, cls, fontStack)
+}
+
+// smallButton is a compact secondary bulletproof button. Each one sits in its
+// own left-aligned table so a row of them wraps without media queries
+// (Outlook gets them side by side through the ghost cells in actionGroup).
+func smallButton(a EmailAction, accent string) string {
+	width := 8*len([]rune(a.Label)) + 40
+	return fmt.Sprintf(`<table role="presentation" align="left" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:0 8px 8px 0"><!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="%[1]s" style="height:38px;v-text-anchor:middle;width:%[4]dpx;" arcsize="20%%" strokecolor="%[2]s" strokeweight="1.5px" fillcolor="#ffffff"><w:anchorlock/><center style="color:%[2]s;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;">%[3]s</center></v:roundrect><![endif]--><!--[if !mso]><!-- --><a href="%[1]s" class="btn2" style="display:inline-block;background:#ffffff;color:%[2]s;border:1.5px solid %[2]s;border-radius:8px;padding:8px 14px;font:600 14px/20px %[5]s;text-decoration:none;white-space:nowrap;mso-hide:all">%[3]s</a><!--<![endif]--></td></tr></table>`,
+		esc(a.URL), accent, esc(a.Label), width, fontStack)
+}
+
+// actionGroup renders one EmailActionGroup ("" when it has no valid link).
+func actionGroup(g EmailActionGroup, accent string) string {
+	var btns, links strings.Builder
+	for _, a := range g.Actions {
+		if validURL(a.URL) {
+			btns.WriteString(`<!--[if mso]><td valign="top"><![endif]-->` + smallButton(a, accent) + `<!--[if mso]></td><![endif]-->`)
+		}
+	}
+	for _, a := range g.Links {
+		if validURL(a.URL) {
+			if links.Len() > 0 {
+				links.WriteString(` &nbsp;·&nbsp; `)
+			}
+			links.WriteString(`<a href="` + esc(a.URL) + `" style="color:` + accent + `;text-decoration:underline">` + esc(a.Label) + `</a>`)
+		}
+	}
+	if btns.Len() == 0 && links.Len() == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="px" style="padding:10px 32px 0">`)
+	if g.Label != "" {
+		b.WriteString(`<div class="mt" style="font:600 11px/1.4 ` + fontStack + `;letter-spacing:.06em;text-transform:uppercase;color:` + cMutedTxt + `;padding:0 0 8px">` + esc(g.Label) + `</div>`)
+	}
+	if btns.Len() > 0 {
+		b.WriteString(`<!--[if mso]><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><![endif]-->` + btns.String() + `<!--[if mso]></tr></table><![endif]-->`)
+	}
+	b.WriteString(`</td></tr>`)
+	if links.Len() > 0 {
+		b.WriteString(`<tr><td class="px mt" style="padding:2px 32px 0;font:13px/1.5 ` + fontStack + `;color:` + cMutedTxt + `">` + links.String() + `</td></tr>`)
+	}
+	b.WriteString(`</table>` + "\n")
+	return b.String()
 }
 
 func validURL(u string) bool {
@@ -255,6 +310,10 @@ a{color:` + accent + `}
 	}
 	if btns.Len() > 0 {
 		w(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="px" style="padding:14px 32px 6px"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>` + btns.String() + `</tr></table></td></tr></table>` + "\n")
+	}
+
+	for _, g := range v.Groups {
+		w(actionGroup(g, accent))
 	}
 
 	// line items
@@ -412,6 +471,22 @@ func renderText(v EmailView) string {
 	}
 	if len(acts) > 0 {
 		b.WriteString("\n" + strings.Join(acts, "\n") + "\n")
+	}
+	for _, g := range v.Groups {
+		var rows []string
+		for _, a := range append(append([]EmailAction{}, g.Actions...), g.Links...) {
+			if validURL(a.URL) {
+				rows = append(rows, a.Label+": "+a.URL)
+			}
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		b.WriteString("\n")
+		if g.Label != "" {
+			b.WriteString(g.Label + "\n")
+		}
+		b.WriteString(strings.Join(rows, "\n") + "\n")
 	}
 	if len(v.Lines) > 0 {
 		b.WriteString("\nItems\n")

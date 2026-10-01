@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
-	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/meetings"
 )
 
 // Events.
@@ -23,7 +21,7 @@ const (
 type Plan struct {
 	UserID string
 	Event  string
-	Method string // REQUEST | CANCEL | "" (no calendar file)
+	Method string // REQUEST | CANCEL | "" (no calendar data)
 }
 
 func staffOf(b *models.Booking) string {
@@ -94,84 +92,7 @@ func PlanEmails(before, after *models.Booking) []Plan {
 	return out
 }
 
-// ---------------------------------------------------------------- calendar
-
-// UID is the stable iCalendar UID of a booking.
-func UID(bookingID string) string { return "booking-" + bookingID + "@dasyin-erp" }
-
-const icsTime = "20060102T150405Z"
-
-// ICSInput is what a booking's calendar entry shows.
-type ICSInput struct {
-	Booking        *models.Booking
-	Method         string // REQUEST | CANCEL
-	Sequence       int
-	Summary        string
-	Description    string
-	Location       string
-	URL            string
-	OrganizerName  string
-	OrganizerEmail string
-	AttendeeName   string
-	AttendeeEmail  string
-	Now            time.Time
-}
-
-// BuildICS renders the VCALENDAR for one booking.
-func BuildICS(in ICSInput) string {
-	b := in.Booking
-	method := strings.ToUpper(in.Method)
-	if method == "" {
-		method = "REQUEST"
-	}
-	now := in.Now
-	if now.IsZero() {
-		now = time.Now()
-	}
-	cn := func(n string) string {
-		n = strings.TrimSpace(strings.NewReplacer("\"", "", "\r", " ", "\n", " ").Replace(n))
-		if n == "" {
-			return ""
-		}
-		return `;CN="` + n + `"`
-	}
-	lines := []string{"BEGIN:VCALENDAR", "PRODID:-//DASYIN//ERP Bookings//EN", "VERSION:2.0", "CALSCALE:GREGORIAN", "METHOD:" + method,
-		"BEGIN:VEVENT", "UID:" + UID(b.ID), "DTSTAMP:" + now.UTC().Format(icsTime),
-		"DTSTART:" + b.StartTime.UTC().Format(icsTime), "DTEND:" + b.EndTime.UTC().Format(icsTime),
-		fmt.Sprintf("SEQUENCE:%d", in.Sequence), "SUMMARY:" + meetings.EscapeText(in.Summary)}
-	if in.Description != "" {
-		lines = append(lines, "DESCRIPTION:"+meetings.EscapeText(in.Description))
-	}
-	if in.Location != "" {
-		lines = append(lines, "LOCATION:"+meetings.EscapeText(in.Location))
-	}
-	if in.URL != "" {
-		lines = append(lines, "URL:"+in.URL)
-	}
-	if in.OrganizerEmail != "" {
-		lines = append(lines, "ORGANIZER"+cn(in.OrganizerName)+":mailto:"+in.OrganizerEmail)
-	}
-	if in.AttendeeEmail != "" {
-		ps := "ACCEPTED"
-		if method == "CANCEL" {
-			ps = "DECLINED"
-		}
-		lines = append(lines, "ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT="+ps+cn(in.AttendeeName)+":mailto:"+in.AttendeeEmail)
-	}
-	if method == "CANCEL" {
-		lines = append(lines, "STATUS:CANCELLED")
-	} else {
-		lines = append(lines, "STATUS:CONFIRMED")
-		lines = append(lines, "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:"+meetings.EscapeText(in.Summary), "TRIGGER:-PT30M", "END:VALARM")
-	}
-	lines = append(lines, "TRANSP:OPAQUE", "END:VEVENT", "END:VCALENDAR")
-	var sb strings.Builder
-	for _, l := range lines {
-		sb.WriteString(meetings.FoldLine(l))
-		sb.WriteString("\r\n")
-	}
-	return sb.String()
-}
+// ---------------------------------------------------------------- details
 
 // ServiceNames lists a booking's services.
 func ServiceNames(b *models.Booking) []string {

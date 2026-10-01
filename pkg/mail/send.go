@@ -303,15 +303,41 @@ func Build(cfg Config, msg Message, env Envelope, now time.Time) []byte {
 		if err != nil {
 			mt, params = "application/octet-stream", map[string]string{}
 		}
-		params["name"] = name
+		delete(params, "name")
 		buf.WriteString("--" + mixed + "\r\n")
-		buf.WriteString("Content-Type: " + mime.FormatMediaType(mt, params) + "\r\n")
-		buf.WriteString("Content-Disposition: " + mime.FormatMediaType("attachment", map[string]string{"filename": name}) + "\r\n")
+		buf.WriteString("Content-Type: " + withFileParam(mt, params, "name", name) + "\r\n")
+		buf.WriteString("Content-Disposition: " + withFileParam("attachment", nil, "filename", name) + "\r\n")
 		buf.WriteString("Content-Transfer-Encoding: base64\r\n\r\n")
 		buf.WriteString(b64Lines(a.Data))
 	}
 	buf.WriteString("--" + mixed + "--\r\n")
 	return buf.Bytes()
+}
+
+// withFileParam renders "<value>; <other params>; key=<file name>". A plain
+// ASCII name is always written as a quoted string (name="booking.ics") — the
+// form every mail client and calendar app understands; anything else falls
+// back to RFC 2231 encoding.
+func withFileParam(value string, params map[string]string, key, name string) string {
+	plain := name != ""
+	for _, r := range name {
+		if r < 0x20 || r > 0x7e || r == '"' || r == '\\' {
+			plain = false
+			break
+		}
+	}
+	if !plain {
+		all := map[string]string{key: name}
+		for k, v := range params {
+			all[k] = v
+		}
+		return mime.FormatMediaType(value, all)
+	}
+	head := mime.FormatMediaType(value, params)
+	if head == "" {
+		head = value
+	}
+	return head + "; " + key + `="` + name + `"`
 }
 
 // ---------------------------------------------------------------- errors

@@ -187,8 +187,12 @@ func (n *Notifier) StartScheduler(ctx context.Context) {
 
 // ---------------------------------------------------------------- HTTP
 
-// Handler serves /api/v1/booking-emails/….
-type Handler struct{ N *Notifier }
+// Handler serves /api/v1/booking-emails/… and the calendar endpoints
+// (calendar_http.go).
+type Handler struct {
+	N     *Notifier
+	limit *rateLimiter
+}
 
 // RegisterRoutes mounts the routes.
 func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
@@ -233,7 +237,14 @@ func (h *Handler) getSettings(c *gin.Context) {
 		bad(c, http.StatusForbidden, "No organisation")
 		return
 	}
-	okJSON(c, gin.H{"settings": h.N.SettingsFor(org), "timezone": h.N.Loc(org).String()})
+	okJSON(c, gin.H{"settings": settingsView(h.N.SettingsFor(org)), "timezone": h.N.Loc(org).String(), "reminder_choices": ReminderChoices})
+}
+
+// settingsView is the settings as the API returns them (reminder_minutes is
+// always a number: the saved choice or the default).
+func settingsView(st Settings) gin.H {
+	return gin.H{"organization_id": st.OrganizationID, "staff_emails": st.StaffEmails, "daily_agenda": st.DailyAgenda, "agenda_hour": st.AgendaHour,
+		"last_agenda_date": st.LastAgendaDate, "reminder_minutes": st.Reminder(), "updated_at": st.UpdatedAt}
 }
 
 func (h *Handler) saveSettings(c *gin.Context) {
@@ -243,9 +254,10 @@ func (h *Handler) saveSettings(c *gin.Context) {
 		return
 	}
 	var in struct {
-		StaffEmails *bool `json:"staff_emails"`
-		DailyAgenda *bool `json:"daily_agenda"`
-		AgendaHour  *int  `json:"agenda_hour"`
+		StaffEmails     *bool `json:"staff_emails"`
+		DailyAgenda     *bool `json:"daily_agenda"`
+		AgendaHour      *int  `json:"agenda_hour"`
+		ReminderMinutes *int  `json:"reminder_minutes"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		bad(c, http.StatusBadRequest, "Invalid request")
@@ -265,12 +277,20 @@ func (h *Handler) saveSettings(c *gin.Context) {
 		}
 		st.AgendaHour = *in.AgendaHour
 	}
+	if in.ReminderMinutes != nil {
+		if !ValidReminder(*in.ReminderMinutes) {
+			bad(c, http.StatusBadRequest, "Choose no reminder, 15, 30 or 60 minutes")
+			return
+		}
+		m := *in.ReminderMinutes
+		st.ReminderMinutes = &m
+	}
 	st.OrganizationID, st.UpdatedAt = org, time.Now()
 	if err := h.N.DB.Save(&st).Error; err != nil {
 		bad(c, http.StatusInternalServerError, "Could not save")
 		return
 	}
-	okJSON(c, gin.H{"settings": st})
+	okJSON(c, gin.H{"settings": settingsView(st)})
 }
 
 func (h *Handler) getMe(c *gin.Context) {

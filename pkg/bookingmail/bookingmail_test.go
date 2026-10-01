@@ -69,28 +69,6 @@ func TestPlanEmails(t *testing.T) {
 	}
 }
 
-func TestBuildICS(t *testing.T) {
-	b := bk("A", "scheduled", time.Date(2026, 10, 6, 7, 0, 0, 0, time.UTC))
-	b.ID = "4f1c"
-	ics := BuildICS(ICSInput{Booking: b, Method: "REQUEST", Sequence: 2, Summary: "Full service; oil — Jane, Doe", Description: "Line 1\nLine 2",
-		OrganizerEmail: "bookings@shop.example", AttendeeName: "Sam Staff", AttendeeEmail: "sam@shop.example", Now: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)})
-	for _, s := range []string{"METHOD:REQUEST\r\n", "UID:booking-4f1c@dasyin-erp\r\n", "SEQUENCE:2\r\n", "DTSTART:20261006T070000Z\r\n", "DTEND:20261006T083000Z\r\n",
-		`SUMMARY:Full service\; oil — Jane\, Doe`, `DESCRIPTION:Line 1\nLine 2`, "STATUS:CONFIRMED", "BEGIN:VALARM", `ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Sam Staff":mailto:sam@shop.example`} {
-		if !strings.Contains(strings.ReplaceAll(ics, "\r\n ", ""), s) { // unfolded
-			t.Fatalf("ics lacks %q:\n%s", s, ics)
-		}
-	}
-	c := BuildICS(ICSInput{Booking: b, Method: "CANCEL", Sequence: 3, Summary: "x"})
-	if !strings.Contains(c, "METHOD:CANCEL") || !strings.Contains(c, "STATUS:CANCELLED") || !strings.Contains(c, "UID:booking-4f1c@dasyin-erp") || strings.Contains(c, "VALARM") {
-		t.Fatalf("cancel ics:\n%s", c)
-	}
-	for _, l := range strings.Split(ics, "\r\n") {
-		if len(l) > 75 {
-			t.Fatalf("unfolded line %q", l)
-		}
-	}
-}
-
 // ---------------------------------------------------------------- with a database
 
 func testDB(t *testing.T) *gorm.DB {
@@ -128,6 +106,20 @@ func testDB(t *testing.T) *gorm.DB {
 			t.Fatal(err)
 		}
 	}
+	// Bookings and what their calendar entries show (calendar files, feeds).
+	// Plain SQL: AutoMigrate would pull in every related model.
+	for _, q := range []string{
+		`CREATE TABLE customers (id varchar(255) primary key, first_name text, last_name text, email text, phone text, organization_id varchar(255), created_at timestamptz, updated_at timestamptz, deleted_at timestamptz)`,
+		`CREATE TABLE vehicles (id varchar(255) primary key, customer_id varchar(255), organization_id varchar(255), make text, model text, year int, license_plate text, created_at timestamptz, updated_at timestamptz, deleted_at timestamptz)`,
+		`CREATE TABLE services (id varchar(255) primary key, organization_id varchar(255), name text, duration int, price numeric(10,2), created_at timestamptz, updated_at timestamptz, deleted_at timestamptz)`,
+		`CREATE TABLE bookings (id varchar(255) primary key, customer_id varchar(255), organization_id varchar(255), vehicle_id varchar(255), staff_id varchar(255), start_time timestamptz, end_time timestamptz,
+			status varchar(50), total_price numeric(10,2) default 0, notes text, internal_notes text, created_at timestamptz, updated_at timestamptz, deleted_at timestamptz)`,
+		`CREATE TABLE booking_services (booking_id varchar(255), service_id varchar(255), primary key (booking_id, service_id))`,
+	} {
+		if err := db.Exec(q).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 	return db
 }
 
@@ -160,8 +152,8 @@ func TestNotifierRecipientsICSAndTimezone(t *testing.T) {
 		out.msgs = append(out.msgs, m)
 		return nil
 	}
-	n := &Notifier{DB: db, Mail: ms, AppURL: "https://erp.example", Async: true, Retries: []time.Duration{10 * time.Millisecond, 10 * time.Millisecond},
-		Now: func() time.Time { return time.Date(2026, 10, 1, 6, 0, 0, 0, time.UTC) }}
+	n := &Notifier{DB: db, Mail: ms, AppURL: "https://erp.example", APIURL: "https://api.erp.example", Secret: []byte("test-secret-0123456789abcdef"), Async: true,
+		Retries: []time.Duration{10 * time.Millisecond, 10 * time.Millisecond}, Now: func() time.Time { return time.Date(2026, 10, 1, 6, 0, 0, 0, time.UTC) }}
 	start := time.Date(2026, 10, 6, 7, 0, 0, 0, time.UTC) // 10:00 in Nairobi
 	mk := func(staff string, st time.Time, status string) *models.Booking {
 		bb := &models.Booking{ID: "bk-1", OrganizationID: org, Status: status, StartTime: st, EndTime: st.Add(90 * time.Minute), StaffID: sp(staff), Notes: "Bring the spare key",
@@ -192,9 +184,40 @@ func TestNotifierRecipientsICSAndTimezone(t *testing.T) {
 			t.Fatalf("create email lacks %q", s)
 		}
 	}
-	if m.CalendarMethod != "REQUEST" || len(m.Attachments) != 1 || m.Attachments[0].Filename != "booking.ics" ||
-		!strings.Contains(m.Calendar, "SEQUENCE:0") || !strings.Contains(m.Calendar, "UID:booking-bk-1@dasyin-erp") || !strings.Contains(m.Calendar, "ORGANIZER;CN=\"Nairobi Auto\":mailto:bookings@shop.example") {
-		t.Fatalf("create ics:\n%s", m.Calendar)
+	// Inline part: an invitation (REQUEST) from the organisation to the staff member.
+	if m.CalendarMethod != "REQUEST" || !strings.Contains(m.Calendar, "METHOD:REQUEST\r\n") || !strings.Contains(m.Calendar, "SEQUENCE:0") || !strings.Contains(m.Calendar, "UID:booking-bk-1@dasyin-erp") ||
+		!strings.Contains(m.Calendar, "ORGANIZER;CN=\"Nairobi Auto\":mailto:bookings@shop.example") {
+		t.Fatalf("create invitation:\n%s", m.Calendar)
+	}
+	_, inv := oneEvent(t, m.Calendar)
+	if a := inv.all("ATTENDEE"); len(a) != 1 || a[0].Value != "mailto:amina@shop.example" || !strings.Contains(a[0].Params, "PARTSTAT=NEEDS-ACTION;RSVP=FALSE") {
+		t.Fatalf("invitation attendee %+v", a)
+	}
+	// Attachment: the add-to-calendar file (PUBLISH, nobody invited), same UID and SEQUENCE.
+	if len(m.Attachments) != 1 || m.Attachments[0].Filename != "booking-2026-10-06-1000-jane-wanjiru.ics" || m.Attachments[0].ContentType != "text/calendar; charset=utf-8; method=PUBLISH" {
+		t.Fatalf("attachment %+v", m.Attachments)
+	}
+	att := string(m.Attachments[0].Data)
+	acal, aev := oneEvent(t, att)
+	if acal.get(t, "METHOD") != "PUBLISH" || aev.get(t, "UID") != inv.get(t, "UID") || aev.get(t, "SEQUENCE") != "0" || strings.Contains(att, "ORGANIZER") || strings.Contains(att, "ATTENDEE") ||
+		len(aev.subs("VALARM")) != 1 || aev.subs("VALARM")[0].get(t, "TRIGGER") != "-PT30M" {
+		t.Fatalf("attachment:\n%s", att)
+	}
+	// "Add to calendar" buttons: Google, Outlook, and the signed public .ics for Apple / other apps.
+	pub := "https://api.erp.example/api/v1/public/bookings/bk-1/calendar.ics?t=" + LinkToken(n.Secret, org, "bk-1")
+	for _, s := range []string{"Add to your calendar", ">Google Calendar</a>", ">Outlook</a>", ">Apple / other</a>", "Outlook.com (personal account)",
+		"https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text=Full%20service%2C%20Oil%20change%20%E2%80%94%20Jane%20Wanjiru&amp;dates=20261006T070000Z/20261006T083000Z",
+		"https://outlook.office.com/calendar/0/deeplink/compose?path=/calendar/action/compose&amp;rru=addevent&amp;subject=", "startdt=2026-10-06T07%3A00%3A00Z&amp;enddt=2026-10-06T08%3A30%3A00Z",
+		"https://outlook.live.com/calendar/0/deeplink/compose?", strings.ReplaceAll(pub, "&", "&amp;"), "open the attached calendar file (.ics) and choose Add"} {
+		if !strings.Contains(m.HTML, s) {
+			t.Fatalf("create email lacks %q", s)
+		}
+	}
+	for _, s := range []string{"Add to your calendar\nGoogle Calendar: https://calendar.google.com/calendar/render?action=TEMPLATE&text=", "\nOutlook: https://outlook.office.com/calendar/0/deeplink/compose?",
+		"\nApple / other: " + pub + "\n", "\nOutlook.com (personal account): https://outlook.live.com/"} {
+		if !strings.Contains(m.Text, s) {
+			t.Fatalf("plain text lacks %q:\n%s", s, m.Text)
+		}
 	}
 	var lg Log
 	db.Where("booking_id = ? AND event = ?", "bk-1", EvAssigned).First(&lg)
@@ -219,6 +242,18 @@ func TestNotifierRecipientsICSAndTimezone(t *testing.T) {
 	ca, cb := got[`"Amina Otieno" <amina@shop.example>`], got[`"Brian Kip" <brian@shop.example>`]
 	if ca.CalendarMethod != "CANCEL" || !strings.Contains(ca.Calendar, "STATUS:CANCELLED") || !strings.Contains(ca.Subject, "no longer yours") || !strings.Contains(ca.Calendar, "SEQUENCE:2") {
 		t.Fatalf("unassigned: %q\n%s", ca.Subject, ca.Calendar)
+	}
+	// The cancellation attachment removes the same event; no "add to calendar" buttons.
+	xcal, xev := oneEvent(t, string(ca.Attachments[0].Data))
+	if xcal.get(t, "METHOD") != "CANCEL" || xev.get(t, "STATUS") != "CANCELLED" || xev.get(t, "UID") != "booking-bk-1@dasyin-erp" || xev.get(t, "SEQUENCE") != "2" ||
+		ca.Attachments[0].ContentType != "text/calendar; charset=utf-8; method=CANCEL" || ca.Attachments[0].Filename != "booking-2026-10-06-1000-jane-wanjiru-cancelled.ics" {
+		t.Fatalf("cancel attachment %+v\n%s", ca.Attachments[0].Filename, ca.Attachments[0].Data)
+	}
+	if strings.Contains(ca.HTML, "Google Calendar") || strings.Contains(ca.HTML, "calendar.ics?t=") || strings.Contains(ca.Text, "Add to your calendar") || !strings.Contains(ca.HTML, "the attached update removes it from your calendar") {
+		t.Fatalf("cancellation email offers add-to-calendar links")
+	}
+	if _, bev := oneEvent(t, string(cb.Attachments[0].Data)); bev.get(t, "SEQUENCE") != "2" || bev.get(t, "STATUS") != "CONFIRMED" {
+		t.Fatalf("assigned attachment")
 	}
 	if cb.CalendarMethod != "REQUEST" || !strings.Contains(cb.Calendar, "SEQUENCE:2") || !strings.HasPrefix(cb.Subject, "New booking:") {
 		t.Fatalf("assigned: %q", cb.Subject)

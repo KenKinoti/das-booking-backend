@@ -27,6 +27,15 @@ type Notifier struct {
 	AppURL  string
 	LogoURL func(org string) string
 	Now     func() time.Time
+	// APIURL is the public origin of this API (PUBLIC_API_URL, no trailing
+	// slash, no /api/v1): the base of the public calendar links in emails.
+	APIURL string
+	// Secret signs the public calendar links (the server secret). Without it
+	// there are no public links.
+	Secret []byte
+	// Terms returns the organisation's business-type words ("booking" →
+	// "Job card"); nil = the default words.
+	Terms func(org string) map[string]string
 	// Async sends in the background (the API never waits for SMTP).
 	Async bool
 	// Retries are the waits before attempts 2, 3 … (default 5s, 30s).
@@ -98,19 +107,24 @@ func (n *Notifier) WantsEmails(userID string) bool {
 // Handle plans and queues the emails for one change.
 func (n *Notifier) Handle(before, after *models.Booking, actorID string) []Plan {
 	plans := PlanEmails(before, after)
-	if len(plans) == 0 {
-		return plans
-	}
 	b := after
 	if b == nil {
 		b = before
 	}
+	if b == nil {
+		return plans
+	}
 	org := b.OrganizationID
+	// One SEQUENCE bump per change — shared by everyone emailed about it and
+	// by the calendar file / feed, also when nobody is emailed, so adding the
+	// file again always updates the event in a calendar app.
+	seq := n.nextSequence(org, b.ID, before != nil)
+	if len(plans) == 0 {
+		return plans
+	}
 	if !n.SettingsFor(org).StaffEmails {
 		return nil
 	}
-	// One SEQUENCE bump per change (shared by everyone emailed about it).
-	seq := n.nextSequence(org, b.ID)
 	snap := *b
 	if after == nil {
 		// Deleted: the calendar entry keeps the last known times.
@@ -137,15 +151,47 @@ func (n *Notifier) Handle(before, after *models.Booking, actorID string) []Plan 
 	return plans
 }
 
-func (n *Notifier) nextSequence(org, bookingID string) int {
+// nextSequence returns the SEQUENCE for a change: 0 for a new booking, the
+// previous one + 1 afterwards (1 for the first change of a booking that
+// predates this table).
+func (n *Notifier) nextSequence(org, bookingID string, changed bool) int {
 	now := n.now()
+	first := 0
+	if changed {
+		first = 1
+	}
 	n.DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "booking_id"}},
 		DoUpdates: clause.Assignments(map[string]any{"sequence": gorm.Expr("booking_calendar_state.sequence + 1"), "updated_at": now}),
-	}).Create(&CalState{BookingID: bookingID, OrganizationID: org, Sequence: 0, UpdatedAt: now})
+	}).Create(&CalState{BookingID: bookingID, OrganizationID: org, Sequence: first, UpdatedAt: now})
 	var st CalState
 	n.DB.Where("booking_id = ?", bookingID).First(&st)
 	return st.Sequence
+}
+
+// Sequence is the current calendar SEQUENCE of a booking (0 when it never changed).
+func (n *Notifier) Sequence(bookingID string) int {
+	var st CalState
+	if n.DB.Where("booking_id = ?", bookingID).First(&st).Error != nil {
+		return 0
+	}
+	return st.Sequence
+}
+
+func (n *Notifier) sequences(ids []string) map[string]int {
+	out := map[string]int{}
+	for i := 0; i < len(ids); i += 500 {
+		j := i + 500
+		if j > len(ids) {
+			j = len(ids)
+		}
+		var rows []CalState
+		n.DB.Where("booking_id IN ?", ids[i:j]).Find(&rows)
+		for _, r := range rows {
+			out[r.BookingID] = r.Sequence
+		}
+	}
+	return out
 }
 
 type staffUser struct {
@@ -284,18 +330,120 @@ func (n *Notifier) link(path string) string {
 	return base + path
 }
 
-// Message renders one staff email (with the .ics when the plan has a method).
+// term is the organisation's word for key ("booking" → "Job card").
+func (n *Notifier) term(org, key, fallback string) string {
+	if n.Terms != nil {
+		if v := strings.TrimSpace(n.Terms(org)[key]); v != "" {
+			return v
+		}
+	}
+	return fallback
+}
+
+// orgCtx is what every calendar entry of one organisation shares.
+type orgCtx struct {
+	ID       string
+	Org      orgRow
+	Addr     string
+	Loc      *time.Location
+	Reminder int
+	Category string // the organisation's word for a booking
+}
+
+func (n *Notifier) orgCtx(org string) orgCtx {
+	o, addr := n.org(org)
+	return orgCtx{ID: org, Org: o, Addr: addr, Loc: n.Loc(org), Reminder: n.SettingsFor(org).Reminder(), Category: n.term(org, "booking", "Booking")}
+}
+
+// servicesText is the comma-separated service list ("Booking" when there is none).
+func servicesText(b *models.Booking) string {
+	if s := strings.Join(ServiceNames(b), ", "); s != "" {
+		return s
+	}
+	return "Booking"
+}
+
+// Event describes a booking's calendar entry (shared by the invitation, the
+// add-to-calendar file, the web calendar links and the feed).
+func (n *Notifier) Event(b *models.Booking, seq int, oc orgCtx) ICSInput {
+	cust := CustomerName(b)
+	desc := []string{"Customer: " + cust}
+	if ph := strings.TrimSpace(b.Customer.Phone); ph != "" {
+		desc = append(desc, "Phone: "+ph)
+	}
+	if svcs := ServiceNames(b); len(svcs) > 0 {
+		desc = append(desc, "Services: "+strings.Join(svcs, ", "))
+	}
+	if v := VehicleText(b); v != "" {
+		desc = append(desc, "Vehicle: "+v)
+	}
+	if nt := strings.TrimSpace(b.Notes); nt != "" {
+		desc = append(desc, "Notes: "+nt)
+	}
+	// Without services the entry is named after what the organisation calls a booking.
+	what := strings.Join(ServiceNames(b), ", ")
+	if what == "" {
+		what = oc.Category
+	}
+	return ICSInput{Booking: b, Sequence: seq, Summary: what + " — " + cust, Description: strings.Join(desc, "\n"), Location: oc.Addr,
+		URL: n.link("/bookings?booking=" + b.ID), LinkLabel: "Open " + strings.ToLower(oc.Category), Category: oc.Category, Reminder: oc.Reminder, Now: n.now()}
+}
+
+// gone: the booking no longer happens (cancelled or deleted).
+func gone(b *models.Booking) bool { return b.Status == "cancelled" || b.DeletedAt.Valid }
+
+// BookingICS is a booking's add-to-calendar file and its file name: the
+// PUBLISH file, or the CANCEL file once the booking is cancelled or deleted.
+func (n *Notifier) BookingICS(b *models.Booking) (ics, filename string, cancelled bool) {
+	oc := n.orgCtx(b.OrganizationID)
+	ev := n.Event(b, n.Sequence(b.ID), oc)
+	cancelled = gone(b)
+	ev.Method = AddMethod(cancelled)
+	return BuildAddICS(ev), ICSFilename(b, oc.Loc, cancelled), cancelled
+}
+
+// PublicICSURL is the signed, login-free address of a booking's calendar file
+// ("" when the API origin or the secret is unknown).
+func (n *Notifier) PublicICSURL(apiBase string, b *models.Booking) string {
+	apiBase = strings.TrimRight(strings.TrimSpace(apiBase), "/")
+	if apiBase == "" || len(n.Secret) == 0 {
+		return ""
+	}
+	return apiBase + PublicICSPath(n.Secret, b.OrganizationID, b.ID)
+}
+
+// CalendarLinks are the ways to add one booking to a calendar.
+type CalendarLinks struct {
+	Filename    string `json:"filename"`
+	Cancelled   bool   `json:"cancelled"`
+	ICS         string `json:"ics_url"`          // public signed .ics (Apple Calendar and other apps)
+	Google      string `json:"google_url"`       // "" for a cancelled booking
+	Outlook     string `json:"outlook_url"`      // Microsoft 365
+	OutlookLive string `json:"outlook_live_url"` // outlook.com
+}
+
+// LinksFor builds the add-to-calendar links of a booking.
+func (n *Notifier) LinksFor(apiBase string, b *models.Booking, ev ICSInput, loc *time.Location) CalendarLinks {
+	l := CalendarLinks{Cancelled: gone(b), ICS: n.PublicICSURL(apiBase, b)}
+	l.Filename = ICSFilename(b, loc, l.Cancelled)
+	if !l.Cancelled {
+		l.Google, l.Outlook, l.OutlookLive = GoogleCalendarURL(ev), OutlookCalendarURL(OutlookWorkURL, ev), OutlookCalendarURL(OutlookLiveURL, ev)
+	}
+	return l
+}
+
+// Message renders one staff email. When the plan has a method it carries the
+// calendar data twice: the inline invitation (REQUEST / CANCEL) for the mail
+// client's event card and the add-to-calendar file (PUBLISH / CANCEL) as the
+// attachment, plus "Add to calendar" buttons for a booking that happens.
 func (n *Notifier) Message(b *models.Booking, p Plan, seq int, u *staffUser) mail.Message {
 	org := b.OrganizationID
-	loc := n.Loc(org)
-	o, addr := n.org(org)
+	oc := n.orgCtx(org)
+	loc, o, addr := oc.Loc, oc.Org, oc.Addr
 	start, end := b.StartTime.In(loc), b.EndTime.In(loc)
 	cust := CustomerName(b)
 	svcs := ServiceNames(b)
-	svcText := strings.Join(svcs, ", ")
-	if svcText == "" {
-		svcText = "Booking"
-	}
+	svcText := servicesText(b)
 	first := strings.TrimSpace(u.FirstName)
 	if first == "" {
 		first = "there"
@@ -303,6 +451,8 @@ func (n *Notifier) Message(b *models.Booking, p Plan, seq int, u *staffUser) mai
 	day := start.Format("Mon 2 Jan")
 	when := start.Format("Monday 2 January 2006") + " at " + start.Format("15:04")
 	tzName := loc.String()
+	cancel := p.Method == MethodCancel
+	fileName := ICSFilename(b, loc, cancel)
 	var subject, msg, label, status, tone string
 	switch p.Event {
 	case EvAssigned:
@@ -311,7 +461,7 @@ func (n *Notifier) Message(b *models.Booking, p Plan, seq int, u *staffUser) mai
 		label, status, tone = "New booking", "Assigned to you", "ok"
 	case EvRescheduled:
 		subject = fmt.Sprintf("Booking rescheduled: %s — now %s %s", cust, day, start.Format("15:04"))
-		msg = fmt.Sprintf("Hi %s,\n\nYour booking with %s has moved to %s (%s). Your calendar entry is updated by the attached invitation.", first, cust, when, tzName)
+		msg = fmt.Sprintf("Hi %s,\n\nYour booking with %s has moved to %s (%s). Open the attached calendar file to update the entry in your calendar.", first, cust, when, tzName)
 		label, status, tone = "Booking rescheduled", "New time", "warn"
 	case EvUnassigned:
 		subject = fmt.Sprintf("Booking reassigned: %s on %s %s is no longer yours", cust, day, start.Format("15:04"))
@@ -356,13 +506,24 @@ func (n *Notifier) Message(b *models.Booking, p Plan, seq int, u *staffUser) mai
 	if open != "" {
 		actions = append(actions, invoicing.EmailAction{Label: "Open booking", URL: open, Primary: true})
 	}
+	ev := n.Event(b, seq, oc)
+	var groups []invoicing.EmailActionGroup
 	note := "Turn these emails off in My profile → Booking emails."
-	if p.Method != "" {
-		if p.Method == "CANCEL" {
-			note = "The attached booking.ics removes the event from your calendar. " + note
-		} else {
-			note = "Add it to your calendar with the attached booking.ics — later changes update the same event. " + note
+	switch {
+	case p.Method == "":
+	case cancel:
+		note = "Opening the attached calendar file (.ics) removes the booking from your calendar. " + note
+	default:
+		// One tap per calendar: the web calendars open their "new event" page
+		// filled in, everything else opens the .ics in the calendar app.
+		l := n.LinksFor(n.APIURL, b, ev, loc)
+		g := invoicing.EmailActionGroup{Label: "Add to your calendar", Actions: []invoicing.EmailAction{{Label: "Google Calendar", URL: l.Google}, {Label: "Outlook", URL: l.Outlook}},
+			Links: []invoicing.EmailAction{{Label: "Outlook.com (personal account)", URL: l.OutlookLive}}}
+		if l.ICS != "" {
+			g.Actions = append(g.Actions, invoicing.EmailAction{Label: "Apple / other", URL: l.ICS})
 		}
+		groups = append(groups, g)
+		note = "On an iPhone, iPad or Mac, or in another calendar app: open the attached calendar file (.ics) and choose Add. Later changes update the same entry. " + note
 	}
 	logo := ""
 	if n.LogoURL != nil {
@@ -372,7 +533,7 @@ func (n *Notifier) Message(b *models.Booking, p Plan, seq int, u *staffUser) mai
 	n.DB.Raw(`SELECT accent_color FROM billing_settings WHERE organization_id = ? LIMIT 1`, org).Scan(&accent)
 	v := invoicing.EmailView{Kind: "booking", Business: invoicing.EmailBusiness{Name: nzs(o.Name, "DASYIN ERP"), Address: addr, Email: o.Email, Phone: o.Phone},
 		LogoURL: logo, Preheader: subject, DocLabel: label, Number: day, Message: msg, AmountLabel: "When",
-		Amount: start.Format("Mon 2 Jan, 15:04") + "–" + end.Format("15:04"), StatusLine: status, StatusTone: tone, Facts: facts, Actions: actions, Note: note}
+		Amount: start.Format("Mon 2 Jan, 15:04") + "–" + end.Format("15:04"), StatusLine: status, StatusTone: tone, Facts: facts, Actions: actions, Groups: groups, Note: note}
 	if len(accent) > 0 {
 		v.Accent = accent[0]
 	}
@@ -384,27 +545,15 @@ func (n *Notifier) Message(b *models.Booking, p Plan, seq int, u *staffUser) mai
 	m := mail.Message{To: []string{to}, Subject: subject, HTML: htmlOut, Text: text}
 	if p.Method != "" {
 		cfg, _ := n.Mail.Resolve(org)
-		desc := []string{"Customer: " + cust}
-		if ph := strings.TrimSpace(b.Customer.Phone); ph != "" {
-			desc = append(desc, "Phone: "+ph)
-		}
-		if len(svcs) > 0 {
-			desc = append(desc, "Services: "+svcText)
-		}
-		if v := VehicleText(b); v != "" {
-			desc = append(desc, "Vehicle: "+v)
-		}
-		if nt := strings.TrimSpace(b.Notes); nt != "" {
-			desc = append(desc, "Notes: "+nt)
-		}
-		if open != "" {
-			desc = append(desc, "Open booking: "+open)
-		}
-		ics := BuildICS(ICSInput{Booking: b, Method: p.Method, Sequence: seq, Summary: svcText + " — " + cust, Description: strings.Join(desc, "\n"),
-			Location: addr, URL: open, OrganizerName: nzs(o.Name, cfg.FromName), OrganizerEmail: cfg.FromEmail, AttendeeName: strings.TrimSpace(u.FirstName + " " + u.LastName),
-			AttendeeEmail: strings.ToLower(u.Email), Now: n.now()})
-		m.Calendar, m.CalendarMethod = ics, p.Method
-		m.Attachments = []mail.Attachment{{Filename: "booking.ics", ContentType: "text/calendar; method=" + p.Method, Data: []byte(ics)}}
+		// Inline invitation: what the mail client turns into its event card.
+		inv := ev
+		inv.Method, inv.OrganizerName, inv.OrganizerEmail = p.Method, nzs(o.Name, cfg.FromName), cfg.FromEmail
+		inv.AttendeeName, inv.AttendeeEmail = strings.TrimSpace(u.FirstName+" "+u.LastName), strings.ToLower(u.Email)
+		m.Calendar, m.CalendarMethod = BuildICS(inv), p.Method
+		// Attachment: the add-to-calendar file a calendar app simply adds.
+		add := ev
+		add.Method = AddMethod(cancel)
+		m.Attachments = []mail.Attachment{{Filename: fileName, ContentType: "text/calendar; charset=utf-8; method=" + add.Method, Data: []byte(BuildAddICS(add))}}
 	}
 	return m
 }

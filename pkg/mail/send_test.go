@@ -2,6 +2,7 @@ package mail
 
 import (
 	"context"
+	"encoding/base64"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -302,5 +303,61 @@ func TestNormalizeAndParse(t *testing.T) {
 	v, bad := ParseList("A@x.test, b@x.test;a@x.test\nnope")
 	if !reflect.DeepEqual(v, []string{"a@x.test", "b@x.test"}) || !reflect.DeepEqual(bad, []string{"nope"}) {
 		t.Errorf("ParseList = %v %v", v, bad)
+	}
+}
+
+// A booking email carries the invitation inline (REQUEST) and the
+// add-to-calendar file as an attachment (PUBLISH): the attachment headers
+// must name the file as a quoted string in both Content-Type and
+// Content-Disposition, and keep the method of the attachment.
+func TestBuildCalendarAttachmentHeaders(t *testing.T) {
+	cfg := Config{FromEmail: "x@acme.test"}
+	msg := Message{To: []string{"a@x.test"}, Subject: "New booking", Text: "hi", HTML: "<b>hi</b>",
+		Calendar: "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n", CalendarMethod: "REQUEST",
+		Attachments: []Attachment{{Filename: "booking-2026-10-03-0900-jane-wanjiru.ics", ContentType: "text/calendar; charset=utf-8; method=PUBLISH", Data: []byte("BEGIN:VCALENDAR\r\nMETHOD:PUBLISH\r\nEND:VCALENDAR\r\n")}}}
+	env, _ := Prepare(msg)
+	raw := string(Build(cfg, msg, env, time.Now()))
+	for _, w := range []string{
+		"Content-Type: text/calendar; charset=UTF-8; method=REQUEST\r\nContent-Transfer-Encoding: base64\r\n",
+		"Content-Type: text/calendar; charset=utf-8; method=PUBLISH; name=\"booking-2026-10-03-0900-jane-wanjiru.ics\"\r\n" +
+			"Content-Disposition: attachment; filename=\"booking-2026-10-03-0900-jane-wanjiru.ics\"\r\nContent-Transfer-Encoding: base64\r\n",
+	} {
+		if !strings.Contains(raw, w) {
+			t.Fatalf("message lacks %q:\n%s", w, raw)
+		}
+	}
+	// Still a well-formed MIME tree: mixed( alternative(plain, html, calendar), attachment ).
+	m, err := netmail.ReadMessage(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, params, _ := mime.ParseMediaType(m.Header.Get("Content-Type"))
+	mr := multipart.NewReader(m.Body, params["boundary"])
+	if _, err := mr.NextPart(); err != nil {
+		t.Fatal(err)
+	}
+	p, err := mr.NextPart()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mt, ap, err := mime.ParseMediaType(p.Header.Get("Content-Type"))
+	if err != nil || mt != "text/calendar" || ap["method"] != "PUBLISH" || ap["name"] != "booking-2026-10-03-0900-jane-wanjiru.ics" || p.FileName() != "booking-2026-10-03-0900-jane-wanjiru.ics" {
+		t.Fatalf("attachment part: %s %v %q (%v)", mt, ap, p.FileName(), err)
+	}
+	body, _ := io.ReadAll(p)
+	dec, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(strings.ReplaceAll(string(body), "\r\n", ""), "\n", ""))
+	if err != nil || !strings.Contains(string(dec), "METHOD:PUBLISH") {
+		t.Fatalf("attachment body %q (%v)", body, err)
+	}
+
+	// File names that cannot be a plain quoted string fall back to RFC 2231.
+	if got := withFileParam("attachment", nil, "filename", "Rechnung März.pdf"); !strings.Contains(got, "filename*=utf-8''Rechnung%20M%C3%A4rz.pdf") {
+		t.Errorf("non-ASCII name: %q", got)
+	}
+	if got := withFileParam("attachment", nil, "filename", `we"ird.ics`); strings.Contains(got, `"we"ird`) {
+		t.Errorf("quote in name: %q", got)
+	}
+	if got := withFileParam("application/pdf", map[string]string{}, "name", "INV 1001.pdf"); got != `application/pdf; name="INV 1001.pdf"` {
+		t.Errorf("plain name: %q", got)
 	}
 }

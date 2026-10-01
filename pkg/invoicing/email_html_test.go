@@ -41,3 +41,43 @@ func TestBuildHTMLMessage(t *testing.T) {
 		}
 	}
 }
+
+// Secondary button groups ("Add to calendar"): each button is its own
+// left-aligned table so a row wraps on a phone, Outlook gets ghost cells, the
+// plain-text part lists the links, and only http(s) links are rendered.
+func TestEmailActionGroups(t *testing.T) {
+	v := EmailView{Business: EmailBusiness{Name: "Acme"}, Message: "Hi", Actions: []EmailAction{{Label: "Open booking", URL: "https://app.example/b/1", Primary: true}},
+		Groups: []EmailActionGroup{{Label: "Add to your calendar", Actions: []EmailAction{
+			{Label: "Google Calendar", URL: "https://calendar.google.com/calendar/render?action=TEMPLATE&text=A%20%26%20B"},
+			{Label: "Outlook", URL: "https://outlook.office.com/calendar/0/deeplink/compose?subject=A"},
+			{Label: "Bad", URL: "javascript:alert(1)"}, {Label: "Empty", URL: ""}},
+			Links: []EmailAction{{Label: "Outlook.com <personal>", URL: "https://outlook.live.com/x"}}}}}
+	out, text := RenderEmail(v)
+	for _, w := range []string{"Add to your calendar</div>", `<table role="presentation" align="left"`,
+		`href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text=A%20%26%20B"`, ">Google Calendar</a>", ">Outlook</a>",
+		`<!--[if mso]><td valign="top"><![endif]-->`, "<v:roundrect", `>Outlook.com &lt;personal&gt;</a>`} {
+		if !strings.Contains(out, w) {
+			t.Fatalf("html lacks %q", w)
+		}
+	}
+	if strings.Contains(out, "javascript:") || strings.Contains(out, ">Bad<") || strings.Contains(out, ">Empty<") {
+		t.Fatal("invalid links were rendered")
+	}
+	if strings.Count(out, `align="left"`) != 2 {
+		t.Fatalf("want two wrapping buttons, got %d", strings.Count(out, `align="left"`))
+	}
+	// The group comes after the main buttons.
+	if strings.Index(out, ">Open booking</a>") > strings.Index(out, "Add to your calendar</div>") {
+		t.Fatal("group is not below the main actions")
+	}
+	want := "Open booking: https://app.example/b/1\n\nAdd to your calendar\nGoogle Calendar: https://calendar.google.com/calendar/render?action=TEMPLATE&text=A%20%26%20B\n" +
+		"Outlook: https://outlook.office.com/calendar/0/deeplink/compose?subject=A\nOutlook.com <personal>: https://outlook.live.com/x\n"
+	if !strings.Contains(text, want) {
+		t.Fatalf("text part:\n%s", text)
+	}
+	// A group without any valid link renders nothing.
+	out2, text2 := RenderEmail(EmailView{Business: EmailBusiness{Name: "Acme"}, Message: "Hi", Groups: []EmailActionGroup{{Label: "Nothing here", Actions: []EmailAction{{Label: "x", URL: "ftp://x"}}}}})
+	if strings.Contains(out2, "Nothing here") || strings.Contains(text2, "Nothing here") {
+		t.Fatal("empty group rendered")
+	}
+}

@@ -40,13 +40,13 @@ func TestHHIAndLevels(t *testing.T) {
 func TestClassifyAndLineSQL(t *testing.T) {
 	r := DefaultRules()
 	cases := map[string]string{
-		"Web hosting — avomac.co.ke (12 months)":                    LineHosting,
-		"Website design & development — deposit 50% (avomac.co.ke)": LineWebDev,
-		"Website maintenance & support — quarter":                   LineMaintenance,
-		"Google Workspace Business Starter — 3 users":               LineWorkspace,
-		"Domain registration renewal — example.co.ke":               LineDomains,
-		"DASYIN ERP software licence (12 months)":                   LineSoftware,
-		"Consulting — data analysis & reporting (hours)":            LineConsulting,
+		"Web hosting — example-client.co.ke (12 months)":                    LineHosting,
+		"Website design & development — deposit 50% (example-client.co.ke)": LineWebDev,
+		"Website maintenance & support — quarter":                           LineMaintenance,
+		"Google Workspace Business Starter — 3 users":                       LineWorkspace,
+		"Domain registration renewal — example.co.ke":                       LineDomains,
+		"DASYIN ERP software licence (12 months)":                           LineSoftware,
+		"Consulting — data analysis & reporting (hours)":                    LineConsulting,
 		"Printer paper": LineOther,
 	}
 	for d, want := range cases {
