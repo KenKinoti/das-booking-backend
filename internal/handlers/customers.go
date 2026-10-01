@@ -29,6 +29,9 @@ type customerInput struct {
 	Currency    *string         `json:"currency"`
 	Notes       *string         `json:"notes"`
 	IsActive    *bool           `json:"is_active"`
+	CompanyName *string         `json:"company_name"`
+	TaxNumber   *string         `json:"tax_number"`
+	Website     *string         `json:"website"`
 }
 
 // customerSummary adds activity figures to a customer row for list views.
@@ -224,8 +227,19 @@ func (h *Handler) GetCustomers(c *gin.Context) {
 	query := h.DB.Where("organization_id = ?", orgID)
 	if search := strings.TrimSpace(c.Query("search")); search != "" {
 		like := "%" + search + "%"
-		query = query.Where("(first_name ILIKE ? OR last_name ILIKE ? OR (first_name || ' ' || last_name) ILIKE ? OR email ILIKE ? OR phone ILIKE ? OR address_suburb ILIKE ? OR address_country ILIKE ?)",
-			like, like, like, like, like, like, like)
+		query = query.Where("(first_name ILIKE ? OR last_name ILIKE ? OR (first_name || ' ' || last_name) ILIKE ? OR email ILIKE ? OR phone ILIKE ? OR address_suburb ILIKE ? OR address_country ILIKE ? OR company_name ILIKE ?)",
+			like, like, like, like, like, like, like, like)
+	}
+	// source: customers imported from another system (zoho, csv) or "local".
+	switch src := strings.ToLower(strings.TrimSpace(c.Query("source"))); src {
+	case "":
+	case "local":
+		query = query.Where("COALESCE(source,'') = ''")
+	default:
+		query = query.Where("source = ?", src)
+	}
+	if job := strings.TrimSpace(c.Query("import_job")); job != "" {
+		query = query.Where("id IN (SELECT local_id FROM import_external_refs WHERE organization_id = ? AND job_id = ? AND entity = 'contact')", orgID, job)
 	}
 	switch c.Query("status") {
 	case "active":
@@ -327,6 +341,9 @@ func (h *Handler) CreateCustomer(c *gin.Context) {
 		Email:          strings.ToLower(trimPtr(in.Email)),
 		Phone:          trimPtr(in.Phone),
 		Notes:          trimPtr(in.Notes),
+		CompanyName:    trimPtr(in.CompanyName),
+		TaxNumber:      trimPtr(in.TaxNumber),
+		Website:        trimPtr(in.Website),
 		IsActive:       true,
 	}
 	if in.Address != nil {
@@ -422,6 +439,15 @@ func (h *Handler) UpdateCustomer(c *gin.Context) {
 	}
 	if in.Notes != nil {
 		updates["notes"] = *in.Notes
+	}
+	if in.CompanyName != nil {
+		updates["company_name"] = trimPtr(in.CompanyName)
+	}
+	if in.TaxNumber != nil {
+		updates["tax_number"] = trimPtr(in.TaxNumber)
+	}
+	if in.Website != nil {
+		updates["website"] = trimPtr(in.Website)
 	}
 	if in.IsActive != nil {
 		updates["is_active"] = *in.IsActive

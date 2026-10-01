@@ -109,7 +109,7 @@ func Recalculate(inv *Invoice) {
 	} else {
 		inv.Total = r(inv.Subtotal - inv.DiscountTotal + inv.TaxTotal + inv.ShippingAmount)
 	}
-	inv.BalanceDue = r(inv.Total - inv.AmountPaid)
+	inv.BalanceDue = r(inv.Total - inv.AmountPaid - inv.CreditsApplied - inv.WriteOffAmount)
 }
 
 // ApplyPayments recomputes AmountPaid/BalanceDue and moves the invoice between
@@ -121,18 +121,19 @@ func ApplyPayments(inv *Invoice, now time.Time) {
 		paid += p.Amount
 	}
 	inv.AmountPaid = r(paid)
-	inv.BalanceDue = r(inv.Total - inv.AmountPaid)
+	inv.BalanceDue = r(inv.Total - inv.AmountPaid - inv.CreditsApplied - inv.WriteOffAmount)
 	if inv.DocType != TypeInvoice || inv.Status == StatusVoid {
 		return
 	}
+	settled := inv.AmountPaid + inv.CreditsApplied + inv.WriteOffAmount
 	switch {
-	case inv.AmountPaid > 0 && inv.BalanceDue <= 0.4/math.Pow10(currency.Decimals(inv.Currency)):
+	case settled > 0 && inv.BalanceDue <= 0.4/math.Pow10(currency.Decimals(inv.Currency)):
 		inv.Status = StatusPaid
 		if inv.PaidAt == nil {
 			t := now
 			inv.PaidAt = &t
 		}
-	case inv.AmountPaid > 0:
+	case settled > 0:
 		inv.Status = StatusPartial
 		inv.PaidAt = nil
 	default:

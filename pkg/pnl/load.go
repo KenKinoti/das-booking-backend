@@ -50,7 +50,7 @@ func Load(db *gorm.DB, org string, from, to time.Time, loc *time.Location) *Inpu
 	var invs []invRow
 	l.scan(&invs, `SELECT id, number, doc_type, status, COALESCE(currency,'') AS currency, to_char(issue_date,'YYYY-MM-DD') AS issue_date, total, tax_total
 		FROM billing_invoices
-		WHERE organization_id = ? AND deleted_at IS NULL AND doc_type = 'invoice'
+		WHERE organization_id = ? AND deleted_at IS NULL AND doc_type IN ('invoice','credit_note')
 		  AND ((issue_date >= ?::date AND issue_date <= ?::date)
 		    OR id IN (SELECT invoice_id FROM billing_payments WHERE organization_id = ? AND date >= ?::date AND date <= ?::date))`,
 		org, f, t, org, f, t)

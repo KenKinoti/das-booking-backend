@@ -14,6 +14,11 @@ import (
 const (
 	TypeInvoice = "invoice"
 	TypeQuote   = "quote"
+	// TypeCreditNote is a credit note brought in from another system (pkg/zoho).
+	// Credit notes are kept for reference only: they are not listed with
+	// invoices or quotes and are not counted as revenue; the credit they gave
+	// is recorded on each invoice it was applied to (Invoice.CreditsApplied).
+	TypeCreditNote = "credit_note"
 )
 
 // Statuses. "overdue" and "expired" are derived at read time and never stored.
@@ -115,6 +120,18 @@ type Invoice struct {
 	BalanceDue       float64    `json:"balance_due"`
 	Notes            string     `json:"notes" gorm:"type:text"`
 	Terms            string     `json:"terms" gorm:"type:text"`
+	// CreditsApplied / WriteOffAmount reduce the balance like payments but
+	// are not money received (credit notes applied and amounts written off,
+	// e.g. in Zoho Books before the invoice was imported).
+	CreditsApplied float64 `json:"credits_applied"`
+	WriteOffAmount float64 `json:"write_off_amount"`
+	// Source is where the document came from ("" = created here, "zoho",
+	// "csv"); ExternalID / ExternalURL identify it there. ImportFlag notes a
+	// difference found when importing (e.g. totals kept from the source).
+	Source      string `json:"source,omitempty" gorm:"type:varchar(20);index"`
+	ExternalID  string `json:"external_id,omitempty" gorm:"type:varchar(100)"`
+	ExternalURL string `json:"external_url,omitempty" gorm:"type:text"`
+	ImportFlag  string `json:"import_flag,omitempty" gorm:"type:text"`
 	// CCEmails are copied on every email about this document (sends,
 	// reminders) and carried over to duplicates and recurring copies.
 	CCEmails        []string   `json:"cc_emails" gorm:"type:text;serializer:json"`
@@ -186,9 +203,12 @@ type Payment struct {
 	Notes          string    `json:"notes" gorm:"type:text"`
 	// IsDeposit marks money already received when the invoice was written
 	// (entered in the invoice editor or when converting a quote).
-	IsDeposit bool      `json:"is_deposit" gorm:"default:false"`
-	CreatedBy string    `json:"created_by" gorm:"type:varchar(255)"`
-	CreatedAt time.Time `json:"created_at"`
+	IsDeposit bool `json:"is_deposit" gorm:"default:false"`
+	// Source / ExternalID: payments imported from another system (pkg/zoho).
+	Source     string    `json:"source,omitempty" gorm:"type:varchar(20)"`
+	ExternalID string    `json:"external_id,omitempty" gorm:"type:varchar(100)"`
+	CreatedBy  string    `json:"created_by" gorm:"type:varchar(255)"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 func (Payment) TableName() string { return "billing_payments" }
@@ -219,7 +239,7 @@ func (Activity) TableName() string { return "billing_activities" }
 
 // Models lists everything that needs migrating.
 func Models() []interface{} {
-	return []interface{}{&Settings{}, &TaxRate{}, &Invoice{}, &InvoiceItem{}, &Payment{}, &Activity{}, &EmailLog{}}
+	return []interface{}{&Settings{}, &TaxRate{}, &Invoice{}, &InvoiceItem{}, &Payment{}, &Activity{}, &EmailLog{}, &Attachment{}}
 }
 
 // EmailLog records every email about a document (sent, test or failed) with

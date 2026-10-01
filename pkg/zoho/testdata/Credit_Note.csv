@@ -1,0 +1,2 @@
+﻿Credit Note Date,CreditNotes ID,Credit Note Number,Credit Note Status,Customer ID,Customer Name,Currency Code,Exchange Rate,SubTotal,Total,Balance,Item Name,Quantity,Item Price,Item Tax %,Item Tax Amount,Item Total
+25/03/2025,460000000032001,CN-00007,Open,460000000026049,Acme Pty Ltd,AUD,1.00,20.00,22.00,22.00,Goodwill,1.00,20.00,10.00,2.00,20.00

@@ -1,0 +1,3 @@
+﻿Estimate Date,Estimate ID,Estimate Number,Estimate Status,Customer ID,Customer Name,Expiry Date,Currency Code,Exchange Rate,SubTotal,Total,Item Name,Item Desc,Quantity,Item Price,Item Tax %,Item Tax Amount,Item Total
+01/03/2025,460000000031001,EST-000005,Accepted,460000000026049,Acme Pty Ltd,31/03/2025,AUD,1.00,300.00,330.00,Website maintenance,March,2.00,100.00,10.00,20.00,200.00
+01/03/2025,460000000031001,EST-000005,Accepted,460000000026049,Acme Pty Ltd,31/03/2025,AUD,1.00,300.00,330.00,Consulting hour,Setup,1.00,100.00,10.00,10.00,100.00

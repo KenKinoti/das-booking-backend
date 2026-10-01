@@ -1,0 +1,3 @@
+﻿Item ID,Item Name,SKU,Description,Rate,Account,Tax Name,Tax Percentage,Tax Type,Product Type,Status,Usage unit
+460000000027001,Website maintenance,WEB-M,Monthly care plan,AUD 250.00,Sales,GST,10,ItemAmount,service,Active,month
+460000000027002,Consulting hour,CONS,,180,Sales,,,,service,Active,hr

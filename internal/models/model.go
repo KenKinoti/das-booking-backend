@@ -83,8 +83,18 @@ type Customer struct {
 	CountryCode string `json:"country_code" gorm:"type:varchar(2);index"`
 	// Currency is the customer's preferred invoicing currency. Empty means
 	// "automatic": the country's currency, else the organisation default.
-	Currency       string         `json:"currency" gorm:"type:varchar(3)"`
-	Notes          string         `json:"notes" gorm:"type:text"`
+	Currency string `json:"currency" gorm:"type:varchar(3)"`
+	Notes    string `json:"notes" gorm:"type:text"`
+	// CompanyName / TaxNumber / Website / PaymentTermsDays: business details
+	// (filled when importing from Zoho Books and similar tools).
+	CompanyName      string `json:"company_name" gorm:"type:varchar(255)"`
+	TaxNumber        string `json:"tax_number" gorm:"type:varchar(100)"`
+	Website          string `json:"website" gorm:"type:varchar(255)"`
+	PaymentTermsDays *int   `json:"payment_terms_days"`
+	// Source is where the customer came from ("" = created here, "zoho",
+	// "csv"); ExternalID is its id there.
+	Source         string         `json:"source,omitempty" gorm:"type:varchar(20);index"`
+	ExternalID     string         `json:"external_id,omitempty" gorm:"type:varchar(100)"`
 	OrganizationID string         `json:"organization_id" gorm:"type:varchar(255);not null;index"`
 	IsActive       bool           `json:"is_active" gorm:"default:true;index"`
 	CreatedAt      time.Time      `json:"created_at"`

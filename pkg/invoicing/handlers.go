@@ -485,6 +485,8 @@ func (h *Handler) List(c *gin.Context) {
 	docType := c.DefaultQuery("type", TypeInvoice)
 	if docType != "all" {
 		q = q.Where("doc_type = ?", docType)
+	} else {
+		q = q.Where("doc_type IN ?", []string{TypeInvoice, TypeQuote})
 	}
 	switch st := c.Query("status"); st {
 	case "", "all":
@@ -519,6 +521,17 @@ func (h *Handler) List(c *gin.Context) {
 	}
 	if cid := c.Query("customer_id"); cid != "" {
 		q = q.Where("customer_id = ?", cid)
+	}
+	// source: documents imported from another system (zoho, csv) or "local".
+	switch src := strings.ToLower(strings.TrimSpace(c.Query("source"))); src {
+	case "":
+	case "local":
+		q = q.Where("COALESCE(source,'') = ''")
+	default:
+		q = q.Where("source = ?", src)
+	}
+	if job := strings.TrimSpace(c.Query("import_job")); job != "" {
+		q = q.Where("id IN (SELECT local_id FROM import_external_refs WHERE organization_id = ? AND job_id = ?)", org, job)
 	}
 	if from, err := parseDate(c.Query("from")); err == nil && !from.IsZero() {
 		q = q.Where("issue_date >= ?", from)
@@ -1474,7 +1487,7 @@ func (h *Handler) Stats(c *gin.Context) {
 	}
 	var invs []Invoice
 	if err := h.DB.Select("id, doc_type, status, total, amount_paid, balance_due, issue_date, due_date, client_name, customer_id, currency, base_currency, exchange_rate, total_base").
-		Where("organization_id = ?", org).Find(&invs).Error; err != nil {
+		Where("organization_id = ? AND doc_type IN ?", org, []string{TypeInvoice, TypeQuote}).Find(&invs).Error; err != nil {
 		failErr(c, err)
 		return
 	}

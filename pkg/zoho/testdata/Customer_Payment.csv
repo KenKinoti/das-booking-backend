@@ -1,0 +1,4 @@
+﻿Payment Number,CustomerPayment ID,Mode,CustomerID,Description,Exchange Rate,Amount,Unused Amount,Bank Charges,Reference Number,Currency Code,Customer Name,Payment Type,Date,Created Time,Deposit To,Invoice Number,Invoice Date,Amount Applied to Invoice,Invoice Payment Applied Date
+1,460000000033001,Bank Transfer,460000000026049,,1.00,330.00,0.00,0.00,EFT998,AUD,Acme Pty Ltd,Invoice Payment,25/03/2025,25/03/2025,Business Account,INV-000101,14/03/2025,330.00,25/03/2025
+2,460000000033002,PayPal,460000000026050,,1.50,40.00,0.00,0.00,,USD,Globex Inc,Invoice Payment,30/03/2025,30/03/2025,PayPal,INV-000102,20/03/2025,40.00,30/03/2025
+3,460000000033003,Cash,460000000026049,Advance,1.00,50.00,50.00,0.00,,AUD,Acme Pty Ltd,Customer Advance,01/04/2025,01/04/2025,Petty Cash,,,,

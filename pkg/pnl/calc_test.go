@@ -413,3 +413,24 @@ func TestProcessorFeesAndSurcharges(t *testing.T) {
 		}
 	}
 }
+
+func TestCreditNotesReduceAccrualRevenue(t *testing.T) {
+	in := base()
+	in.Invoices = []Invoice{
+		{ID: "i1", DocType: "invoice", Status: "sent", Currency: "AUD", IssueDate: d("2026-09-10"), Total: 1100, Tax: 100},
+		{ID: "c1", DocType: "credit_note", Status: "open", Currency: "AUD", IssueDate: d("2026-09-11"), Total: 220, Tax: 20},
+		{ID: "c2", DocType: "credit_note", Status: "void", Currency: "AUD", IssueDate: d("2026-09-12"), Total: 330, Tax: 30},
+		{ID: "c3", DocType: "credit_note", Status: "open", Currency: "AUD", IssueDate: d("2026-10-02"), Total: 110, Tax: 10},
+	}
+	s := Compute(in, sep, Accrual)
+	if got := amt(s, "invoices"); got != 80000 { // 1000 - 200
+		t.Fatalf("invoices = %d, want 80000", got)
+	}
+	if s.TaxCollected != 8000 {
+		t.Fatalf("tax collected = %d, want 8000", s.TaxCollected)
+	}
+	// Cash basis: a credit note is not money in or out.
+	if got := amt(Compute(in, sep, Cash), "invoices"); got != 0 {
+		t.Fatalf("cash invoices = %d, want 0", got)
+	}
+}

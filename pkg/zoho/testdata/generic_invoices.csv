@@ -1,0 +1,3 @@
+﻿Invoice #,Date,Due Date,Client,Email,Description,Qty,Unit Price,Tax %,Total,Amount Paid,Paid Date,Status
+1001,2025-03-01,2025-03-15,Jo Bloggs,jo@example.com,Design,2,100,10,220,220,2025-03-20,Paid
+1002,2025-03-05,2025-03-19,Widgets Ltd,accounts@widgets.test,Support,1,50,10,55,0,,Sent

@@ -417,7 +417,21 @@ func Compute(in *Input, p Period, basis string) *Statement {
 		}
 	} else {
 		for _, inv := range in.Invoices {
-			if inv.DocType != "invoice" || !in.inHome(inv.Currency) || !p.Contains(Day(inv.IssueDate)) {
+			if !in.inHome(inv.Currency) || !p.Contains(Day(inv.IssueDate)) {
+				continue
+			}
+			// Credit notes (e.g. imported from Zoho) reduce revenue on the
+			// accrual basis by their amount excluding tax.
+			if inv.DocType == "credit_note" {
+				if inv.Status == "void" || inv.Status == "draft" {
+					continue
+				}
+				total, tax := in.minor(math.Abs(inv.Total)), in.minor(math.Abs(inv.Tax))
+				line("invoices", SecIncome, "Invoices issued").add(-(total - tax), "credit notes")
+				s.TaxCollected -= tax
+				continue
+			}
+			if inv.DocType != "invoice" {
 				continue
 			}
 			if inv.Status == "void" {
