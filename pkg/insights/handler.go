@@ -276,7 +276,7 @@ func (h *Handler) explain(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&in)
 	if !AIEnabled() {
-		fail(c, http.StatusServiceUnavailable, "AI_DISABLED", "AI is not configured on the backend (ANTHROPIC_API_KEY).")
+		fail(c, http.StatusServiceUnavailable, "AI_DISABLED", "AI is not switched on. Add an Anthropic API key in System settings → AI assistant.")
 		return
 	}
 	m := h.S.MarketFor(c.Request.Context(), org, false)

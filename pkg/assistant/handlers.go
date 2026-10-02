@@ -104,22 +104,36 @@ func (h *Handler) usageSince(since time.Time, orgID string) gin.H {
 	return gin.H{"input_tokens": row.In, "output_tokens": row.Out, "responses": row.N}
 }
 
+// SettingsPath is where a super admin adds the Anthropic API key in the app.
+const SettingsPath = "/system-settings?tab=ai"
+
 func (h *Handler) status(c *gin.Context) {
 	who := identity(c)
 	s := h.Svc
+	cfg := s.Config()
+	enabled := cfg.APIKey != ""
+	super := who.Role == "super_admin"
 	out := gin.H{
-		"enabled":     s.Enabled(),
-		"model":       s.Cfg.Model,
+		"enabled":     enabled,
+		"model":       cfg.Model,
+		"source":      cfg.Source, // settings | environment | none
 		"tools_count": len(s.tools()),
 		"rate_limit":  gin.H{"limit": RateLimit, "window_seconds": int(RateWindow.Seconds())},
-		"super_admin": who.Role == "super_admin",
+		"super_admin": super,
+		// Claude ↔ DASYIN over MCP is a separate thing from the in-app
+		// assistant; the UI shows both so people don't confuse them.
+		"mcp": MCPStatusFor(s.DB, who.OrgID, who.UserID, time.Now()),
 	}
-	if !s.Enabled() {
-		out["reason"] = "ANTHROPIC_API_KEY is not set on the backend."
-		if who.Role == "super_admin" {
-			out["setup"] = "Set the ANTHROPIC_API_KEY environment variable on the backend service (optionally ASSISTANT_MODEL) and restart it."
+	if !enabled {
+		out["reason"] = "Ask DASYIN needs an Anthropic API key, and none has been added yet. (Connecting Claude to DASYIN with MCP is separate and does not switch it on.)"
+		if super {
+			out["setup"] = "Add an Anthropic API key in System settings → AI assistant. It works straight away."
+			out["setup_path"] = SettingsPath
+			if cfg.Problem != "" {
+				out["problem"] = cfg.Problem
+			}
 		} else {
-			out["setup"] = "Ask your administrator to enable the AI assistant."
+			out["setup"] = "Ask your administrator to add an Anthropic API key (System settings → AI assistant)."
 		}
 	} else if len(s.tools()) == 0 {
 		out["warning"] = "No AI tools are registered, so the assistant cannot read or change records yet."
@@ -127,7 +141,7 @@ func (h *Handler) status(c *gin.Context) {
 	var st UserSettings
 	s.DB.Where("user_id = ?", who.UserID).First(&st)
 	out["settings"] = gin.H{"auto_approve": st.AutoApprove}
-	if who.Role == "super_admin" {
+	if super {
 		y, m, d := time.Now().UTC().Date()
 		day := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 		out["usage_today"] = gin.H{"platform": h.usageSince(day, ""), "organization": h.usageSince(day, who.OrgID), "since": day}
@@ -288,7 +302,7 @@ func (h *Handler) chat(c *gin.Context) {
 		return
 	}
 	if !h.Svc.Enabled() {
-		fail(c, http.StatusServiceUnavailable, "ASSISTANT_DISABLED", "The AI assistant is not configured. Set ANTHROPIC_API_KEY on the backend.")
+		fail(c, http.StatusServiceUnavailable, "ASSISTANT_DISABLED", "Ask DASYIN isn't switched on yet: it needs an Anthropic API key (System settings → AI assistant).")
 		return
 	}
 	if body.ConversationID != "" {

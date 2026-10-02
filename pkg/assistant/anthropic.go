@@ -8,40 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
-
-// DefaultModel matches the model used by the meetings summariser.
-const DefaultModel = "claude-sonnet-4-5"
-
-// Config is read from the environment.
-type Config struct {
-	APIKey  string
-	Model   string
-	BaseURL string
-}
-
-// ConfigFromEnv reads ANTHROPIC_API_KEY, ASSISTANT_MODEL / ANTHROPIC_MODEL and
-// ANTHROPIC_BASE_URL.
-func ConfigFromEnv() Config {
-	c := Config{
-		APIKey:  strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
-		Model:   strings.TrimSpace(os.Getenv("ASSISTANT_MODEL")),
-		BaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("ANTHROPIC_BASE_URL")), "/"),
-	}
-	if c.Model == "" {
-		c.Model = strings.TrimSpace(os.Getenv("ANTHROPIC_MODEL"))
-	}
-	if c.Model == "" {
-		c.Model = DefaultModel
-	}
-	if c.BaseURL == "" {
-		c.BaseURL = "https://api.anthropic.com"
-	}
-	return c
-}
 
 // apiTool is a tool definition as sent to the Messages API.
 type apiTool struct {
@@ -89,13 +58,24 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("anthropic %d %s: %s", e.Status, e.Type, e.Message)
 }
 
+// noCredit reports whether the error is Anthropic's "credit balance is too
+// low" refusal (HTTP 400 invalid_request_error, or a billing error).
+func (e *APIError) noCredit() bool {
+	m := strings.ToLower(e.Message)
+	return e.Status == 402 || e.Type == "billing_error" || strings.Contains(m, "credit balance") || strings.Contains(m, "purchase credits")
+}
+
 // Friendly returns a message suitable for end users.
 func (e *APIError) Friendly() string {
 	switch {
 	case e.Status == 401 || e.Type == "authentication_error":
-		return "The AI service rejected the API key. Ask your administrator to check ANTHROPIC_API_KEY."
+		return "The AI service rejected the API key. Ask your administrator to check the Anthropic API key in System settings → AI assistant."
+	case e.noCredit():
+		return "The Anthropic account has no credit left. Ask your administrator to add credit at console.anthropic.com → Billing (API usage is billed separately from a Claude subscription)."
 	case e.Status == 403 || e.Type == "permission_error":
 		return "The AI service refused this request (permission denied)."
+	case e.Status == 404 || e.Type == "not_found_error":
+		return "The AI model configured for Ask DASYIN was not found. Ask your administrator to check the model in System settings → AI assistant."
 	case e.Status == 429 || e.Type == "rate_limit_error":
 		return "The AI service is rate limiting requests right now. Please try again in a moment."
 	case e.Status == 529 || e.Type == "overloaded_error":

@@ -13,8 +13,10 @@ func getenv(k string) string { return os.Getenv(k) }
 
 type aiCfg struct{ key, model, base string }
 
+// aiConfig is the Anthropic key/model/base URL from the shared resolver: saved
+// in System settings → AI assistant, else the environment (pkg/assistant).
 func aiConfig() aiCfg {
-	c := assistant.ConfigFromEnv()
+	c := assistant.Current()
 	return aiCfg{key: c.APIKey, model: c.Model, base: c.BaseURL}
 }
 

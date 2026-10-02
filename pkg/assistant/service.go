@@ -32,8 +32,10 @@ type Page struct {
 
 // Service runs conversations.
 type Service struct {
-	DB        *gorm.DB
-	Cfg       Config
+	DB *gorm.DB
+	// Client pins the Anthropic client and its configuration (tests). When
+	// nil — the normal case — every call resolves the configuration with
+	// Resolve, so a key saved in System settings works without a restart.
 	Client    *Client
 	ListTools func() []aitools.Tool
 	GetTool   func(string) (aitools.Tool, bool)
@@ -45,14 +47,33 @@ type Service struct {
 	limiter *rateLimiter
 }
 
-// NewService builds a service from the environment.
+// NewService builds a service whose Anthropic configuration is resolved on
+// every call (saved platform settings → environment).
 func NewService(db *gorm.DB) *Service {
-	cfg := ConfigFromEnv()
-	s := &Service{DB: db, Cfg: cfg}
-	if cfg.APIKey != "" {
-		s.Client = &Client{Cfg: cfg}
+	return &Service{DB: db}
+}
+
+// Config is the Anthropic configuration in effect right now.
+func (s *Service) Config() Config {
+	if s.Client != nil {
+		cfg := s.Client.Cfg
+		if cfg.Source == "" {
+			cfg.Source = SourceNone
+			if cfg.APIKey != "" {
+				cfg.Source = SourceEnvironment
+			}
+		}
+		return cfg
 	}
-	return s
+	return Resolve(s.DB)
+}
+
+// client returns the client for cfg.
+func (s *Service) client(cfg Config) *Client {
+	if s.Client != nil {
+		return s.Client
+	}
+	return &Client{Cfg: cfg}
 }
 
 func (s *Service) now() time.Time {
@@ -84,7 +105,7 @@ func (s *Service) maxSteps() int {
 }
 
 // Enabled reports whether an API key is configured.
-func (s *Service) Enabled() bool { return s.Client != nil && s.Client.Cfg.APIKey != "" }
+func (s *Service) Enabled() bool { return s.Config().APIKey != "" }
 
 // ErrBusy is returned when the conversation is already running.
 var ErrBusy = errors.New("this conversation is already working on a reply")
@@ -358,9 +379,13 @@ func needsConfirm(t aitools.Tool, auto bool) bool {
 // loop runs model → tools → model until the model stops, a confirmation is
 // needed, or the step budget is used up.
 func (s *Service) loop(ctx context.Context, conv *Conversation, who aitools.Identity, page Page, emit Emit) error {
-	if !s.Enabled() {
-		return fmt.Errorf("the assistant is not configured (ANTHROPIC_API_KEY is not set)")
+	// Resolved once per turn: a key or model saved mid-conversation applies
+	// from the next message.
+	cfg := s.Config()
+	if cfg.APIKey == "" {
+		return fmt.Errorf("the assistant is not configured (no Anthropic API key has been added)")
 	}
+	client := s.client(cfg)
 	auto := s.autoApprove(who)
 	sys := s.systemPrompt(who, page)
 	tools := s.apiTools()
@@ -370,10 +395,10 @@ func (s *Service) loop(ctx context.Context, conv *Conversation, who aitools.Iden
 		if err != nil {
 			return err
 		}
-		req := apiRequest{Model: s.Cfg.Model, MaxTokens: 2048, System: sys, Messages: buildHistory(ms), Tools: tools}
+		req := apiRequest{Model: cfg.Model, MaxTokens: 2048, System: sys, Messages: buildHistory(ms), Tools: tools}
 		var partial strings.Builder
 		emit("step", map[string]any{"n": step + 1})
-		resp, err := s.Client.Stream(ctx, req, func(d string) {
+		resp, err := client.Stream(ctx, req, func(d string) {
 			partial.WriteString(d)
 			emit("text", map[string]any{"delta": d})
 		})
@@ -381,7 +406,7 @@ func (s *Service) loop(ctx context.Context, conv *Conversation, who aitools.Iden
 			if ctx.Err() != nil {
 				// Stopped by the user: keep what was already shown.
 				if t := strings.TrimSpace(partial.String()); t != "" {
-					s.addMessage(conv, "assistant", []Block{{Type: "text", Text: t + " …"}}, nil, Usage{}, s.Cfg.Model)
+					s.addMessage(conv, "assistant", []Block{{Type: "text", Text: t + " …"}}, nil, Usage{}, cfg.Model)
 				}
 				return ctx.Err()
 			}
@@ -393,7 +418,7 @@ func (s *Service) loop(ctx context.Context, conv *Conversation, who aitools.Iden
 		if len(content) == 0 {
 			content = []Block{{Type: "text", Text: "(No response.)"}}
 		}
-		am, err := s.addMessage(conv, "assistant", content, nil, resp.Usage, s.Cfg.Model)
+		am, err := s.addMessage(conv, "assistant", content, nil, resp.Usage, cfg.Model)
 		if err != nil {
 			return err
 		}
@@ -444,7 +469,7 @@ func (s *Service) loop(ctx context.Context, conv *Conversation, who aitools.Iden
 	}
 	msg := fmt.Sprintf("I stopped after %d steps to keep things quick. Say \"continue\" if you'd like me to keep going.", s.maxSteps())
 	emit("text", map[string]any{"delta": msg})
-	s.addMessage(conv, "assistant", []Block{{Type: "text", Text: msg}}, nil, Usage{}, s.Cfg.Model)
+	s.addMessage(conv, "assistant", []Block{{Type: "text", Text: msg}}, nil, Usage{}, cfg.Model)
 	emit("done", map[string]any{"usage": total, "stop_reason": "max_steps"})
 	return nil
 }

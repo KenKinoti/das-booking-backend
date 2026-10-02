@@ -660,14 +660,15 @@ func ParseSeriesCSV(r io.Reader) ([]DataPoint, []string, error) {
 
 // ---------- optional AI explanation ----------
 
-// AIEnabled reports whether ANTHROPIC_API_KEY is configured.
-func AIEnabled() bool { return strings.TrimSpace(getenv("ANTHROPIC_API_KEY")) != "" }
+// AIEnabled reports whether an Anthropic API key is configured (saved in
+// System settings → AI assistant, or ANTHROPIC_API_KEY).
+func AIEnabled() bool { return aiConfig().key != "" }
 
 // Explain asks the configured Anthropic model for a short explanation of the
 // indicators for a web / IT services business.
 func (s *Service) Explain(ctx context.Context, m *Market, focus string) (string, error) {
 	if !AIEnabled() {
-		return "", fmt.Errorf("AI is not configured (ANTHROPIC_API_KEY is not set on the backend)")
+		return "", fmt.Errorf("AI is not switched on: add an Anthropic API key in System settings → AI assistant")
 	}
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "I run a small web & IT services business (websites, hosting resold from Synergy Wholesale, Google Workspace, ERP software, consulting) based in Kenya with clients in Kenya and Australia. Home currency %s.\n", m.Home)

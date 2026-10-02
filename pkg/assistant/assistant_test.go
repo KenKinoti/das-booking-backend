@@ -33,6 +33,7 @@ type fakeAPI struct {
 	mu      sync.Mutex
 	replies []fakeReply
 	reqs    []apiRequest
+	keys    []string // x-api-key of every request
 	srv     *httptest.Server
 }
 
@@ -55,11 +56,21 @@ func (f *fakeAPI) requests() []apiRequest {
 	return append([]apiRequest(nil), f.reqs...)
 }
 
+func (f *fakeAPI) lastKey() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.keys) == 0 {
+		return ""
+	}
+	return f.keys[len(f.keys)-1]
+}
+
 func (f *fakeAPI) serve(w http.ResponseWriter, r *http.Request) {
 	var req apiRequest
 	json.NewDecoder(r.Body).Decode(&req)
 	f.mu.Lock()
 	f.reqs = append(f.reqs, req)
+	f.keys = append(f.keys, r.Header.Get("x-api-key"))
 	var rep fakeReply
 	if len(f.replies) > 0 {
 		rep = f.replies[0]
@@ -214,7 +225,7 @@ func setup(t *testing.T) *env {
 	c := &calls{n: map[string]int{}, a: map[string]map[string]any{}, w: map[string]aitools.Identity{}}
 	tools := testTools(c)
 	cfg := Config{APIKey: "test", Model: "fake-model", BaseURL: api.srv.URL}
-	svc := &Service{DB: db, Cfg: cfg, Client: &Client{Cfg: cfg}, limiter: &rateLimiter{},
+	svc := &Service{DB: db, Client: &Client{Cfg: cfg}, limiter: &rateLimiter{},
 		ListTools: func() []aitools.Tool {
 			var out []aitools.Tool
 			for _, n := range []string{"things_create", "things_delete", "things_fail", "things_search"} {
@@ -776,17 +787,23 @@ func TestHTTPStatusSettingsAndRateLimit(t *testing.T) {
 	if !e.svc.autoApprove(alice) || e.svc.autoApprove(bob) {
 		t.Fatal("setting not per-user")
 	}
-	// Disabled service.
+	// Disabled service: no pinned client, nothing saved, nothing in the environment.
+	t.Setenv("ANTHROPIC_API_KEY", "")
 	off := setup(t)
 	off.svc.Client = nil
 	ro := router(off)
 	w = do(ro, alice, "GET", "/api/v1/assistant/status", "")
-	if !strings.Contains(w.Body.String(), `"enabled":false`) || !strings.Contains(w.Body.String(), "administrator") {
+	if !strings.Contains(w.Body.String(), `"enabled":false`) || !strings.Contains(w.Body.String(), "Ask your administrator") || strings.Contains(w.Body.String(), "setup_path") {
 		t.Fatalf("disabled status = %s", w.Body.String())
 	}
 	w = do(ro, sa, "GET", "/api/v1/assistant/status", "")
-	if !strings.Contains(w.Body.String(), "ANTHROPIC_API_KEY") {
-		t.Fatalf("super admin disabled status = %s", w.Body.String())
+	body := w.Body.String()
+	if !strings.Contains(body, `"source":"none"`) || !strings.Contains(body, "System settings → AI assistant") || !strings.Contains(body, `"setup_path":"/system-settings?tab=ai"`) {
+		t.Fatalf("super admin disabled status = %s", body)
+	}
+	// The old wording sent people to the server; a restart is never needed now.
+	if strings.Contains(strings.ToLower(body), "restart") || strings.Contains(body, "ANTHROPIC_API_KEY") {
+		t.Fatalf("status still mentions a manual server step: %s", body)
 	}
 	if w := do(ro, alice, "POST", "/api/v1/assistant/chat", `{"message":"hi"}`); w.Code != 503 {
 		t.Fatalf("disabled chat = %d", w.Code)

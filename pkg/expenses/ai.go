@@ -17,8 +17,9 @@ import (
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/assistant"
 )
 
-// AIEnabled reports whether AI extraction is configured (ANTHROPIC_API_KEY).
-func AIEnabled() bool { return assistant.ConfigFromEnv().APIKey != "" }
+// AIEnabled reports whether AI extraction is configured: an Anthropic API key
+// saved in System settings → AI assistant, or ANTHROPIC_API_KEY.
+func AIEnabled() bool { return assistant.Current().APIKey != "" }
 
 const aiPrompt = `You read supplier invoices, receipts and billing emails for a small business and extract the expense.
 Reply with ONLY a JSON object, no prose:
@@ -31,7 +32,7 @@ Use only values present in the document. Do not guess amounts.`
 // AIExtract asks Claude to read the document. text may be empty when an image
 // is given (mime image/png|jpeg|gif|webp) or a PDF (application/pdf).
 func AIExtract(ctx context.Context, text string, file []byte, mime string) (*Extracted, string, error) {
-	cfg := assistant.ConfigFromEnv()
+	cfg := assistant.Current()
 	if cfg.APIKey == "" {
 		return nil, "", errors.New("AI extraction is not configured")
 	}

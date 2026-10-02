@@ -8,11 +8,12 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/assistant"
 )
 
 // SummaryResult is the structured summary of a transcript.
@@ -23,22 +24,20 @@ type SummaryResult struct {
 	Source       string       `json:"source"`
 }
 
-// Summarize uses the Anthropic Messages API when ANTHROPIC_API_KEY is set and
-// falls back to the local extractive summariser otherwise (or on any error).
+// Summarize uses the Anthropic Messages API when an API key is configured
+// (saved in System settings → AI assistant, or ANTHROPIC_API_KEY — resolved by
+// pkg/assistant) and falls back to the local extractive summariser otherwise
+// (or on any error).
 func Summarize(ctx context.Context, title, text string) SummaryResult {
-	if key := strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")); key != "" && strings.TrimSpace(text) != "" {
-		model := os.Getenv("ANTHROPIC_MODEL")
-		if model == "" {
-			model = "claude-sonnet-4-5"
-		}
-		if res, err := summarizeAnthropic(ctx, key, model, title, text); err == nil {
+	if cfg := assistant.Current(); cfg.APIKey != "" && strings.TrimSpace(text) != "" {
+		if res, err := summarizeAnthropic(ctx, cfg, title, text); err == nil {
 			return res
 		}
 	}
 	return ExtractiveSummary(text)
 }
 
-func summarizeAnthropic(ctx context.Context, key, model, title, text string) (SummaryResult, error) {
+func summarizeAnthropic(ctx context.Context, cfg assistant.Config, title, text string) (SummaryResult, error) {
 	const maxChars = 150000
 	if len(text) > maxChars {
 		text = text[:maxChars]
@@ -50,17 +49,17 @@ func summarizeAnthropic(ctx context.Context, key, model, title, text string) (Su
 		`"key_decisions": array of short strings (empty if none),` + "\n" +
 		`"action_items": array of {"text": string, "owner": string (person responsible if mentioned, else ""), "due": string (deadline if mentioned, else "")}.`
 	body, _ := json.Marshal(map[string]interface{}{
-		"model":      model,
+		"model":      cfg.Model,
 		"max_tokens": 1500,
 		"messages":   []map[string]string{{"role": "user", "content": prompt}},
 	})
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL+"/v1/messages", bytes.NewReader(body))
 	if err != nil {
 		return SummaryResult{}, err
 	}
-	req.Header.Set("x-api-key", key)
+	req.Header.Set("x-api-key", cfg.APIKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("content-type", "application/json")
 	resp, err := http.DefaultClient.Do(req)

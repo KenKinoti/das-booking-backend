@@ -1,0 +1,30 @@
+supplier,supplier_type,supplier_currency,kind,name,tld,period,price,regular_price,setup_fee,disk_gb,sites,email_accounts,as_of,source_url,notes
+# SAMPLE DATA FOR TESTS — every price below is made up. Do not quote from this file.
+Synergy Wholesale,wholesale,AUD,hosting_plan,Starter Env,,month,6.50,,0,2,1,5,2026-09-28,https://example.test/synergy/hosting,SAMPLE made-up price
+Synergy Wholesale,wholesale,AUD,hosting_plan,Standard Env,,month,11.00,,0,5,1,10,2026-09-28,https://example.test/synergy/hosting,SAMPLE made-up price
+Synergy Wholesale,wholesale,AUD,hosting_plan,Business Env,,month,19.50,,0,10,1,unlimited,2026-09-28,https://example.test/synergy/hosting,SAMPLE made-up price
+Synergy Wholesale,wholesale,AUD,domain_register,,.co.ke,year,21.00,,,,,,2026-09-28,https://example.test/synergy/domains,SAMPLE made-up price
+Synergy Wholesale,wholesale,AUD,domain_renew,,.co.ke,year,23.50,,,,,,2026-09-28,https://example.test/synergy/domains,SAMPLE made-up price
+Synergy Wholesale,wholesale,AUD,domain_transfer,,.co.ke,year,21.00,,,,,,2026-09-28,https://example.test/synergy/domains,SAMPLE made-up price
+Synergy Wholesale,wholesale,AUD,domain_register,,.com,year,16.20,,,,,,2026-09-28,https://example.test/synergy/domains,SAMPLE made-up price
+Synergy Wholesale,wholesale,AUD,domain_renew,,.com,year,17.80,,,,,,2026-09-28,https://example.test/synergy/domains,SAMPLE made-up price
+Synergy Wholesale,wholesale,AUD,domain_register,,.com.au,year,9.90,,,,,,2026-09-28,https://example.test/synergy/domains,SAMPLE made-up price
+Synergy Wholesale,wholesale,AUD,domain_renew,,.com.au,year,12.40,,,,,,2026-09-28,https://example.test/synergy/domains,SAMPLE made-up price
+Synergy Wholesale,wholesale,AUD,ssl,Standard SSL,,year,12.00,,,,,,2026-05-15,https://example.test/synergy/ssl,SAMPLE made-up price (old on purpose: shows the check-price warning)
+Synergy Wholesale,wholesale,AUD,email_mailbox,Mailbox 5 GB,,month,1.20,,,,,,2026-09-28,https://example.test/synergy/email,SAMPLE made-up price per mailbox
+hosting.com,wholesale,USD,hosting_plan,Launch,,year,35.88,131.88,0,15,1,10,2026-09-30,https://example.test/hostingcom/shared,SAMPLE made-up intro price: first year then renews at the regular price
+hosting.com,wholesale,USD,hosting_plan,Grow,,year,71.88,179.88,0,50,unlimited,unlimited,2026-09-30,https://example.test/hostingcom/shared,SAMPLE made-up intro price
+hosting.com,wholesale,USD,hosting_plan,Reseller 50,,month,24.99,,0,60,50,unlimited,2026-09-30,https://example.test/hostingcom/reseller,SAMPLE made-up price: one plan for up to 50 client sites
+hosting.com,wholesale,USD,domain_register,,.com,year,11.99,19.99,,,,,2026-09-30,https://example.test/hostingcom/domains,SAMPLE made-up intro price
+hosting.com,wholesale,USD,domain_renew,,.com,year,19.99,,,,,,2026-09-30,https://example.test/hostingcom/domains,SAMPLE made-up price
+hosting.com,wholesale,USD,domain_register,,.com.au,year,14.50,,,,,,2026-09-30,https://example.test/hostingcom/domains,SAMPLE made-up price
+hosting.com,wholesale,USD,domain_renew,,.com.au,year,16.00,,,,,,2026-09-30,https://example.test/hostingcom/domains,SAMPLE made-up price
+Example Host Kenya,competitor,KES,hosting_plan,Basic,,year,2500,3500,0,5,1,10,2026-09-25,https://example.test/competitor-a,SAMPLE made-up competitor
+Example Host Kenya,competitor,KES,domain_register,,.co.ke,year,999,1200,,,,,2026-09-25,https://example.test/competitor-a,SAMPLE made-up competitor
+Example Host Kenya,competitor,KES,domain_renew,,.co.ke,year,1200,,,,,,2026-09-25,https://example.test/competitor-a,SAMPLE made-up competitor
+Sample Web Africa,competitor,KES,hosting_plan,Bronze,,year,3600,,0,10,1,20,2026-09-25,https://example.test/competitor-b,SAMPLE made-up competitor
+Sample Web Africa,competitor,KES,domain_register,,.co.ke,year,1100,,,,,,2026-09-25,https://example.test/competitor-b,SAMPLE made-up competitor
+Sample Web Africa,competitor,KES,domain_register,,.com,year,1700,1900,,,,,2026-09-25,https://example.test/competitor-b,SAMPLE made-up competitor
+Demo Hosting Australia,competitor,AUD,hosting_plan,Lite,,month,7.95,,0,5,1,5,2026-09-25,https://example.test/competitor-c,SAMPLE made-up competitor
+Demo Hosting Australia,competitor,AUD,domain_register,,.com.au,year,19.95,,,,,,2026-09-25,https://example.test/competitor-c,SAMPLE made-up competitor
+Demo Hosting Australia,competitor,AUD,domain_register,,.co.ke,year,64.00,,,,,,2026-09-25,https://example.test/competitor-c,SAMPLE made-up competitor

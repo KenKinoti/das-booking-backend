@@ -57,7 +57,7 @@ func (UserSettings) TableName() string { return "assistant_user_settings" }
 
 // Migrate creates the assistant tables.
 func Migrate(db *gorm.DB) error {
-	return db.AutoMigrate(&Conversation{}, &Message{}, &UserSettings{})
+	return db.AutoMigrate(&Conversation{}, &Message{}, &UserSettings{}, &PlatformSettings{})
 }
 
 // Block is an Anthropic content block (the subset we use).
