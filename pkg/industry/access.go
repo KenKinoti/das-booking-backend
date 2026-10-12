@@ -136,10 +136,19 @@ func ActionFor(method, path string) string {
 	case http.MethodDelete:
 		return ActDelete
 	case http.MethodPut, http.MethodPatch:
+		// Bar stock (pkg/barstock): autosaving the lines of a stock take is
+		// counting, which bartenders may do (create), not editing.
+		if strings.HasPrefix(path, "/bar/counts/") && strings.HasSuffix(strings.TrimSuffix(path, "/"), "/lines") {
+			return ActCreate
+		}
 		return ActEdit
 	}
 	p := strings.TrimSuffix(path, "/")
 	last := p[strings.LastIndex(p, "/")+1:]
+	// Bar stock: the bar confirms what arrived (create); pkg/barstock checks the destination.
+	if last == "receive" && strings.HasPrefix(p, "/bar/transfers/") {
+		return ActCreate
+	}
 	switch last {
 	case "approve", "decide", "void", "reject", "approve-all":
 		return ActApprove

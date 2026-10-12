@@ -31,6 +31,9 @@ var Rules = []Rule{
 	{Prefix: "/events", Modules: []string{"events"}},
 	{Prefix: "/inventory", Modules: []string{"inventory"}, ReadAlso: []string{"pos", "invoicing", "ecommerce", "manufacturing", "smallbiz"}},
 	{Prefix: "/suppliers", Modules: []string{"inventory"}, ReadAlso: []string{"accounting", "manufacturing"}},
+	// Club / bar stock (pkg/barstock): inventory actions; POS users may read
+	// (e.g. /bar/pos-availability for the "Selling from" badges).
+	{Prefix: "/bar", Modules: []string{"inventory"}, ReadAlso: []string{"pos"}},
 	{Prefix: "/finance", Modules: []string{"accounting"}},
 	{Prefix: "/crm", Modules: []string{"crm"}},
 	{Prefix: "/customers", Modules: []string{"crm", "invoicing", "bookings", "pos", "events", "smallbiz", "ecommerce"}, ReadAny: true},

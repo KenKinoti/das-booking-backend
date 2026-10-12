@@ -85,6 +85,7 @@ func DefaultFXRates() []FXRate {
 var industryAliases = map[string]string{
 	"retail": "retail", "ecommerce": "retail", "shop": "retail", "store": "retail",
 	"hospitality": "hospitality", "restaurant": "hospitality", "cafe": "hospitality", "food": "hospitality",
+	"nightclub": "hospitality", "bar": "hospitality", "lounge": "hospitality", "pub": "hospitality",
 	"automotive": "automotive", "garage": "automotive", "mechanic": "automotive", "auto": "automotive",
 	"beauty": "beauty", "salon": "beauty", "spa": "beauty", "wellness": "beauty", "barber": "beauty", "gym": "beauty",
 	"healthcare": "healthcare", "ndis": "healthcare", "care": "healthcare", "clinic": "healthcare", "medical": "healthcare",

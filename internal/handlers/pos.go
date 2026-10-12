@@ -69,6 +69,44 @@ type posHTTPError struct {
 func (e posHTTPError) Error() string { return e.msg }
 
 // ---------------------------------------------------------------------------
+// Bar stock hooks (club / bar stock, pkg/barstock). They are set from
+// cmd/production/routes_bar.go and stay nil when bar stock is not installed,
+// so POS then behaves exactly as before. Products bar stock manages (menu
+// items with a recipe and bar stock items) skip the integer stock check and
+// decrement here; bar stock deducts their recipes from the selling bar inside
+// the same DB transaction and reverses that when the sale is voided.
+// ---------------------------------------------------------------------------
+
+// BarSale is what the bar stock sale hook gets.
+type BarSale struct {
+	OrgID, UserID string
+	LocationID    string // the request's location_id ("" = terminal's bar / default bar)
+	Txn           *models.POSTransaction
+	Items         []models.POSItem
+}
+
+var (
+	// BarManagedProducts returns which products bar stock manages.
+	BarManagedProducts func(tx *gorm.DB, orgID string, productIDs []string) (map[string]bool, error)
+	// BarSaleHook deducts recipes for the managed lines; it returns the stock
+	// items it changed (for low-stock alerts).
+	BarSaleHook func(tx *gorm.DB, sale BarSale) ([]string, error)
+	// BarVoidHook reverses a voided sale; it returns the products it handled
+	// (their integer stock is not restored here).
+	BarVoidHook func(tx *gorm.DB, orgID, userID string, t *models.POSTransaction, reason string) (map[string]bool, error)
+)
+
+// barHookErr keeps the HTTP status of a bar stock error (e.g. 409 when the
+// organisation blocks sales of items the bar has run out of).
+func barHookErr(err error) error {
+	var se interface{ HTTPStatus() int }
+	if errors.As(err, &se) {
+		return posHTTPError{se.HTTPStatus(), err.Error()}
+	}
+	return err
+}
+
+// ---------------------------------------------------------------------------
 // Transactions
 // ---------------------------------------------------------------------------
 
@@ -108,6 +146,7 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 		TaxRate         *float64          `json:"tax_rate"` // default rate for lines that don't specify one
 		TaxInclusive    bool              `json:"tax_inclusive"`
 		Notes           string            `json:"notes"`
+		LocationID      string            `json:"location_id"` // bar stock: the bar the sale is rung up at (optional)
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
@@ -134,6 +173,8 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 
 	txnID := uuid.New().String()
 	var txn models.POSTransaction
+	var barManaged map[string]bool // bar stock (see BarManagedProducts)
+	var barTouched []string
 
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		if req.CustomerID != nil {
@@ -222,8 +263,24 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 			items = append(items, item)
 		}
 
+		// Bar stock manages the stock of some products (never blocks by default).
+		if BarManagedProducts != nil && len(needed) > 0 {
+			ids := make([]string, 0, len(needed))
+			for pid := range needed {
+				ids = append(ids, pid)
+			}
+			m, err := BarManagedProducts(tx, orgID, ids)
+			if err != nil {
+				return err
+			}
+			barManaged = m
+		}
+
 		// Stock check (aggregated per product so duplicate lines can't oversell)
 		for pid, qty := range needed {
+			if barManaged[pid] {
+				continue
+			}
 			p := products[pid]
 			if p.CurrentStock < qty {
 				if p.CurrentStock <= 0 {
@@ -332,6 +389,9 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 
 		// Decrement stock atomically and log movements
 		for pid, qty := range needed {
+			if barManaged[pid] {
+				continue
+			}
 			p := products[pid]
 			res := tx.Model(&models.Product{}).
 				Where("id = ? AND organization_id = ? AND current_stock >= ?", pid, orgID, qty).
@@ -359,6 +419,14 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 				return err
 			}
 		}
+		// Bar stock deducts the recipes of its products from the selling bar.
+		if BarSaleHook != nil && len(barManaged) > 0 {
+			touched, err := BarSaleHook(tx, BarSale{OrgID: orgID, UserID: userID, LocationID: strings.TrimSpace(req.LocationID), Txn: &txn, Items: items})
+			if err != nil {
+				return barHookErr(err)
+			}
+			barTouched = touched
+		}
 		return nil
 	})
 	if err != nil {
@@ -374,10 +442,11 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 	posPreloadTx(h.DB).Where("id = ? AND organization_id = ?", txnID, orgID).First(&txn)
 	sold := make([]string, 0, len(txn.Items))
 	for _, it := range txn.Items {
-		if it.ProductID != nil {
+		if it.ProductID != nil && !barManaged[*it.ProductID] {
 			sold = append(sold, *it.ProductID)
 		}
 	}
+	sold = append(sold, barTouched...) // bar stock items whose stock changed
 	go h.notifyLowStock(orgID, sold)
 	c.JSON(http.StatusCreated, gin.H{"transaction": txn})
 }
@@ -541,9 +610,19 @@ func (h *Handler) VoidPOSTransaction(c *gin.Context) {
 			return posHTTPError{http.StatusConflict, "This sale has already been voided"}
 		}
 
+		// Bar stock reverses its own movements (sale_void) for the products it manages.
+		var barHandled map[string]bool
+		if BarVoidHook != nil {
+			m, err := BarVoidHook(tx, orgID, userID, &t, req.Reason)
+			if err != nil {
+				return barHookErr(err)
+			}
+			barHandled = m
+		}
+
 		restore := map[string]int{}
 		for _, it := range t.Items {
-			if it.ProductID != nil {
+			if it.ProductID != nil && !barHandled[*it.ProductID] {
 				restore[*it.ProductID] += it.Quantity
 			}
 		}

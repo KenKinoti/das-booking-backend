@@ -64,7 +64,7 @@ func accessOf(t *testing.T, typeKey string, confirmed bool, plan []string, extra
 var everyModule = []string{"smallbiz", "invoicing", "pos", "ecommerce", "crm", "bookings", "events", "inventory", "manufacturing", "accounting", "hr", "projects", "documents", "communication"}
 
 func TestDefaultTypesAreValid(t *testing.T) {
-	want := []string{"mechanic", "salon", "spa", "clinic", "ndis", "consulting", "agency", "retail", "restaurant", "events", "construction", "manufacturer", "education", "nonprofit", "general"}
+	want := []string{"mechanic", "salon", "spa", "clinic", "ndis", "consulting", "agency", "retail", "restaurant", "nightclub", "events", "construction", "manufacturer", "education", "nonprofit", "general"}
 	types := DefaultTypes()
 	if len(types) != len(want) {
 		t.Fatalf("want %d types, got %d", len(want), len(types))

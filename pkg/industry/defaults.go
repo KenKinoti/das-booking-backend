@@ -287,7 +287,7 @@ func DefaultTypes() []BusinessType {
 		},
 		{
 			Key: "restaurant", Name: "Restaurant / café", Icon: "fa-solid fa-mug-hot", PlanIndustry: "hospitality",
-			Description: "Restaurants, cafés, bars and catering.",
+			Description: "Restaurants, cafés, takeaways and catering.",
 			Modules:     []string{"pos", "inventory", "bookings", "hr", "invoicing"},
 			Terms: map[string]string{"bookings": "Reservations", "booking": "Reservation", "customers": "Guests", "customer": "Guest",
 				"inventory": "Stock & ingredients", "inventory_item": "Ingredient", "services": "Menu", "service": "Menu item", "operations": "Reservations"},
@@ -309,6 +309,7 @@ func DefaultTypes() []BusinessType {
 			BookingDefaults:  map[string]any{"vehicle_required": false, "resource_label": "Table", "default_duration": 90},
 			DashboardWidgets: []string{"sales_today", "covers", "reservations_today", "low_stock"},
 		},
+		nightclub(),
 		{
 			Key: "events", Name: "Events & venues", Icon: "fa-solid fa-champagne-glasses", PlanIndustry: "events",
 			Description: "Venues, event organisers and ticketed experiences.",
@@ -455,6 +456,53 @@ func DefaultTypes() []BusinessType {
 	return t
 }
 
+// nightclub is the "Nightclub / bar / lounge" type: drinks sold at the till
+// (POS) are deducted from bar stock by the tot or the bottle (pkg/bar, the
+// /bar-stock pages), stock is held in a main store and one or more bars, and
+// guests book tables. Bar stock permissions are the inventory module's
+// actions: view = stock at their bars without money values, create = counts,
+// wastage and transfer requests, edit = issue/receive transfers and
+// deliveries, approve = approve counts and wastage, see costs and variance
+// money, settings and purchase orders, delete = remove items and recipes.
+func nightclub() BusinessType {
+	return BusinessType{
+		Key: "nightclub", Name: "Nightclub / bar / lounge", Icon: "fa-solid fa-martini-glass-citrus", PlanIndustry: "hospitality",
+		Description: "Nightclubs, bars, lounges and pubs — tots, bottles, stock takes and tables.",
+		Modules:     []string{"pos", "inventory", "events", "bookings", "hr", "crm"},
+		// The deals pipeline is not for a club (guests stay under Guests), and
+		// the generic product list gives way to the Bar stock area
+		// (/bar-stock), which reads the same products as stock items.
+		HiddenPaths: []string{"/crm", "/inventory"},
+		Terms: map[string]string{"customers": "Guests", "customer": "Guest", "bookings": "Table reservations", "booking": "Reservation",
+			"inventory": "Bar stock", "inventory_item": "Stock item", "services": "Drinks menu", "service": "Menu item",
+			"operations": "Tables & events"},
+		Roles: []RoleTemplate{
+			owner("Owner"),
+			{Key: "bar_manager", Name: "Bar manager", Description: "Runs the bar: stock, stock takes and variance, purchasing, the till, reservations and events.", Base: BaseManager, Scope: ScopeAll, Legacy: "manager",
+				Perms: perms(PermCore, view, PermTeam, view, "inventory", full, "pos", full, "bookings", crud, "events", crud, "crm", work, "hr", view)},
+			{Key: "store_keeper", Name: "Store keeper", Description: "Receives deliveries, issues stock to the bars and counts stock. Cannot approve counts or see costs.", Base: BaseStaff, Scope: ScopeAll, Home: "/bar-stock",
+				Perms: perms("inventory", work)},
+			{Key: "bartender", Name: "Bartender", Description: "Sells drinks at the till, records wastage and requests stock for their bar.", Base: BaseStaff, Scope: ScopeAll, Legacy: "staff", Home: "/pos",
+				Perms: perms("pos", add, "inventory", add)},
+			{Key: "cashier", Name: "Cashier / waiter", Description: "Takes orders and payments at the till and checks table reservations.", Base: BaseStaff, Scope: ScopeAll, Home: "/pos",
+				Perms: perms("pos", add, "bookings", view)},
+			{Key: "host", Name: "Host / door", Description: "Takes table reservations, keeps the guest list and checks guests in at events.", Base: BaseStaff, Scope: ScopeAll, Home: "/bookings",
+				Perms: perms("bookings", work, "events", upd, "crm", add)},
+		},
+		Checklist: []ChecklistItem{
+			{Key: "bars", Label: "Set up your bars and store", Hint: "Where stock is kept and where it is sold from.", To: "/bar-stock?tab=setup"},
+			{Key: "stock_items", Label: "Add your stock items", Hint: "Bottles, kegs, cans and mixers — start from the starter list.", To: "/bar-stock?tab=stock"},
+			{Key: "menu", Label: "Create tots and menu items", Hint: "What guests buy, and how much stock each one uses.", To: "/bar-stock?tab=recipes"},
+			{Key: "delivery", Label: "Receive your first delivery", To: "/bar-stock?tab=purchasing"},
+			{Key: "count", Label: "Do your first stock take", To: "/bar-stock?tab=counts"},
+			{Key: "pos", Label: "Ring up your first sale", To: "/pos"},
+		},
+		BookingDefaults:  map[string]any{"vehicle_required": false, "resource_label": "Table", "default_duration": 240},
+		DashboardWidgets: []string{"bar_tonight", "sales_today", "reservations_today", "low_stock"},
+		Features:         []string{"bar_stock"},
+	}
+}
+
 // typeAliases maps legacy organisations.business_type values to type keys.
 var typeAliases = map[string]string{
 	"mechanic": "mechanic", "garage": "mechanic", "automotive": "mechanic", "auto": "mechanic", "workshop": "mechanic",
@@ -465,7 +513,8 @@ var typeAliases = map[string]string{
 	"consulting": "consulting", "professional": "consulting", "accounting": "consulting", "legal": "consulting",
 	"agency": "agency", "it": "agency", "web": "agency", "software": "agency",
 	"retail": "retail", "shop": "retail", "store": "retail", "ecommerce": "retail",
-	"restaurant": "restaurant", "cafe": "restaurant", "hospitality": "restaurant", "food": "restaurant", "bar": "restaurant",
+	"restaurant": "restaurant", "cafe": "restaurant", "hospitality": "restaurant", "food": "restaurant",
+	"nightclub": "nightclub", "night_club": "nightclub", "night-club": "nightclub", "bar": "nightclub", "lounge": "nightclub", "pub": "nightclub", "nightlife": "nightclub",
 	"events": "events", "venue": "events",
 	"construction": "construction", "trades": "construction", "builder": "construction",
 	"manufacturer": "manufacturer", "manufacturing": "manufacturer", "factory": "manufacturer",

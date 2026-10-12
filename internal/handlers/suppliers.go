@@ -595,6 +595,16 @@ func (h *Handler) GetPurchaseOrder(c *gin.Context) {
 	erpJSON(c, http.StatusOK, gin.H{"purchase_order": order})
 }
 
+// NextPONumber is the purchase order numbering, exported for bar stock
+// (pkg/barstock creates draft purchase orders from its reorder suggestions).
+func NextPONumber(tx *gorm.DB, orgID string) string { return (&Handler{}).nextPONumber(tx, orgID) }
+
+// BarPOReceiveHook (bar stock, set from cmd/production/routes_bar.go) books a
+// received line of a bar stock item into the main store (weighted average
+// cost, price history) and re-syncs its current_stock from the bar ledger.
+// handled=false keeps the integer stock update below; nil = not installed.
+var BarPOReceiveHook func(tx *gorm.DB, orgID, userID string, order *models.PurchaseOrder, line *models.PurchaseOrderItem, qty int) (handled bool, newStock int, err error)
+
 // nextPONumber returns the next sequential number for the organisation.
 func (h *Handler) nextPONumber(tx *gorm.DB, orgID string) string {
 	var n int64
@@ -1017,8 +1027,21 @@ func (h *Handler) ReceivePurchaseOrder(c *gin.Context) {
 			}
 			prev := product.CurrentStock
 			next := prev + q
-			if err := tx.Model(&models.Product{}).Where("id = ?", product.ID).UpdateColumn("current_stock", next).Error; err != nil {
-				return err
+			barHandled := false // bar stock items are booked by pkg/barstock
+			if BarPOReceiveHook != nil {
+				handled, n, err := BarPOReceiveHook(tx, orgID, userID, &order, it, q)
+				if err != nil {
+					return err
+				}
+				barHandled = handled
+				if handled {
+					next = n
+				}
+			}
+			if !barHandled {
+				if err := tx.Model(&models.Product{}).Where("id = ?", product.ID).UpdateColumn("current_stock", next).Error; err != nil {
+					return err
+				}
 			}
 			if err := tx.Model(&models.PurchaseOrderItem{}).Where("id = ?", it.ID).UpdateColumn("quantity_received", it.QuantityReceived+q).Error; err != nil {
 				return err
