@@ -196,11 +196,17 @@ func TestBookingCalendarFileAndSignedLink(t *testing.T) {
 	b2 := e.booking(e.org, e.customer, e.amina, "scheduled", 80*time.Hour, e.now)
 	bo := e.booking(e.other, e.otherCust, "", "scheduled", 80*time.Hour, e.now)
 	good := LinkToken(e.n.Secret, e.org, b.ID)
+	// A tampered token always differs from the good one (the last character is swapped for another).
+	last := "A"
+	if strings.HasSuffix(good, "A") {
+		last = "B"
+	}
+	tampered := good[:len(good)-1] + last
 	var notFound string
 	for name, p := range map[string]string{
 		"unknown booking": "/api/v1/public/bookings/" + uuid.NewString() + "/calendar.ics?t=" + good,
 		"no token":        "/api/v1/public/bookings/" + b.ID + "/calendar.ics",
-		"tampered":        "/api/v1/public/bookings/" + b.ID + "/calendar.ics?t=" + good[:len(good)-1] + "A",
+		"tampered":        "/api/v1/public/bookings/" + b.ID + "/calendar.ics?t=" + tampered,
 		"other booking":   "/api/v1/public/bookings/" + b2.ID + "/calendar.ics?t=" + good,
 		"other org":       "/api/v1/public/bookings/" + bo.ID + "/calendar.ics?t=" + LinkToken(e.n.Secret, e.org, bo.ID),
 	} {

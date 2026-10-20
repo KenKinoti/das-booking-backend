@@ -11,7 +11,9 @@
 // Sending never blocks the booking API: messages go out in the background
 // with retries and every attempt is logged (booking_email_log). Staff can turn
 // the emails off on their profile; admins can turn them off for the whole
-// organisation in Settings → Notifications.
+// organisation in Settings → Notifications. Who receives them — the
+// organisation's mode, an admin's per-person switches and the person's own
+// choice — is decided by pkg/emailprefs.
 //
 // Customer emails: the codebase has no customer-facing booking email wired
 // to the booking API (integrations.SendBookingConfirmation is unused), so
@@ -67,6 +69,9 @@ func DefaultSettings(org string) Settings {
 }
 
 // UserPref is one user's "Email me about my bookings" choice (default on).
+// Since 2.12 the choice lives in pkg/emailprefs (Who gets emails): the
+// rows with booking_emails = false were moved there once and this table is
+// no longer read or written.
 type UserPref struct {
 	UserID         string    `json:"user_id" gorm:"type:varchar(255);primaryKey"`
 	OrganizationID string    `json:"organization_id" gorm:"type:varchar(255);index"`

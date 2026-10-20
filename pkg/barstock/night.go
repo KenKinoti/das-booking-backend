@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/emailprefs"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/invoicing"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 )
@@ -22,12 +23,13 @@ import (
 // every 10 minutes under a Postgres advisory lock per organisation, so with
 // several instances exactly one sends. BAR_SCHEDULER=off disables it.
 
-// Recipients are the emails of active users who may approve on inventory.
+// Recipients are the emails of active users who may approve on inventory,
+// as far as Who gets emails (pkg/emailprefs) lets them have it.
 func (s *Service) Recipients(db *gorm.DB, org string) []string {
 	type u struct{ ID, Email, Role string }
 	var users []u
 	db.Table("users").Select("id, email, role").Where("organization_id = ? AND deleted_at IS NULL AND is_active", org).Order("email").Scan(&users)
-	out := []string{}
+	ids := []string{}
 	for _, x := range users {
 		if strings.TrimSpace(x.Email) == "" {
 			continue
@@ -37,10 +39,10 @@ func (s *Service) Recipients(db *gorm.DB, org string) []string {
 			ok = s.Can(org, x.ID, x.Role, "inventory", "approve")
 		}
 		if ok {
-			out = append(out, strings.ToLower(strings.TrimSpace(x.Email)))
+			ids = append(ids, x.ID)
 		}
 	}
-	return out
+	return emailprefs.UserEmails(db, org, emailprefs.BarNightReport, ids)
 }
 
 type orgInfo struct{ Name, Email, Phone, Address, Accent, Logo string }

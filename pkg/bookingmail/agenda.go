@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/emailprefs"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/invoicing"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 )
@@ -50,7 +51,7 @@ func (n *Notifier) SendAgenda(ctx context.Context, org string, force bool) Agend
 	date := dayStart.Format("2006-01-02")
 	for _, uid := range order {
 		u := n.user(uid)
-		if u == nil || u.OrganizationID != org || !n.WantsEmails(uid) || !mail.ValidAddress(strings.ToLower(u.Email)) {
+		if u == nil || u.OrganizationID != org || !emailprefs.Allowed(n.DB, org, uid, emailprefs.Agenda) || !mail.ValidAddress(strings.ToLower(u.Email)) {
 			res.Skipped++
 			continue
 		}
@@ -113,7 +114,7 @@ func (n *Notifier) agendaMessage(org string, u *staffUser, list []models.Booking
 	}
 	v := invoicing.EmailView{Kind: "booking", Business: invoicing.EmailBusiness{Name: nzs(o.Name, "DASYIN ERP"), Address: addr, Email: o.Email, Phone: o.Phone},
 		LogoURL: logo, Preheader: subject, DocLabel: "Today's agenda", Number: day.Format("Mon 2 Jan"), Message: b.String(), Actions: actions,
-		Note: "Daily agenda — turn booking emails off in My profile → Booking emails."}
+		Note: "Daily agenda — turn it off in My profile → Email notifications."}
 	htmlOut, text := invoicing.RenderEmail(v)
 	return mail.Message{To: []string{u.Email}, Subject: subject, HTML: htmlOut, Text: text}
 }
@@ -299,7 +300,14 @@ func (h *Handler) getMe(c *gin.Context) {
 		bad(c, http.StatusUnauthorized, "Not signed in")
 		return
 	}
-	okJSON(c, gin.H{"booking_emails": h.N.WantsEmails(uid), "org_staff_emails": h.N.SettingsFor(orgOf(c)).StaffEmails})
+	org := orgOf(c)
+	locked := false
+	for _, mc := range emailprefs.Mine(h.N.DB, org, uid)["categories"].([]emailprefs.MyCategory) {
+		if mc.Key == emailprefs.Bookings {
+			locked = mc.Locked
+		}
+	}
+	okJSON(c, gin.H{"booking_emails": h.N.WantsEmails(org, uid), "org_staff_emails": h.N.SettingsFor(org).StaffEmails, "locked_by_admin": locked})
 }
 
 func (h *Handler) saveMe(c *gin.Context) {
@@ -315,12 +323,14 @@ func (h *Handler) saveMe(c *gin.Context) {
 		bad(c, http.StatusBadRequest, "Choose on or off")
 		return
 	}
-	p := UserPref{UserID: uid, OrganizationID: orgOf(c), BookingEmails: *in.BookingEmails, UpdatedAt: time.Now()}
-	if err := h.N.DB.Save(&p).Error; err != nil {
+	// Stored in Who gets emails (pkg/emailprefs) as the person's own choice
+	// for booking emails and the daily agenda; it never overrides an admin.
+	org := orgOf(c)
+	if err := emailprefs.SetSelfCategories(h.N.DB, org, uid, []string{emailprefs.Bookings, emailprefs.Agenda}, *in.BookingEmails); err != nil {
 		bad(c, http.StatusInternalServerError, "Could not save")
 		return
 	}
-	okJSON(c, gin.H{"booking_emails": p.BookingEmails})
+	okJSON(c, gin.H{"booking_emails": h.N.WantsEmails(org, uid)})
 }
 
 func (h *Handler) log(c *gin.Context) {

@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/emailprefs"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/invoicing"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/notify"
@@ -24,23 +25,28 @@ var adminEmailRoles = []string{"owner", "admin", "org_admin", "super_admin"}
 
 // Recipients resolves who gets reminders for an organisation (and one
 // schedule's extra recipients): admins, the outgoing-email "Notification
-// recipients", the reminder settings' own list.
+// recipients", the reminder settings' own list. Who gets emails
+// (pkg/emailprefs) decides for the admins; the lists are addresses an admin
+// chose and stay, except a member's address whose bill reminders are off
+// (their switches or the organisation's mode).
 func (s *Service) Recipients(org string, st Settings, sched *RecurringBill) []string {
 	var raw []string
 	if st.NotifyAdmins {
-		var emails []string
-		s.DB.Raw(`SELECT email FROM users WHERE organization_id = ? AND deleted_at IS NULL AND (is_active IS NULL OR is_active) AND role IN ? ORDER BY created_at`,
-			org, adminEmailRoles).Scan(&emails)
-		raw = append(raw, emails...)
+		var ids []string
+		s.DB.Raw(`SELECT id FROM users WHERE organization_id = ? AND deleted_at IS NULL AND (is_active IS NULL OR is_active) AND role IN ? ORDER BY created_at`,
+			org, adminEmailRoles).Scan(&ids)
+		raw = append(raw, emailprefs.UserEmails(s.DB, org, emailprefs.BillReminders, ids)...)
 	}
+	var extra []string
 	if st.UseNotifyList && s.Mail != nil {
 		cfg, _ := s.Mail.Resolve(org)
-		raw = append(raw, cfg.Notify...)
+		extra = append(extra, cfg.Notify...)
 	}
-	raw = append(raw, st.Recipients...)
+	extra = append(extra, st.Recipients...)
 	if sched != nil {
-		raw = append(raw, sched.ExtraRecipients...)
+		extra = append(extra, sched.ExtraRecipients...)
 	}
+	raw = append(raw, emailprefs.FilterAddresses(s.DB, org, emailprefs.BillReminders, extra)...)
 	v, _ := mail.ParseList(strings.Join(raw, ","))
 	return v
 }

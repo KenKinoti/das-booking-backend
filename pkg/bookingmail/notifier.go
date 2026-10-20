@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/emailprefs"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/invoicing"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/notify"
@@ -95,13 +96,10 @@ func (n *Notifier) SettingsFor(org string) Settings {
 	return s
 }
 
-// WantsEmails reports a user's "Email me about my bookings" choice.
-func (n *Notifier) WantsEmails(userID string) bool {
-	var p UserPref
-	if n.DB.Where("user_id = ?", userID).First(&p).Error != nil {
-		return true
-	}
-	return p.BookingEmails
+// WantsEmails reports a user's own "Email me about my bookings" choice
+// (kept in pkg/emailprefs since 2.12; the old UserPref rows were moved there).
+func (n *Notifier) WantsEmails(org, userID string) bool {
+	return emailprefs.SelfOn(n.DB, org, userID, emailprefs.Bookings)
 }
 
 // Handle plans and queues the emails for one change.
@@ -234,8 +232,10 @@ func (n *Notifier) deliver(b *models.Booking, changed, deleted bool, p Plan, seq
 	if changed && p.UserID != actorID && (p.Event == EvAssigned || p.Event == EvUnassigned || p.Event == EvRescheduled || (p.Event == EvCancelled && deleted)) {
 		n.inApp(b, p, actorID)
 	}
-	if !n.WantsEmails(p.UserID) {
-		row.Status, row.Error = "skipped", "turned off in the staff member's profile"
+	// Who gets emails (pkg/emailprefs): the organisation's mode, an admin's
+	// switches and the staff member's own choice.
+	if okk, why := emailprefs.Check(n.DB, org, p.UserID, emailprefs.Bookings); !okk {
+		row.Status, row.Error = "skipped", why
 		n.logRow(row)
 		return
 	}
@@ -508,7 +508,7 @@ func (n *Notifier) Message(b *models.Booking, p Plan, seq int, u *staffUser) mai
 	}
 	ev := n.Event(b, seq, oc)
 	var groups []invoicing.EmailActionGroup
-	note := "Turn these emails off in My profile → Booking emails."
+	note := "Turn these emails off in My profile → Email notifications."
 	switch {
 	case p.Method == "":
 	case cancel:

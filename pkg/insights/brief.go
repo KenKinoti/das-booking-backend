@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/emailprefs"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/invoicing"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/pnl"
@@ -817,11 +818,12 @@ func (i *Intel) ruleBrief(org, period string) *Brief {
 // briefAdminRoles are the roles that receive the brief by email.
 var briefAdminRoles = []string{"owner", "admin", "org_admin", "super_admin"}
 
-// BriefRecipients are the organisation's active administrators with an email.
+// BriefRecipients are the organisation's active administrators with an
+// email, as far as Who gets emails (pkg/emailprefs) lets them have it.
 func (i *Intel) BriefRecipients(org string) []string {
-	var emails []string
-	i.DB.Raw(`SELECT email FROM users WHERE organization_id = ? AND deleted_at IS NULL AND (is_active IS NULL OR is_active) AND role IN ? ORDER BY created_at`, org, briefAdminRoles).Scan(&emails)
-	v, _ := mail.ParseList(strings.Join(emails, ","))
+	var ids []string
+	i.DB.Raw(`SELECT id FROM users WHERE organization_id = ? AND deleted_at IS NULL AND (is_active IS NULL OR is_active) AND role IN ? ORDER BY created_at`, org, briefAdminRoles).Scan(&ids)
+	v, _ := mail.ParseList(strings.Join(emailprefs.UserEmails(i.DB, org, emailprefs.StrategyBrief, ids), ","))
 	return v
 }
 

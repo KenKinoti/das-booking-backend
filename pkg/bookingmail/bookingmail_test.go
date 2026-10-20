@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/emailprefs"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/notify"
 )
@@ -94,7 +95,7 @@ func testDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(append(Models(), &notify.Notification{})...); err != nil {
+	if err := db.AutoMigrate(append(append(Models(), &notify.Notification{}), emailprefs.Models()...)...); err != nil {
 		t.Fatal(err)
 	}
 	for _, q := range []string{
@@ -140,6 +141,10 @@ func TestNotifierRecipientsICSAndTimezone(t *testing.T) {
 		(?, 'amina@shop.example', 'care_worker', 'Amina', 'Otieno', ?, now()), (?, 'brian@shop.example', 'care_worker', 'Brian', 'Kip', ?, now()),
 		(?, '', 'care_worker', 'No', 'Mail', ?, now()), (?, 'opt@shop.example', 'care_worker', 'Opt', 'Out', ?, now())`, a, org, b, org, noMail, org, optOut, org)
 	db.Create(&UserPref{UserID: optOut, OrganizationID: org, BookingEmails: false})
+	// The old "Email me about my bookings" choice moves into Who gets emails at start-up.
+	if n, err := emailprefs.MigrateLegacyBookingPrefs(db); err != nil || n != 1 {
+		t.Fatalf("legacy prefs moved %d: %v", n, err)
+	}
 	out := &box{}
 	ms := mail.NewService(db)
 	ms.Transport = func(_ context.Context, _ mail.Config, m mail.Message) error {
