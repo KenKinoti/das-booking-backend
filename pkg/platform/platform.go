@@ -79,6 +79,8 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
 	g.POST("/organizations/:id/suspend", h.SuspendOrganization)
 	g.POST("/organizations/:id/activate", h.ActivateOrganization)
 	g.POST("/organizations/:id/impersonate", h.Impersonate)
+	g.POST("/organizations/:id/reset", h.ResetOrganization)  // reset for handover (orgreset.go)
+	g.GET("/organizations/:id/export", h.ExportOrganization) // backup ZIP of what a reset removes
 	g.DELETE("/organizations/:id", h.DeleteOrganization)
 
 	g.GET("/modules", h.ModuleMatrix)

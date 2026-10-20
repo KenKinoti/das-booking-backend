@@ -78,6 +78,9 @@ type RoleTemplate struct {
 	Legacy string `json:"legacy,omitempty"`
 	// Home is where the user lands when the dashboard is not available to them.
 	Home string `json:"home,omitempty"`
+	// Steps are the "Getting started" steps for people with this role, in
+	// their own words (pkg/onboarding; see Step and StepsFor in defaults.go).
+	Steps []Step `json:"steps,omitempty"`
 }
 
 // ChecklistItem is a setup task suggested for a business type.

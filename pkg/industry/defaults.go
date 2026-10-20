@@ -438,6 +438,11 @@ func DefaultTypes() []BusinessType {
 	}
 	_ = nopes
 	for i := range t {
+		for j := range t[i].Roles {
+			if s := roleSteps[t[i].Key][t[i].Roles[j].Key]; len(s) > 0 {
+				t[i].Roles[j].Steps = append([]Step{}, s...)
+			}
+		}
 		t[i].Active = true
 		t[i].SortOrder = i + 1
 		if t[i].HiddenPaths == nil {
@@ -529,4 +534,635 @@ func TypeKeyFor(bt string) string {
 		return k
 	}
 	return normKey(bt)
+}
+
+// ---------------------------------------------------------------- getting started
+
+// Step is one "Getting started" step shown to a person with a role
+// (pkg/onboarding): what to do, in their own words, and where to do it.
+//
+// Title and Description may use the organisation's words as placeholders:
+// {customers} → "guests", {Customers} → "Guests", {a_booking} → "a
+// reservation" (lower-case keys give running-text words, a capital keeps the
+// term's capitals, "a_" adds "a"/"an"). Keys are those of DefaultTerms.
+type Step struct {
+	Key         string `json:"key"`
+	Title       string `json:"title"`
+	Description string `json:"description"` // plain words, at most 140 characters
+	To          string `json:"to"`          // app route (query / hash allowed)
+	// DoneWhen names a check pkg/onboarding runs to tick the step by itself
+	// (e.g. "my_pos_sale"); empty = the person ticks it.
+	DoneWhen string `json:"done_when,omitempty"`
+}
+
+func st(key, title, desc, to, doneWhen string) Step {
+	return Step{Key: key, Title: title, Description: desc, To: to, DoneWhen: doneWhen}
+}
+
+// Steps shared by several roles.
+var (
+	stLogo       = st("logo", "Upload your logo", "Your logo goes on invoices, receipts, emails and the menu bar. A wide logo on a clear background looks best.", "/settings#business", "logo")
+	stDetails    = st("details", "Add your business details", "Your name, phone and address are printed on invoices, receipts and emails. Check them in Settings.", "/settings#business", "business_details")
+	stMyPhone    = st("phone", "Add your phone number", "Put your phone number on your profile so the team can reach you.", "/profile", "my_phone")
+	stDashboard  = st("dashboard", "Check today's numbers", "The dashboard shows today's sales, money owed and what needs your attention.", "/dashboard", "")
+	stTeamReview = st("team", "Meet your team", "See who works here and the role each person has.", "/staff", "")
+	stOpenDrawer = st("drawer", "Open your cash drawer", "Count your float and open the drawer at the start of your shift, so takings add up at the end.", "/pos", "my_drawer")
+)
+
+// roleSteps are the built-in steps per business type and role key (3–6
+// each), attached to the role templates by DefaultTypes. Roles without an
+// entry (custom roles, new types) fall back to their type's owner or manager
+// steps or to BaseSteps (see StepsFor).
+var roleSteps = map[string]map[string][]Step{
+	"mechanic": {
+		"owner": {
+			st("services", "Set your labour rates", "Add the jobs you do and what you charge, so job cards and invoices fill in by themselves.", "/services", "service"),
+			st("parts", "Load your parts list", "Add the parts you keep with their prices. Technicians can look them up on a job.", "/inventory", "product"),
+			st("team", "Add your technicians", "Give each person a role. Technicians only see the job cards assigned to them.", "/staff", "staff"),
+			st("jobcard", "Open your first job card", "Book a vehicle in, pick the work to be done and assign it to a technician.", "/bookings", "booking"),
+			st("invoice", "Invoice a finished job", "Turn the work into an invoice and send it to the customer.", "/invoices/new", "invoice"),
+			stLogo,
+		},
+		"workshop_manager": {
+			st("today", "Plan today's job cards", "See every vehicle booked in today and who is working on it.", "/bookings", ""),
+			st("assign", "Assign a job to a technician", "Open a job card and pick the technician. It shows on their list straight away.", "/bookings", "booking"),
+			st("parts", "Check parts running low", "Parts below their reorder point show first. Order more before a job stalls.", "/inventory", ""),
+			st("invoice", "Invoice a finished job", "When a job is done, send the invoice so the customer can pay on collection.", "/invoices/new", "invoice"),
+			stDashboard,
+		},
+		"service_advisor": {
+			st("customer", "Add a customer and their vehicle", "Save the owner's details, then add the car with its plate so you find it fast next time.", "/customers", "customer"),
+			st("jobcard", "Write up a job card", "Book the vehicle in, note the problem and pick the work to be done.", "/bookings", "booking"),
+			st("quote", "Send a quote", "Price the work before you start and send it for the customer to accept.", "/quotes/new", "quote"),
+			st("invoice", "Invoice the customer", "When the job is done, create the invoice and send it or print it at the counter.", "/invoices/new", "my_invoice"),
+		},
+		"technician": {
+			st("list", "See your job cards", "Only the vehicles assigned to you show here, with what needs doing.", "/bookings", ""),
+			st("start", "Start a job", "Open a job card and tap In progress when you begin, so the office knows.", "/bookings", "my_booking_progress"),
+			st("parts", "Look up a part", "Search the parts list to check what's in stock before you start.", "/inventory", ""),
+			st("finish", "Mark a job as done", "Tap Completed when the work is finished so the office can invoice it.", "/bookings", "my_booking_done"),
+		},
+		"parts_clerk": {
+			st("part", "Add a part", "Enter the part with its number, price and how many you have on the shelf.", "/inventory", "product"),
+			st("supplier", "Add your suppliers", "Keep each supplier's contacts in one place so ordering parts is quick.", "/suppliers", "supplier"),
+			st("order", "Order parts from a supplier", "Create a purchase order, send it and mark it received when the parts arrive.", "/suppliers", "purchase_order"),
+			st("low", "Check what's running low", "Parts at or below their reorder point are flagged so nothing runs out.", "/inventory", ""),
+		},
+		"cashier": {
+			stOpenDrawer,
+			st("sale", "Take a payment at the counter", "Add parts or labour on the till, take cash, card or mobile money and hand over the receipt.", "/pos", "my_pos_sale"),
+			st("invoice", "Invoice a customer", "Create an invoice for the work done and send it, or print it at the counter.", "/invoices/new", "my_invoice"),
+			st("jobs", "See today's job cards", "Check which vehicles are ready for collection and payment.", "/bookings", ""),
+		},
+	},
+	"salon": {
+		"owner": {
+			st("treatments", "Set up your treatment menu", "Add each treatment with how long it takes and its price, so booking is quick.", "/services", "service"),
+			st("team", "Add your stylists", "Give each person a role. Stylists only see their own appointments.", "/staff", "staff"),
+			st("clients", "Add your clients", "Save their phone and email so you can send reminders and rebook them.", "/customers", "customer"),
+			st("booking", "Take your first appointment", "Pick a client, a treatment, a stylist and a time.", "/bookings", "booking"),
+			st("sale", "Ring up a sale at the till", "Charge for treatments and retail products and hand over a receipt.", "/pos", "pos_sale"),
+			stLogo,
+		},
+		"salon_manager": {
+			st("day", "Plan the day", "See today's appointments for every stylist and fill the gaps.", "/bookings", ""),
+			st("booking", "Book an appointment", "Pick the client, the treatment, the stylist and a free time.", "/bookings", "booking"),
+			st("sale", "Take a payment", "Ring up the treatment and any products at the till.", "/pos", "my_pos_sale"),
+			st("stock", "Check retail stock", "See which products are running low and need ordering.", "/inventory", ""),
+			st("numbers", "Look at the takings", "The dashboard shows today's sales and which treatments sell best.", "/dashboard", ""),
+		},
+		"receptionist": {
+			st("client", "Add a new client", "Save their name, phone and email when they first call or walk in.", "/customers", "customer"),
+			st("booking", "Book an appointment", "Pick the client, the treatment, the stylist and a time that's free.", "/bookings", "booking"),
+			st("checkin", "Check a client in", "When they arrive, open the appointment and mark it in progress.", "/bookings", ""),
+			st("sale", "Take payment", "Ring up the treatment and any products, then hand over the receipt.", "/pos", "my_pos_sale"),
+		},
+		"stylist": {
+			st("list", "See your appointments", "Only your own clients and times show here.", "/bookings", ""),
+			st("client", "Look up a client", "Check their notes and past visits before you start.", "/customers", ""),
+			st("start", "Start an appointment", "Mark it in progress when the client sits down, so reception knows.", "/bookings", "my_booking_progress"),
+			st("sale", "Ring up a sale", "Charge for the treatment and any products you sold.", "/pos", "my_pos_sale"),
+		},
+		"beautician": {
+			st("list", "See your treatments", "Only your own clients and times show here.", "/bookings", ""),
+			st("client", "Check client notes", "Look up allergies and past treatments before you begin.", "/customers", ""),
+			st("start", "Start a treatment", "Mark the appointment in progress when you begin, so reception knows.", "/bookings", "my_booking_progress"),
+			st("sale", "Sell a product", "Ring up the products a client takes home.", "/pos", "my_pos_sale"),
+		},
+	},
+	"spa": {
+		"owner": {
+			st("treatments", "Set up your treatment menu", "Add each treatment with its length and price, so booking is quick.", "/services", "service"),
+			st("team", "Add your therapists", "Give each person a role. Therapists only see their own treatments.", "/staff", "staff"),
+			st("guests", "Add your guests", "Save their phone and email so you can send reminders and rebook them.", "/customers", "customer"),
+			st("booking", "Take your first booking", "Pick a guest, a treatment, a therapist and a time.", "/bookings", "booking"),
+			st("sale", "Take your first payment", "Charge for treatments and retail products at the till.", "/pos", "pos_sale"),
+		},
+		"spa_manager": {
+			st("day", "Plan the day", "See every room's and therapist's treatments for today.", "/bookings", ""),
+			st("booking", "Book a treatment", "Pick the guest, the treatment, a therapist and a free time.", "/bookings", "booking"),
+			st("stock", "Check retail products", "Spot what's running low before it runs out.", "/inventory", ""),
+			st("numbers", "Look at the takings", "The dashboard shows today's sales and the busiest treatments.", "/dashboard", ""),
+		},
+		"receptionist": {
+			st("guest", "Add a new guest", "Save their name, phone and email when they first call or walk in.", "/customers", "customer"),
+			st("booking", "Book a treatment", "Pick the guest, the treatment, the therapist and a time that's free.", "/bookings", "booking"),
+			st("checkin", "Check a guest in", "When they arrive, open the booking and mark it in progress.", "/bookings", ""),
+			st("sale", "Take payment", "Ring up the treatment and any products, then hand over the receipt.", "/pos", "my_pos_sale"),
+		},
+		"therapist": {
+			st("list", "See your treatments", "Only your own guests and times show here.", "/bookings", ""),
+			st("guest", "Read guest notes", "Check allergies and preferences before the treatment.", "/customers", ""),
+			st("start", "Start a treatment", "Mark it in progress when the guest is in the room.", "/bookings", "my_booking_progress"),
+			st("finish", "Finish a treatment", "Mark it completed when you're done so reception can take payment.", "/bookings", "my_booking_done"),
+		},
+	},
+	"clinic": {
+		"owner": {
+			st("consults", "List your consultation types", "Add each type of appointment with its length and fee.", "/services", "service"),
+			st("team", "Add your practitioners and reception", "Give each person a role. Practitioners only see their own appointments.", "/staff", "staff"),
+			st("patients", "Add your patients", "Register patients with their contacts so booking and billing are quick.", "/customers", "customer"),
+			st("booking", "Book the first appointment", "Pick a patient, a consultation, a practitioner and a time.", "/bookings", "booking"),
+			st("invoice", "Bill a patient", "Create an invoice after a consultation and send it.", "/invoices/new", "invoice"),
+			stLogo,
+		},
+		"practice_manager": {
+			st("day", "Check today's appointments", "See every practitioner's list for today and spot the gaps.", "/bookings", ""),
+			stTeamReview,
+			st("unpaid", "Follow up unpaid invoices", "See which patients still owe and send a reminder.", "/invoices", ""),
+			st("numbers", "Look at the practice numbers", "The dashboard shows appointments, no-shows and money owed.", "/dashboard", ""),
+		},
+		"practitioner": {
+			st("list", "See your appointments", "Your patients for today, in time order.", "/bookings", ""),
+			st("patient", "Open a patient's record", "Read their details and notes before they come in.", "/customers", ""),
+			st("start", "Start a consultation", "Mark the appointment in progress when the patient comes in.", "/bookings", "my_booking_progress"),
+			st("docs", "Add a document", "Attach a referral, result or letter so the team can find it later.", "/documents", ""),
+		},
+		"nurse": {
+			st("day", "Check today's appointments", "See who's coming in and what each appointment is for.", "/bookings", ""),
+			st("patient", "Update a patient's notes", "Keep allergies, contacts and notes up to date.", "/customers", ""),
+			st("docs", "Upload a document", "Add results or forms to the right patient so nothing gets lost.", "/documents", ""),
+			st("messages", "Message the team", "Send a quick note to a practitioner or to reception.", "/messages", ""),
+		},
+		"receptionist": {
+			st("patient", "Register a new patient", "Save their name, phone, email and date of birth.", "/customers", "customer"),
+			st("booking", "Book an appointment", "Pick the patient, the consultation, a practitioner and a free time.", "/bookings", "booking"),
+			st("checkin", "Check a patient in", "When they arrive, open the appointment and mark it in progress.", "/bookings", ""),
+			st("invoice", "Take payment", "Create the invoice for the visit and record how they paid.", "/invoices/new", "my_invoice"),
+		},
+	},
+	"ndis": {
+		"owner": {
+			st("supports", "Add your support items and rates", "List the supports you provide and what you charge for each.", "/services", "service"),
+			st("team", "Add your support workers", "Give each person a role. Workers only see the shifts assigned to them.", "/staff", "staff"),
+			st("participants", "Add your participants", "Save their details, plan manager and emergency contacts.", "/customers", "customer"),
+			st("shift", "Roster the first shift", "Pick a participant, a support, a worker and a time.", "/bookings", "booking"),
+			st("invoice", "Invoice a plan manager", "Bill completed supports to the participant's plan manager.", "/invoices/new", "invoice"),
+		},
+		"coordinator": {
+			st("week", "Plan this week's shifts", "See every participant's supports and who is rostered on.", "/bookings", ""),
+			st("shift", "Roster a shift", "Pick the participant, the support, a worker and a time.", "/bookings", "booking"),
+			st("participant", "Add a participant", "Save their details and plan manager so shifts and billing are ready.", "/customers", "customer"),
+			stTeamReview,
+		},
+		"support_worker": {
+			st("shifts", "See your shifts", "Only the shifts assigned to you show here.", "/bookings", ""),
+			st("start", "Start a shift", "Mark the shift in progress when you arrive.", "/bookings", "my_booking_progress"),
+			st("finish", "Finish a shift", "Mark it completed when you leave, so it can be billed.", "/bookings", "my_booking_done"),
+			st("notes", "Upload a shift note", "Add a note or document about the support you gave.", "/documents", ""),
+		},
+		"admin_officer": {
+			st("participant", "Add a participant", "Save their details and plan manager so invoices go to the right place.", "/customers", "customer"),
+			st("invoice", "Invoice completed supports", "Create the invoice for the plan manager from the supports delivered.", "/invoices/new", "my_invoice"),
+			st("unpaid", "Chase unpaid invoices", "See which invoices are overdue and send a reminder.", "/invoices", ""),
+			st("docs", "File a document", "Keep service agreements and plans with the right participant.", "/documents", ""),
+		},
+	},
+	"consulting": {
+		"owner": {
+			stDetails,
+			st("clients", "Add your clients", "Add or import the people and companies you work for.", "/customers", "customer"),
+			st("engagement", "Set up your first engagement", "Create a board for the work, with tasks and due dates.", "/projects", "project"),
+			st("invoice", "Send your first invoice", "Bill a client for your time or a fixed fee and see when it's paid.", "/invoices/new", "invoice"),
+			st("team", "Invite your team", "Give each person a role so they see only what they need.", "/staff", "staff"),
+		},
+		"engagement_manager": {
+			st("engagements", "Review your engagements", "See every engagement, what's due and what's stuck.", "/projects", ""),
+			st("task", "Add a task to an engagement", "Break the work into tasks with an owner and a due date.", "/projects", "task"),
+			st("quote", "Send a proposal", "Price the work as a quote the client can accept online.", "/quotes/new", "quote"),
+			st("invoice", "Bill a client", "Invoice the work done this month and track payment.", "/invoices/new", "invoice"),
+		},
+		"consultant": {
+			st("engagements", "Open your engagements", "See the engagements you work on and what's due next.", "/projects", ""),
+			st("task", "Update a task", "Move your tasks along so everyone sees where the work is.", "/projects", ""),
+			st("client", "Look up a client", "Find a client's contacts and history in one place.", "/customers", ""),
+			st("docs", "Save a document", "Keep reports and files with the client so the team can find them.", "/documents", ""),
+		},
+		"bookkeeper": {
+			st("invoice", "Create an invoice", "Bill a client and send the invoice by email.", "/invoices/new", "my_invoice"),
+			st("payment", "Record a payment", "When a client pays, record it against their invoice.", "/invoices", "payment"),
+			st("bill", "Enter a supplier bill", "Add bills you need to pay so nothing is missed.", "/bills", "bill"),
+			st("pnl", "Read the profit & loss", "See what came in and went out for any month.", "/reports/profit-loss", ""),
+		},
+	},
+	"agency": {
+		"owner": {
+			st("clients", "Add your clients", "Add or import the companies you work for.", "/customers", "customer"),
+			st("project", "Create a project board", "Set up a board with tasks for your first client project.", "/projects", "project"),
+			st("team", "Invite your team", "Give each person a role so they see only what they need.", "/staff", "staff"),
+			st("invoice", "Send your first invoice", "Bill a client for a project or a monthly retainer.", "/invoices/new", "invoice"),
+			stLogo,
+		},
+		"project_manager": {
+			st("projects", "Review your projects", "See every project, what's due and what's blocked.", "/projects", ""),
+			st("task", "Add a task and assign it", "Create a task, pick who does it and set a due date.", "/projects", "task"),
+			st("quote", "Send a quote", "Price the next piece of work for the client to accept.", "/quotes/new", "quote"),
+			st("invoice", "Bill a client", "Invoice finished work and see when it's paid.", "/invoices/new", "invoice"),
+		},
+		"developer": {
+			st("board", "Open your project board", "See the tasks for each project and what's assigned to you.", "/projects", ""),
+			st("task", "Move a task along", "Update the status as you work so the team knows where things are.", "/projects", ""),
+			st("docs", "Find a project document", "Specs, logins and notes live in Documents.", "/documents", ""),
+			st("messages", "Message the team", "Ask a question or share an update without leaving DASYIN.", "/messages", ""),
+		},
+		"designer": {
+			st("board", "Open your project board", "See the tasks for each project and what's assigned to you.", "/projects", ""),
+			st("upload", "Upload a design", "Save design files with the project so everyone has the latest.", "/documents", ""),
+			st("task", "Update a task", "Move your tasks along so the team sees what's ready.", "/projects", ""),
+			st("messages", "Share an update", "Send the team a quick message when a design is ready.", "/messages", ""),
+		},
+		"support": {
+			st("client", "Look up a client", "Find a client's contacts and history before you reply.", "/customers", ""),
+			st("issue", "Log a client's request", "Add it as a task on the right project so the team picks it up.", "/projects", "task"),
+			st("messages", "Reply to a message", "Answer clients and teammates from one inbox.", "/messages", ""),
+			st("docs", "Find a document", "Guides and client notes live in Documents.", "/documents", ""),
+		},
+	},
+	"retail": {
+		"owner": {
+			st("products", "Load your products", "Add what you sell with prices and barcodes, or import a list.", "/inventory", "product"),
+			st("sale", "Make your first sale", "Ring up a sale at the till and hand over the receipt.", "/pos", "pos_sale"),
+			st("team", "Add your shop staff", "Give each person a role. Cashiers only see the till and stock.", "/staff", "staff"),
+			st("supplier", "Add your suppliers", "Keep their contacts so reordering is quick.", "/suppliers", "supplier"),
+			st("logo", "Upload your logo", "It's printed on every receipt and invoice.", "/settings#business", "logo"),
+		},
+		"store_manager": {
+			st("sales", "Check today's sales", "See every sale made today and who rang it up.", "/pos-transactions", ""),
+			st("low", "Reorder low stock", "Products at or below their reorder point show first.", "/inventory", ""),
+			st("order", "Order from a supplier", "Create a purchase order and mark it received when it arrives.", "/suppliers", "purchase_order"),
+			stTeamReview,
+			stDashboard,
+		},
+		"cashier": {
+			stOpenDrawer,
+			st("sale", "Ring up a sale", "Scan or tap the items, take payment and hand over the receipt.", "/pos", "my_pos_sale"),
+			st("stock", "Check if something's in stock", "Search the stock list when a customer asks.", "/inventory", ""),
+			st("customer", "Add a customer", "Save a regular's details so their sales are linked to them.", "/customers", "customer"),
+		},
+		"stock_clerk": {
+			st("product", "Add a product", "Enter the product with its price, barcode and how many you have.", "/inventory", "product"),
+			st("supplier", "Add a supplier", "Keep supplier contacts so reordering is quick.", "/suppliers", "supplier"),
+			st("count", "Fix a stock level after a count", "Correct the quantity when the shelf doesn't match the system.", "/inventory", ""),
+			st("low", "Check low stock", "Products at or below their reorder point show first.", "/inventory", ""),
+		},
+	},
+	"restaurant": {
+		"owner": {
+			st("menu", "Load your menu into the POS", "Add your dishes and drinks with prices so they show on the till.", "/inventory", "product"),
+			st("team", "Add your staff", "Give each person a role: servers, hosts and the kitchen each see what they need.", "/staff", "staff"),
+			st("order", "Ring up your first order", "Take an order on the till and take payment.", "/pos", "pos_sale"),
+			st("reservation", "Take a reservation", "Book a table for a guest with the time and party size.", "/bookings", "booking"),
+			stLogo,
+		},
+		"restaurant_manager": {
+			st("tonight", "Check tonight's reservations", "See who's booked in and plan the floor.", "/bookings", ""),
+			st("sales", "Look at today's sales", "See every order rung up today and who took it.", "/pos-transactions", ""),
+			st("stock", "Check stock and ingredients", "Spot what's running low before service.", "/inventory", ""),
+			st("roster", "Check the roster", "See who's working and their hours.", "/hcm", ""),
+			stDashboard,
+		},
+		"server": {
+			stOpenDrawer,
+			st("order", "Ring up an order", "Tap the dishes and drinks, take payment and hand over the receipt.", "/pos", "my_pos_sale"),
+			st("reservation", "Book a table", "Take a reservation with the guest's name, time and party size.", "/bookings", "booking"),
+			st("tonight", "See tonight's reservations", "Check who's coming and when, before service starts.", "/bookings", ""),
+		},
+		"host": {
+			st("tonight", "See tonight's reservations", "Check who's coming and when, before service starts.", "/bookings", ""),
+			st("reservation", "Book a table", "Take a reservation with the guest's name, time and party size.", "/bookings", "booking"),
+			st("seat", "Seat a guest", "When guests arrive, open their reservation and mark it in progress.", "/bookings", ""),
+		},
+		"kitchen": {
+			st("covers", "Check tonight's covers", "See how many guests are booked so you can prep.", "/bookings", ""),
+			st("stock", "Update a stock level", "Correct an ingredient's quantity after a delivery or at close.", "/inventory", ""),
+			st("low", "See what's running low", "Ingredients at or below their reorder point show first.", "/inventory", ""),
+		},
+	},
+	"nightclub": {
+		"owner": {
+			st("setup", "Finish the club setup", "Your bars, store, tot size and starter stock list. You can come back and change them any time.", "/setup", "setup_done"),
+			st("prices", "Put prices on the drinks menu", "Set what a tot, a bottle and each cocktail costs, so the till charges the right amount.", "/bar-stock?tab=recipes", "menu_prices"),
+			st("team", "Add your staff", "Add bartenders, a store keeper and cashiers. Each one sees only what their job needs.", "/staff", "staff"),
+			st("delivery", "Receive your first delivery", "Enter what the supplier dropped off, so it's added to the main store.", "/bar-stock?tab=purchasing", "delivery"),
+			st("count", "Do your first stock take", "Count every bar and the store, then approve the count to set your starting stock.", "/bar-stock?tab=counts", "count_approved"),
+			st("variance", "Read the variance report", "See what each bar should have sold against what's missing: lost tots, comps and breakages.", "/bar-stock?tab=reports", ""),
+		},
+		"bar_manager": {
+			st("tonight", "Check tonight's bar", "See sales, open counts and stock requests for every bar.", "/bar-stock", ""),
+			st("prices", "Check prices on the drinks menu", "Make sure every tot, bottle and cocktail has the right price on the till.", "/bar-stock?tab=recipes", "menu_prices"),
+			st("order", "Order from a supplier", "Create a purchase order and receive it into the main store when it arrives.", "/bar-stock?tab=purchasing", "purchase_order"),
+			st("approve", "Approve a stock take", "Check a bar's count, recount anything odd and approve it.", "/bar-stock?tab=counts", "count_approved"),
+			st("wastage", "Approve breakages and comps", "Bartenders log what was broken, spilt or given away. Approve or reject each one.", "/bar-stock?tab=wastage", "wastage_decided"),
+			st("variance", "Read the variance report", "See which bar is short and on which drinks, after each approved count.", "/bar-stock?tab=reports", ""),
+		},
+		"store_keeper": {
+			st("delivery", "Receive a delivery", "Enter what the supplier dropped off so it's added to the main store.", "/bar-stock?tab=purchasing", "my_delivery"),
+			st("issue", "Issue stock a bar asked for", "Open the bar's request and send the bottles. The bar confirms what arrived.", "/bar-stock?tab=transfers", "my_transfer_issued"),
+			st("count", "Count the main store", "Count what's on the shelves and submit it for a manager to approve.", "/bar-stock?tab=counts", "my_count"),
+			st("levels", "Check what's running low", "Items below their par level show first, so you can tell the manager what to order.", "/bar-stock?tab=stock", ""),
+		},
+		"bartender": {
+			st("bar", "Pick your bar on the till", "Choose the bar you're serving from at the top of the till. Drinks come out of that bar's stock.", "/pos", ""),
+			st("sale", "Ring up a tot, a bottle and a cocktail", "Tap the drink, take payment and hand over the receipt.", "/pos", "my_pos_sale"),
+			st("request", "Ask the store for stock", "Running low? Send a request and the store keeper sends the bottles over.", "/bar-stock?tab=transfers", "my_transfer_request"),
+			st("count", "Count your bar at closing", "Count the bottles left at the end of the night. A manager approves it.", "/bar-stock?tab=counts", "my_count"),
+			st("wastage", "Log a breakage or a comp", "Broken bottle, spill or a free drink? Log it so your bar's stock adds up.", "/bar-stock?tab=wastage", "my_wastage"),
+		},
+		"cashier": {
+			stOpenDrawer,
+			st("order", "Ring up an order", "Tap the drinks, take cash, card or mobile money and hand over the receipt.", "/pos", "my_pos_sale"),
+			st("tables", "Check tonight's table reservations", "See which tables are booked and when the guests arrive.", "/bookings", ""),
+		},
+		"host": {
+			st("reservation", "Take a table reservation", "Book a table with the guest's name, phone, time and party size.", "/bookings", "booking"),
+			st("guest", "Add a guest to the list", "Save a guest's name and phone so they're on the list next time.", "/customers", "customer"),
+			st("tonight", "See tonight's reservations", "Check who's booked a table tonight and when they arrive.", "/bookings", ""),
+			st("checkin", "Check guests in at an event", "Open tonight's event and tick guests off as they come through the door.", "/events", "my_checkin"),
+		},
+	},
+	"events": {
+		"owner": {
+			st("event", "Create your first event", "Add the date, venue and tickets, then share the link.", "/events/create", "event"),
+			st("team", "Invite your crew", "Give each person a role. Box office staff only see check-in.", "/staff", "staff"),
+			st("clients", "Add your clients", "Save the people and companies who book your venue.", "/customers", "customer"),
+			st("invoice", "Invoice a venue booking", "Bill a client for the venue, catering or extras.", "/invoices/new", "invoice"),
+			stLogo,
+		},
+		"event_manager": {
+			st("upcoming", "Review upcoming events", "See every event, tickets sold and what still needs doing.", "/events", ""),
+			st("event", "Create an event", "Add the date, venue and ticket types.", "/events/create", "event"),
+			st("booking", "Book the venue", "Take a venue booking for a client with the date and times.", "/bookings", "booking"),
+			stDashboard,
+		},
+		"coordinator": {
+			st("event", "Set up an event", "Add the date, venue and ticket types.", "/events/create", "event"),
+			st("booking", "Take a venue booking", "Book the venue for a client with the date and times.", "/bookings", "booking"),
+			st("client", "Add a client", "Save a client's contacts so bookings and invoices are quick.", "/customers", "customer"),
+			st("message", "Message a client", "Send a client an update without leaving DASYIN.", "/messages", ""),
+		},
+		"box_office": {
+			st("events", "Open today's event", "Find tonight's event and its guest list.", "/events", ""),
+			st("checkin", "Check a guest in", "Find the guest or scan their ticket and tick them off at the door.", "/events", "my_checkin"),
+			st("guest", "Look up a guest", "Search by name, phone or email when a ticket can't be found.", "/customers", ""),
+		},
+	},
+	"construction": {
+		"owner": {
+			st("clients", "Add your clients", "Save each client's contacts and site address.", "/customers", "customer"),
+			st("quote", "Send your first quote", "Price a job and send it for the client to accept online.", "/quotes/new", "quote"),
+			st("job", "Set up your first job", "Create a job board with tasks and due dates.", "/projects", "project"),
+			st("materials", "Load your materials", "Add the materials you buy with their prices.", "/inventory", "product"),
+			st("team", "Add your crew", "Give each person a role. Tradespeople see the jobs they're on.", "/staff", "staff"),
+		},
+		"site_manager": {
+			st("jobs", "Review your jobs", "See every job, what's due and what's held up.", "/projects", ""),
+			st("task", "Plan the next task", "Add a task to a job with who does it and when.", "/projects", "task"),
+			st("materials", "Check materials", "See what's in the yard before you order more.", "/inventory", ""),
+			st("claim", "Send a progress claim", "Invoice the client for the work done so far.", "/invoices/new", "invoice"),
+		},
+		"estimator": {
+			st("client", "Add a client", "Save their contacts and site address.", "/customers", "customer"),
+			st("quote", "Write a quote", "Price the labour and materials and send it to the client.", "/quotes/new", "quote"),
+			st("materials", "Price materials", "Look up material prices to build an accurate quote.", "/inventory", ""),
+			st("jobs", "See jobs in progress", "Check how won jobs are going.", "/projects", ""),
+		},
+		"tradesperson": {
+			st("jobs", "See your jobs", "Find the jobs you're working on and what's next.", "/projects", ""),
+			st("task", "Update a task", "Mark tasks done as you go so the office knows.", "/projects", ""),
+			st("plans", "Open the job's documents", "Plans, permits and notes for the job live in Documents.", "/documents", ""),
+			st("materials", "Check materials", "See what's in stock before you head to the supplier.", "/inventory", ""),
+		},
+	},
+	"manufacturer": {
+		"owner": {
+			st("materials", "Load your materials and products", "Add the materials you buy and the products you make.", "/inventory", "product"),
+			st("order", "Create a work order", "Plan a production run for a product and quantity.", "/production", "work_order"),
+			st("supplier", "Add your suppliers", "Keep supplier contacts so ordering materials is quick.", "/suppliers", "supplier"),
+			st("team", "Add your workforce", "Give each person a role. Operators only see production orders.", "/staff", "staff"),
+			st("invoice", "Send your first invoice", "Bill a customer for an order and see when it's paid.", "/invoices/new", "invoice"),
+		},
+		"production_manager": {
+			st("plan", "Plan production", "See every work order and what's due this week.", "/production", ""),
+			st("order", "Create a work order", "Plan a production run for a product and quantity.", "/production", "work_order"),
+			st("materials", "Check material levels", "Make sure you have enough before a run starts.", "/inventory", ""),
+			st("po", "Order materials", "Create a purchase order for what's running low.", "/suppliers", "purchase_order"),
+		},
+		"operator": {
+			st("orders", "See today's work orders", "Find the production runs you're working on.", "/production", ""),
+			st("start", "Start a work order", "Mark it started when the run begins.", "/production", "work_order_started"),
+			st("finish", "Finish a work order", "Mark it done when the run is complete.", "/production", "work_order_done"),
+			st("materials", "Look up materials", "Check what's in stock for the next run.", "/inventory", ""),
+		},
+		"warehouse": {
+			st("item", "Add an item", "Enter a material or product with its unit and quantity.", "/inventory", "product"),
+			st("receive", "Receive a supplier order", "Mark a purchase order received when the goods arrive.", "/suppliers", ""),
+			st("count", "Fix a stock level after a count", "Correct the quantity when the shelf doesn't match the system.", "/inventory", ""),
+			st("production", "Check what production needs", "See upcoming work orders so materials are ready.", "/production", ""),
+		},
+		"sales": {
+			st("customer", "Add a customer", "Save their contacts and delivery address.", "/customers", "customer"),
+			st("quote", "Send a quote", "Price an order and send it for the customer to accept.", "/quotes/new", "quote"),
+			st("invoice", "Invoice an order", "Bill the customer when the order ships.", "/invoices/new", "my_invoice"),
+			st("stock", "Check what's in stock", "See what's ready to sell before you promise a date.", "/inventory", ""),
+		},
+	},
+	"education": {
+		"owner": {
+			st("courses", "List your courses", "Add each course or class with its length and fee.", "/services", "service"),
+			st("team", "Add your trainers", "Give each person a role. Trainers only see their own sessions.", "/staff", "staff"),
+			st("students", "Add your students", "Add or import students with their contacts.", "/customers", "customer"),
+			st("session", "Schedule the first session", "Pick a student, a course, a trainer and a time.", "/bookings", "booking"),
+			st("invoice", "Invoice your fees", "Send a student or parent the invoice for their course.", "/invoices/new", "invoice"),
+		},
+		"coordinator": {
+			st("week", "Check this week's sessions", "See every trainer's sessions and spot the gaps.", "/bookings", ""),
+			st("session", "Schedule a session", "Pick the student, the course, a trainer and a time.", "/bookings", "booking"),
+			st("class", "Set up a class or event", "Add a group class or open day with a date and places.", "/events/create", "event"),
+			st("student", "Enrol a student", "Add a student with their contacts.", "/customers", "customer"),
+		},
+		"trainer": {
+			st("sessions", "See your sessions", "Only your own students and times show here.", "/bookings", ""),
+			st("start", "Start a session", "Mark the session in progress when it begins.", "/bookings", "my_booking_progress"),
+			st("student", "Look up a student", "Check a student's details and notes before class.", "/customers", ""),
+			st("notes", "Upload class notes", "Share handouts and notes so students and staff can find them.", "/documents", ""),
+		},
+		"admin_officer": {
+			st("student", "Enrol a student", "Add a student with their contacts.", "/customers", "customer"),
+			st("session", "Book a session", "Pick the student, the course, a trainer and a time.", "/bookings", "booking"),
+			st("invoice", "Invoice fees", "Send the invoice for a course and track payment.", "/invoices/new", "my_invoice"),
+			st("message", "Send a reminder", "Message a student or trainer about an upcoming session.", "/messages", ""),
+		},
+	},
+	"nonprofit": {
+		"owner": {
+			stDetails,
+			st("members", "Import members and donors", "Add or import your members and donors with their contacts.", "/customers", "customer"),
+			st("event", "Plan your next programme or event", "Add the date, place and how people sign up.", "/events/create", "event"),
+			st("team", "Invite your staff and volunteers", "Give each person a role so they see only what they need.", "/staff", "staff"),
+			stLogo,
+		},
+		"programme_manager": {
+			st("programmes", "Review upcoming programmes", "See every programme and event and who's signed up.", "/events", ""),
+			st("event", "Plan a programme or event", "Add the date, place and how people sign up.", "/events/create", "event"),
+			st("member", "Add a member", "Save a member's or donor's contacts.", "/customers", "customer"),
+			st("volunteers", "Check your volunteers", "See your staff and volunteers and their roles.", "/staff", ""),
+		},
+		"treasurer": {
+			st("bill", "Enter a bill", "Add bills the organisation has to pay so nothing is missed.", "/bills", "bill"),
+			st("invoice", "Send an invoice", "Bill a member, partner or sponsor and track payment.", "/invoices/new", "my_invoice"),
+			st("bank", "Check the bank account", "See money in and out and match it to your records.", "/banking", ""),
+			st("pnl", "Read the profit & loss", "See income and spending for any period, ready for the board.", "/reports/profit-loss", ""),
+		},
+		"volunteer": {
+			st("events", "See upcoming events", "Find the events you're helping at.", "/events", ""),
+			st("checkin", "Check people in at an event", "Tick people off as they arrive.", "/events", "my_checkin"),
+			st("member", "Update a member's details", "Fix a phone number or email when someone tells you it changed.", "/customers", ""),
+			st("message", "Message the team", "Send a quick note to the organisers.", "/messages", ""),
+		},
+	},
+	"general": {
+		"owner": {
+			st("type", "Choose your business type", "Tell DASYIN what kind of business you run, and it shows the right tools and words.", "/settings#business-type", "type_chosen"),
+			stDetails,
+			stLogo,
+			st("customer", "Add your first {customer}", "Keep their phone and email in one place so you find them fast next time.", "/customers", "customer"),
+			st("invoice", "Send your first invoice", "Pick a {customer}, add what you sold and send it. You'll see when it's viewed and paid.", "/invoices/new", "invoice"),
+			st("team", "Invite your team", "Add your {staff} and give each person a role. They only see what their role needs.", "/staff", "staff"),
+		},
+		"manager": baseManagerSteps,
+		"staff":   baseStaffSteps,
+		"viewer":  baseReadOnlySteps,
+	},
+}
+
+// Per-base defaults for roles without steps of their own.
+var (
+	baseAdminSteps = []Step{
+		stDetails,
+		stLogo,
+		st("customer", "Add your first {customer}", "Keep their phone and email in one place so you find them fast next time.", "/customers", "customer"),
+		st("invoice", "Send your first invoice", "Pick a {customer}, add what you sold and send it. You'll see when it's viewed and paid.", "/invoices/new", "invoice"),
+		st("team", "Invite your team", "Add your {staff} and give each person a role. They only see what their role needs.", "/staff", "staff"),
+	}
+	baseManagerSteps = []Step{
+		stDashboard,
+		stTeamReview,
+		st("customer", "Add {a_customer}", "Save their phone and email so the whole team can find them.", "/customers", "customer"),
+		st("invoice", "Send an invoice", "Pick {a_customer}, add the work or items and send it.", "/invoices/new", "invoice"),
+		stMyPhone,
+	}
+	baseStaffSteps = []Step{
+		stMyPhone,
+		st("customers", "Find {a_customer}", "Search by name, phone or email to see their details and history.", "/customers", ""),
+		st("bookings", "Look at the {bookings}", "See what's coming up today and open one for the details.", "/bookings", ""),
+		st("sale", "Ring up a sale", "Add items on the till, take payment and hand over the receipt.", "/pos", "my_pos_sale"),
+		st("invoice", "Create an invoice", "Pick {a_customer}, add the work or items and save it or send it.", "/invoices/new", "my_invoice"),
+	}
+	baseReadOnlySteps = []Step{
+		st("dashboard", "Look around the dashboard", "The dashboard shows how the business is doing today. You can look but not change anything.", "/dashboard", ""),
+		st("customers", "Look up {a_customer}", "Search by name, phone or email to see their details.", "/customers", ""),
+		st("reports", "Open the profit & loss", "See what came in and went out for any period.", "/reports/profit-loss", ""),
+		stMyPhone,
+	}
+)
+
+// BaseSteps are the default steps for a base level (admin, manager, staff,
+// read_only) when neither the role nor its type has steps.
+func BaseSteps(base string) []Step {
+	var s []Step
+	switch base {
+	case BaseAdmin:
+		s = baseAdminSteps
+	case BaseManager:
+		s = baseManagerSteps
+	case BaseReadOnly:
+		s = baseReadOnlySteps
+	default:
+		s = baseStaffSteps
+	}
+	return append([]Step{}, s...)
+}
+
+// roleTemplateSteps returns the steps of role key in t, else of the same
+// role in the built-in type (registry rows seeded before steps existed, or
+// edited without them).
+func roleTemplateSteps(t BusinessType, key string) []Step {
+	for _, r := range t.Roles {
+		if r.Key == key && len(r.Steps) > 0 {
+			return append([]Step{}, r.Steps...)
+		}
+	}
+	if s := roleSteps[t.Key][key]; len(s) > 0 {
+		return append([]Step{}, s...)
+	}
+	return nil
+}
+
+// StepsFor resolves the "Getting started" steps of a role of type t:
+//
+//  1. the role template's own steps (registry, then built-in);
+//  2. a role without steps (custom, or a new type) borrows from its type —
+//     admins get the type's owner steps, managers its first manager role's;
+//  3. otherwise the base level's defaults (BaseSteps).
+func StepsFor(t BusinessType, roleKey, base string) []Step {
+	if roleKey != "" {
+		if s := roleTemplateSteps(t, roleKey); len(s) > 0 {
+			return s
+		}
+	}
+	switch base {
+	case BaseAdmin:
+		if s := roleTemplateSteps(t, "owner"); len(s) > 0 {
+			return s
+		}
+	case BaseManager:
+		for _, r := range t.Roles {
+			if r.Base == BaseManager {
+				if s := roleTemplateSteps(t, r.Key); len(s) > 0 {
+					return s
+				}
+			}
+		}
+	}
+	return BaseSteps(base)
+}
+
+// DefaultType returns the built-in business type key (zero value when unknown).
+func DefaultType(key string) BusinessType {
+	for _, t := range DefaultTypes() {
+		if t.Key == key {
+			return t
+		}
+	}
+	return BusinessType{}
+}
+
+// RoleTemplateByKey returns the role template key of t.
+func RoleTemplateByKey(t BusinessType, key string) (RoleTemplate, bool) {
+	for _, r := range t.Roles {
+		if r.Key == key {
+			return r, true
+		}
+	}
+	return RoleTemplate{}, false
 }
