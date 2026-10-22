@@ -45,6 +45,9 @@ const (
 	BillReminders  = "bill_reminders"
 	BarNightReport = "bar_night_report"
 	StrategyBrief  = "strategy_brief"
+	// PlatformUpdates: announcements from the DASYIN team (pkg/broadcast)
+	// emailed when unread; urgent service notices are sent regardless.
+	PlatformUpdates = "platform_updates"
 )
 
 // Audiences: who a category's emails are for before the mode and the
@@ -72,6 +75,8 @@ var Categories = []Category{
 	{BillReminders, "Bill reminders", "Recurring and unpaid bills coming due or overdue, and the weekly bills digest.", Admins},
 	{BarNightReport, "Bar night report", "After each night: sales, pour cost, wastage, the last count's variance and low stock.", ApproversPrefix + "inventory"},
 	{StrategyBrief, "Monthly strategy brief", "What changed in the business this month and the actions worth taking.", Admins},
+	{"client_billing", "Client billing", "Client subscriptions: who is overdue or about to be suspended (at least 3 days ahead, to call them), suspensions, domain renewals and the daily digest.", Admins},
+	{PlatformUpdates, "Updates from DASYIN", "Product updates, reminders and offers from the DASYIN team you haven't read in the app. Urgent service notices are always sent.", Involved},
 }
 
 // CategoryByKey finds a category.

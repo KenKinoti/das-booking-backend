@@ -102,9 +102,11 @@ func testDB(t *testing.T) *gorm.DB {
 	}
 	// Test organisations are not real rows.
 	db.Exec(`ALTER TABLE integration_settings DROP CONSTRAINT IF EXISTS fk_integration_settings_organization`)
-	if err := db.Exec(`CREATE TABLE IF NOT EXISTS users (id varchar(255) primary key, email text, role text, organization_id varchar(255), created_at timestamptz, deleted_at timestamptz)`).Error; err != nil {
+	if err := db.Exec(`CREATE TABLE IF NOT EXISTS users (id varchar(255) primary key, email text, password_hash text, first_name text, last_name text, role text, organization_id varchar(255), created_at timestamptz, deleted_at timestamptz)`).Error; err != nil {
 		t.Fatal(err)
 	}
+	// A table left by an older run of this test lacks the columns the inserts below use.
+	db.Exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash text, ADD COLUMN IF NOT EXISTS first_name text, ADD COLUMN IF NOT EXISTS last_name text`)
 	return db
 }
 

@@ -1419,7 +1419,14 @@ func synDecisions(rep *SynergyReport, txns []SynergyTxn, plans map[string]*SynPl
 	// Support tickets this quarter.
 	qStart := time.Date(today.Year(), ((today.Month()-1)/3)*3+1, 1, 0, 0, 0, 0, time.UTC)
 	lookFrom := qStart
-	if today.Sub(qStart).Hours() < 24*20 { // early in a quarter: look at the last 90 days
+	var latestTxn time.Time
+	for _, t := range txns {
+		if t.Date.After(latestTxn) {
+			latestTxn = t.Date
+		}
+	}
+	// Early in a quarter, or before this quarter's first statement is in: look at the last 90 days.
+	if today.Sub(qStart).Hours() < 24*20 || latestTxn.Before(qStart) {
 		lookFrom = today.AddDate(0, 0, -90)
 	}
 	var supN int

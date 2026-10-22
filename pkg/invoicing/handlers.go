@@ -87,6 +87,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/invoices/:id/preflight", h.Preflight)
 	r.GET("/invoices/:id/email-draft", h.EmailDraft)
 	r.GET("/invoices/:id/email-log", h.EmailLogList)
+	r.GET("/email-tracking", h.GetEmailTracking)
+	r.PUT("/email-tracking", h.PutEmailTracking)
 	r.POST("/invoices/:id/rate", h.LockRate)
 	r.GET("/invoices/:id/recipients", h.Recipients)
 	r.POST("/invoices/:id/mark-sent", h.MarkSent)
@@ -110,6 +112,9 @@ func (h *Handler) RegisterPublicRoutes(r *gin.RouterGroup) {
 	r.POST("/invoices/:token/accept", h.PublicAccept)
 	r.GET("/invoices/:token/pdf", h.PublicPDF)
 	r.GET("/invoices/:token/receipts/:paymentId", h.PublicReceiptPDF)
+	// Per-recipient email tracking (emailtrack.go).
+	r.POST("/invoices/:token/track", h.PublicTrack)
+	r.GET("/email-open/:file", h.EmailOpen)
 }
 
 // ---------- helpers ----------
@@ -979,10 +984,8 @@ func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, use
 			var sendErr error
 			switch {
 			case viaMail:
-				msg := mail.Message{To: []string{b.To}, CC: b.CC, BCC: b.BCC, Subject: b.Subject, Text: b.Text, HTML: b.HTML,
-					Attachments: []mail.Attachment{b.Attachment}, MessageID: mail.NewMessageID(mcfg.FromEmail), ReplyTo: mcfg.ReplyTo}
-				entry.MessageID = msg.MessageID
-				sendErr = h.Mail.SendWith(ctx, org, mcfg, msg)
+				// One copy per person (tracked) or one message — emailtrack.go.
+				sendErr = h.deliver(ctx, c, org, mcfg, b, entry)
 			default:
 				if m, isHTML := h.Mailer.(HTMLMailer); isHTML {
 					sendErr = m.SendHTML(b.To, b.CC, b.Subject, b.Text, b.HTML)
@@ -1001,9 +1004,11 @@ func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, use
 				return &apiError{http.StatusBadGateway, "EMAIL_FAILED", "Email could not be sent: " + sendErr.Error()}
 			}
 			entry.Status = "sent"
-			entry.Response = "250 accepted"
-			if viaMail {
-				entry.Response = "250 accepted by " + mcfg.Host
+			if entry.Response == "" {
+				entry.Response = "250 accepted"
+				if viaMail {
+					entry.Response = "250 accepted by " + mcfg.Host
+				}
 			}
 			rec.Emailed = true
 		} else {
@@ -2138,11 +2143,9 @@ func (h *Handler) PublicView(c *gin.Context) {
 		fail(c, http.StatusNotFound, "NOT_FOUND", "This link is invalid or has expired")
 		return
 	}
-	if inv.ViewedAt == nil {
-		t := h.now()
-		h.DB.Model(&Invoice{}).Where("id = ?", inv.ID).Update("viewed_at", t)
-		h.log(h.DB, inv, "viewed", "Viewed by client", "")
-	}
+	// ?r= is the recipient's own token from their email (emailtrack.go);
+	// links without one work as before.
+	h.noteClientView(inv, c.Query("r"), evView)
 	inv.CreatedBy = ""
 	inv.PublicToken = ""
 	for i := range inv.Payments {
@@ -2167,6 +2170,10 @@ func (h *Handler) PublicAccept(c *gin.Context) {
 		return
 	}
 	h.DB.Model(&Invoice{}).Where("id = ?", inv.ID).Update("status", StatusAccepted)
-	h.log(h.DB, inv, "accepted", "Accepted by client online", "")
+	msg := "Accepted by client online"
+	if rec, _ := h.linkHit(inv, c.Query("r"), evAccept, ""); rec != nil && rec.Tracked {
+		msg = "Accepted online by " + rec.Email
+	}
+	h.log(h.DB, inv, "accepted", msg, "")
 	ok(c, http.StatusOK, gin.H{"accepted": true})
 }

@@ -478,13 +478,14 @@ func TestReceiptEmail(t *testing.T) {
 	if re == nil || re["emailed"] != true {
 		t.Fatalf("receipt not emailed: %v", inv["receipt_email"])
 	}
-	if len(*e.sent) != 1 {
+	// One copy per person (per-recipient tracking, on by default).
+	if len(*e.sent) != 2 {
 		t.Fatalf("sent %d emails", len(*e.sent))
 	}
 	m := (*e.sent)[0]
 	rn := payments(inv)[0]["receipt_number"].(string)
-	if m.To[0] != "ap@wanjiru.test" || strings.Join(m.CC, ",") != "boss@wanjiru.test" {
-		t.Fatalf("recipients: to=%v cc=%v (sales@ opted out of receipts)", m.To, m.CC)
+	if m.To[0] != "ap@wanjiru.test" || len(m.CC) != 0 || (*e.sent)[1].To[0] != "boss@wanjiru.test" || !strings.Contains(m.Text, "Also sent to: boss@wanjiru.test") {
+		t.Fatalf("recipients: to=%v cc=%v / %v (sales@ opted out of receipts)", m.To, m.CC, (*e.sent)[1].To)
 	}
 	if m.Subject != "Acme Ltd: receipt "+rn+" for "+inv["number"].(string) {
 		t.Fatalf("subject: %q", m.Subject)
@@ -512,7 +513,7 @@ func TestReceiptEmail(t *testing.T) {
 	pid := payments(inv)[0]["id"].(string)
 	*e.sent = nil
 	code, res = call(t, e.r, e.org, "PUT", "/api/invoices/"+id+"/payments/"+pid, map[string]interface{}{"amount": 10000, "email_receipt": true})
-	if code != 200 || len(*e.sent) != 1 {
+	if code != 200 || len(*e.sent) != 2 {
 		t.Fatalf("edit + email: %d %v (%d sent)", code, res, len(*e.sent))
 	}
 	m = (*e.sent)[0]
@@ -557,7 +558,7 @@ func TestReceiptEmail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := e.h.AutoReceipt(e.org, inv2["id"].(string), op.ID); !r.Emailed || len(*e.sent) != 1 || (*e.sent)[0].Attachments[0].Filename != op.ReceiptNumber+".pdf" {
+	if r := e.h.AutoReceipt(e.org, inv2["id"].(string), op.ID); !r.Emailed || len(*e.sent) != 2 || (*e.sent)[0].Attachments[0].Filename != op.ReceiptNumber+".pdf" {
 		t.Fatalf("auto receipt: %+v", r)
 	}
 }

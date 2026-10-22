@@ -670,6 +670,9 @@ func (h *Handler) runChecks(tx *gorm.DB, inv *Invoice, b *builtEmail, o checkOpt
 				d += " · BCC " + strings.Join(b.BCC, ", ")
 			}
 			add(ck("recipients", "ok", "Recipients", d))
+			if o.Mode == "email" && o.ViaMail {
+				add(trackingCheck(LoadTrackingPrefs(tx, inv.OrganizationID), b))
+			}
 		}
 		if len(b.Skipped) > 0 {
 			add(ck("recipients_skipped", "warning", "Invalid addresses will be skipped", strings.Join(b.Skipped, ", ")))
@@ -1016,6 +1019,10 @@ func (h *Handler) Preflight(c *gin.Context) {
 		return
 	}
 	checks := h.runChecks(h.DB, inv, b, checkOptions{Mode: mode, Configured: configured, MailCfg: mcfg, ViaMail: viaMail})
+	if mode == "email" && viaMail {
+		// The preview is the To person's own copy ("Also sent to …").
+		b.previewAsRecipient(LoadTrackingPrefs(h.DB, org))
+	}
 	ok(c, http.StatusOK, gin.H{"checks": checks, "errors": countSeverity(checks, "error"), "warnings": countSeverity(checks, "warning"),
 		"ok": countSeverity(checks, "error") == 0, "mode": mode, "preview": previewOf(b, inv.PublicToken), "email_enabled": configured})
 }
@@ -1170,6 +1177,41 @@ func (h *Handler) EmailLogList(c *gin.Context) {
 	}
 	list := []EmailLog{}
 	h.DB.Where("organization_id = ? AND invoice_id = ?", org, inv.ID).Order("created_at DESC").Limit(100).Find(&list)
+	ids := make([]string, 0, len(list))
+	for _, e := range list {
+		ids = append(ids, e.ID)
+	}
+	byLog := recipientsByLog(h.DB, org, ids, orgLocation(h.DB, org))
+	for i := range list {
+		list[i].Recipients = byLog[list[i].ID]
+	}
 	st := EmailStatuses(h.DB, org, []Invoice{*inv})[inv.ID]
-	ok(c, http.StatusOK, gin.H{"log": list, "summary": st, "viewed_at": inv.ViewedAt, "timezone": orgprefs.Get(h.DB, org).Timezone})
+	ok(c, http.StatusOK, gin.H{"log": list, "summary": st, "viewed_at": inv.ViewedAt, "timezone": orgprefs.Get(h.DB, org).Timezone,
+		"tracking": LoadTrackingPrefs(h.DB, org)})
+}
+
+// trackingCheck tells the sender how this email will be tracked.
+func trackingCheck(p TrackingPrefs, b *builtEmail) Check {
+	if !p.TrackRecipients {
+		return ck("tracking", "info", "Sent as one message", "Everyone gets the same email; who opened it isn't tracked (Invoice settings → Email tracking).")
+	}
+	if !tracksSeparately(p, b) {
+		return ck("tracking", "info", "Sent as one message", fmt.Sprintf("More than %d people — sent as one message, not tracked per person.", maxTrackedRecipients))
+	}
+	n := 1 + len(b.CC)
+	d := "Each person gets their own copy, so you can see who opened it and who used their link."
+	if n == 1 {
+		d = "You'll see when the client opens it and uses their link."
+	}
+	if !p.TrackOpens {
+		d += " Open tracking is off — only link use is recorded."
+	}
+	if len(b.BCC) > 0 {
+		d += " BCC copies aren't tracked."
+	}
+	title := "Tracked per person"
+	if n > 1 {
+		title = fmt.Sprintf("%d separate copies", n)
+	}
+	return ck("tracking", "info", title, d)
 }

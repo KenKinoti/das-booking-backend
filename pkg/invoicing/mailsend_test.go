@@ -90,12 +90,18 @@ func TestSendUsesSavedEmailSettings(t *testing.T) {
 
 	// No explicit cc/bcc: suggested + Always CC, Always BCC.
 	code, res = call(t, r, org, "POST", "/api/invoices/"+id+"/send", map[string]interface{}{"mode": "email", "subject": "Invoice", "message": "Hi"})
-	if code != 200 || data(res)["emailed"] != true || len(sent) != 1 {
-		t.Fatalf("send: %d %v", code, res)
+	// Each To/CC person gets their own copy; the BCC address an untracked one.
+	if code != 200 || data(res)["emailed"] != true || len(sent) != 4 {
+		t.Fatalf("send: %d %v (%d messages)", code, res, len(sent))
 	}
 	m := sent[0]
-	if !reflect.DeepEqual(m.To, []string{"client@x.test"}) || strings.Join(m.CC, ",") != "boss@x.test,accounts@x.test" || strings.Join(m.BCC, ",") != "records@x.test" {
-		t.Fatalf("recipients to=%v cc=%v bcc=%v", m.To, m.CC, m.BCC)
+	if !reflect.DeepEqual(m.To, []string{"client@x.test"}) || len(m.CC) != 0 || len(m.BCC) != 0 ||
+		!reflect.DeepEqual(sent[1].To, []string{"boss@x.test"}) || !reflect.DeepEqual(sent[2].To, []string{"accounts@x.test"}) ||
+		len(sent[3].To) != 0 || strings.Join(sent[3].BCC, ",") != "records@x.test" {
+		t.Fatalf("recipients to=%v cc=%v bcc=%v / %v / %v / %v", m.To, m.CC, m.BCC, sent[1].To, sent[2].To, sent[3].BCC)
+	}
+	if !strings.Contains(m.Text, "Also sent to: boss@x.test, accounts@x.test") || !strings.Contains(sent[3].Text, "BCC — this copy isn't tracked") {
+		t.Fatalf("also-sent-to lines:\n%s\n%s", m.Text, sent[3].Text)
 	}
 	if used[0].FromEmail != "shop@gmail.com" || m.HTML == "" {
 		t.Fatalf("config/HTML wrong: %+v", used[0])
@@ -108,9 +114,8 @@ func TestSendUsesSavedEmailSettings(t *testing.T) {
 
 	// Explicit lists from the dialog win; BCC never repeats To/CC.
 	_, _ = call(t, r, org, "POST", "/api/invoices/"+id+"/send", map[string]interface{}{"mode": "email", "cc": []string{"x@x.test"}, "bcc": []string{"x@x.test", "client@x.test", "audit@x.test"}, "subject": "S", "message": "M"})
-	m = sent[1]
-	if strings.Join(m.CC, ",") != "x@x.test" || strings.Join(m.BCC, ",") != "audit@x.test" {
-		t.Fatalf("explicit: cc=%v bcc=%v", m.CC, m.BCC)
+	if len(sent) != 7 || strings.Join(sent[5].To, ",") != "x@x.test" || strings.Join(sent[6].BCC, ",") != "audit@x.test" {
+		t.Fatalf("explicit: %d messages, cc copy %v, bcc copy %v", len(sent), sent[5].To, sent[6].BCC)
 	}
 	if st := svc.Status(org); st.LastSuccessAt == nil {
 		t.Errorf("last success not recorded: %+v", st)

@@ -68,8 +68,10 @@ func init() {
 	Register(Tool{
 		Name:  "invoices_get",
 		Title: "Get invoice or quote",
-		Description: "Full invoice or quote: client, line items, totals, tax, payments, activity history, the public share link " +
-			"and app link. Pass invoice_id, or number (e.g. INV-1001 / QUO-1001).",
+		Description: "Full invoice or quote: client, line items, totals, tax, payments, activity history, the public share link, " +
+			"app link and email_status: the last email about it and, per recipient, whether their copy was delivered, opened " +
+			"(opened_automatic = likely a mail app or scanner, not a person), viewed through their own link or paid via it. " +
+			"Pass invoice_id, or number (e.g. INV-1001 / QUO-1001).",
 		InputSchema: tObj(map[string]any{
 			"invoice_id": tStr("Invoice or quote id"),
 			"number":     tStr("Document number, e.g. INV-1001"),
@@ -307,7 +309,27 @@ func invoiceFull(c *Ctx, inv map[string]any) map[string]any {
 	if tok := tS(inv, "public_token"); tok != "" && AppURL() != "" {
 		out["public_link"] = tURL("/i/" + tok)
 	}
+	if es, ok := inv["email_status"].(map[string]any); ok && tS(es, "state") != "" && tS(es, "state") != "none" {
+		out["email_status"] = emailStatusBrief(es)
+	}
 	return out
+}
+
+// emailStatusBrief is the last email about the document and, per person,
+// what happened to their copy (pkg/invoicing emailstatus.go).
+func emailStatusBrief(es map[string]any) map[string]any {
+	m := tPick(es, "state", "last_kind", "last_sent_at", "last_to", "last_error", "sent", "failed", "tracking", "summary", "people", "opened", "auto_opened", "viewed", "paid_via", "open_tracking", "viewed_at")
+	rs := []map[string]any{}
+	for _, r := range tList(es["recipients"]) {
+		rs = append(rs, tPick(r, "email", "role", "state", "timeline", "error", "opens", "auto_opens", "opened_automatic", "opened_at", "last_open_at", "open_via", "views", "viewed_at", "pay_page_at", "accepted_at", "paid_at", "paid_amount"))
+	}
+	if len(rs) > 0 {
+		m["recipients"] = rs
+	}
+	if tS(es, "tracking") == "per_recipient" {
+		m["note"] = "Each person got their own copy. \"opened\" needs the email's images to load (some apps such as Outlook hide opens, and Apple Mail may open automatically — flagged as opened_automatic); \"viewed\" (they used their own View/Pay link) is reliable."
+	}
+	return m
 }
 
 func invoicesList(c *Ctx, a map[string]any) (any, error) {

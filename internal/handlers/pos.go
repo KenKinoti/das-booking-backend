@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mpos"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 )
 
@@ -34,7 +35,8 @@ func (h *Handler) posOrg(c *gin.Context) (string, bool) {
 	return orgID, true
 }
 
-var posPaymentMethods = map[string]bool{"cash": true, "card": true, "eftpos": true, "bank_transfer": true, "voucher": true, "other": true}
+// mobile_money: M-Pesa and other mobile money (the reference is the confirmation code).
+var posPaymentMethods = map[string]bool{"cash": true, "card": true, "eftpos": true, "bank_transfer": true, "voucher": true, "mobile_money": true, "other": true}
 
 // posDayBounds turns YYYY-MM-DD query values into an inclusive [start, end) range.
 func posDayBounds(c *gin.Context) (*time.Time, *time.Time) {
@@ -147,6 +149,11 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 		TaxInclusive    bool              `json:"tax_inclusive"`
 		Notes           string            `json:"notes"`
 		LocationID      string            `json:"location_id"` // bar stock: the bar the sale is rung up at (optional)
+		// Fast sale on any device (pkg/mpos): which device sold it and the till's
+		// idempotency key (the same key returns the sale already recorded).
+		DeviceID    string `json:"device_id"`
+		DeviceLabel string `json:"device_label"`
+		ClientRef   string `json:"client_ref"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
@@ -169,6 +176,18 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 	}
 	if req.CashDrawerID != nil && strings.TrimSpace(*req.CashDrawerID) == "" {
 		req.CashDrawerID = nil
+	}
+	req.DeviceID = mpos.CleanDeviceID(req.DeviceID)
+	req.DeviceLabel = mpos.CleanDeviceLabel(req.DeviceLabel)
+	req.ClientRef = mpos.CleanClientRef(req.ClientRef)
+	req.LocationID = strings.TrimSpace(req.LocationID)
+	if len(req.LocationID) > 255 {
+		req.LocationID = ""
+	}
+	// A retried request (bad network, double tap) returns the sale already recorded.
+	if prev := h.posSaleByClientRef(orgID, req.ClientRef); prev != nil {
+		c.JSON(http.StatusOK, gin.H{"transaction": prev, "duplicate": true})
+		return
 	}
 
 	txnID := uuid.New().String()
@@ -372,6 +391,10 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 			ChangeAmount:   change,
 			Notes:          strings.TrimSpace(req.Notes),
 			Currency:       saleCurrency,
+			DeviceID:       req.DeviceID,
+			DeviceLabel:    req.DeviceLabel,
+			LocationID:     req.LocationID,
+			ClientRef:      req.ClientRef,
 		}
 		if err := tx.Omit("Customer", "Cashier", "Items", "Payments").Create(&txn).Error; err != nil {
 			return err
@@ -435,6 +458,11 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 			c.JSON(he.status, gin.H{"error": he.msg})
 			return
 		}
+		// Two requests with the same key at once: the unique index lets one through.
+		if prev := h.posSaleByClientRef(orgID, req.ClientRef); prev != nil {
+			c.JSON(http.StatusOK, gin.H{"transaction": prev, "duplicate": true})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record sale"})
 		return
 	}
@@ -449,6 +477,18 @@ func (h *Handler) CreatePOSTransaction(c *gin.Context) {
 	sold = append(sold, barTouched...) // bar stock items whose stock changed
 	go h.notifyLowStock(orgID, sold)
 	c.JSON(http.StatusCreated, gin.H{"transaction": txn})
+}
+
+// posSaleByClientRef finds the sale a till already recorded under its idempotency key.
+func (h *Handler) posSaleByClientRef(orgID, ref string) *models.POSTransaction {
+	if ref == "" {
+		return nil
+	}
+	var prev models.POSTransaction
+	if err := posPreloadTx(h.DB).Where("organization_id = ? AND client_ref = ?", orgID, ref).First(&prev).Error; err != nil {
+		return nil
+	}
+	return &prev
 }
 
 // posFilteredQuery applies the list filters shared by the table and its summary.
@@ -469,6 +509,14 @@ func (h *Handler) posFilteredQuery(c *gin.Context, orgID string, withStatus bool
 	}
 	if v := c.Query("cash_drawer_id"); v != "" {
 		q = q.Where("pos_transactions.cash_drawer_id = ?", v)
+	}
+	// device_id=none: sales from tills that didn't say which device they were
+	switch v := c.Query("device_id"); v {
+	case "":
+	case "none":
+		q = q.Where("COALESCE(pos_transactions.device_id, '') = ''")
+	default:
+		q = q.Where("pos_transactions.device_id = ?", v)
 	}
 	switch m := c.Query("payment_method"); m {
 	case "":

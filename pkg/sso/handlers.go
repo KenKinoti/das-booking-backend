@@ -10,6 +10,7 @@
 //	DELETE /api/v1/sso/identities/:id              unlink
 //	GET/POST /api/v1/sso/domains, DELETE /sso/domains/:id   "anyone at this domain may join" (org admins)
 //	GET  /api/v1/sso/admin/providers, PUT /sso/admin/providers/:provider   (super admin)
+//	GET  /api/v1/sso/admin/providers/:provider/status[?refresh=1]          status checklist (super admin)
 //
 // Nobody is signed up silently: an unknown verified email gets a "no
 // account" page unless the organisation allows its email domain.
@@ -27,6 +28,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -54,6 +56,12 @@ type Handler struct {
 	PublicAPI string
 	PublicApp string
 	Now       func() time.Time
+	// CheckTimeout bounds the status page's discovery fetch (default 5s);
+	// results are cached for checkTTL unless "Check now" asks again.
+	CheckTimeout time.Duration
+
+	checkMu sync.Mutex
+	checks  map[string]discCheck
 }
 
 // NewHandler builds a handler reading PUBLIC_API_URL / PUBLIC_APP_URL.
@@ -98,6 +106,7 @@ func (h *Handler) RegisterAuth(auth *gin.RouterGroup) {
 	g.DELETE("/domains/:id", h.orgAdmin, h.DeleteDomain)
 	g.GET("/admin/providers", h.superAdmin, h.AdminProviders)
 	g.PUT("/admin/providers/:provider", h.superAdmin, h.SaveProvider)
+	g.GET("/admin/providers/:provider/status", h.superAdmin, h.ProviderStatus)
 }
 
 // ---------------------------------------------------------------- helpers
@@ -129,20 +138,52 @@ func isHTTPS(c *gin.Context) bool {
 	return c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
 }
 
+func requestHost(c *gin.Context) string {
+	if fh := c.GetHeader("X-Forwarded-Host"); fh != "" {
+		return strings.TrimSpace(strings.Split(fh, ",")[0])
+	}
+	return c.Request.Host
+}
+
 func requestBase(c *gin.Context) string {
 	scheme := "http"
 	if isHTTPS(c) {
 		scheme = "https"
 	}
-	host := c.Request.Host
-	if fh := c.GetHeader("X-Forwarded-Host"); fh != "" {
-		host = strings.TrimSpace(strings.Split(fh, ",")[0])
+	return scheme + "://" + requestHost(c)
+}
+
+// cleanBase normalises a configured base URL: no trailing slash, no
+// "/api/v1" (a common mistake: PUBLIC_API_URL is the server's address, the
+// API path is added here), https:// when the scheme is missing. fixed lists
+// what was corrected.
+func cleanBase(v string) (base string, fixed []string) {
+	v = strings.TrimRight(strings.TrimSpace(v), "/")
+	if v == "" {
+		return "", nil
 	}
-	return scheme + "://" + host
+	if !strings.Contains(v, "://") {
+		v = "https://" + v
+		fixed = append(fixed, "scheme")
+	}
+	for _, suf := range []string{"/api/v1", "/api"} {
+		if strings.HasSuffix(strings.ToLower(v), suf) {
+			v = strings.TrimRight(v[:len(v)-len(suf)], "/")
+			fixed = append(fixed, "path")
+			break
+		}
+	}
+	return v, fixed
+}
+
+// publicAPIBase is PUBLIC_API_URL, cleaned ("" when not set).
+func (h *Handler) publicAPIBase() string {
+	b, _ := cleanBase(h.PublicAPI)
+	return b
 }
 
 func (h *Handler) apiBase(c *gin.Context) string {
-	if v := strings.TrimRight(strings.TrimSpace(h.PublicAPI), "/"); v != "" {
+	if v := h.publicAPIBase(); v != "" {
 		return v
 	}
 	return requestBase(c)
@@ -153,6 +194,13 @@ func (h *Handler) appBase(c *gin.Context) string {
 		return v
 	}
 	return requestBase(c)
+}
+
+// StartURL is where the browser starts signing in with a provider — on the
+// same host as the redirect URI, so the browser cookie set at /start comes
+// back with the callback.
+func (h *Handler) StartURL(c *gin.Context, provider string) string {
+	return h.apiBase(c) + "/api/v1/public/sso/" + provider + "/start"
 }
 
 // RedirectURI is the callback URL to register at the provider.
@@ -182,12 +230,23 @@ func (h *Handler) toApp(c *gin.Context, vals url.Values) {
 }
 
 func (h *Handler) toAppError(c *gin.Context, code, provider, email string) {
+	h.toAppErrorV(c, code, provider, email, nil)
+}
+
+// toAppErrorV is toAppError with extra values for the error page (detail,
+// redirect_uri).
+func (h *Handler) toAppErrorV(c *gin.Context, code, provider, email string, extra url.Values) {
 	v := url.Values{"error": {code}}
 	if provider != "" {
 		v.Set("provider", provider)
 	}
 	if email != "" {
 		v.Set("email", email)
+	}
+	for k, vals := range extra {
+		if len(vals) > 0 && vals[0] != "" {
+			v.Set(k, vals[0])
+		}
 	}
 	h.toApp(c, v)
 }
@@ -199,7 +258,15 @@ func cookieName(state string) string {
 	return "das_sso_" + state
 }
 
-func cookiePath(c *gin.Context, provider string) string {
+// cookiePath scopes the browser cookie to the SSO routes. With PUBLIC_API_URL
+// it follows that address's path (a proxy may strip a prefix before the
+// request reaches us); otherwise the request's path.
+func (h *Handler) cookiePath(c *gin.Context, provider string) string {
+	if b := h.publicAPIBase(); b != "" {
+		if u, err := url.Parse(b); err == nil && u.Host != "" && strings.EqualFold(u.Host, requestHost(c)) {
+			return strings.TrimRight(u.Path, "/") + "/api/v1/public/sso"
+		}
+	}
 	p := c.Request.URL.Path
 	for _, suf := range []string{"/" + provider + "/start", "/" + provider + "/callback"} {
 		if strings.HasSuffix(p, suf) {
@@ -244,15 +311,37 @@ func (h *Handler) orgBlocked(org string) bool {
 
 // ---------------------------------------------------------------- public
 
-// PublicProviders lists the providers the login page should offer.
+// PublicProviders lists the providers the login page should offer. Never
+// cached (by browsers, proxies or the PWA): an empty list must not stick
+// after a provider is switched on.
 func (h *Handler) PublicProviders(c *gin.Context) {
 	out := []gin.H{}
 	for _, p := range Providers {
 		if s := Load(h.DB, p); s.Usable() {
-			out = append(out, gin.H{"id": p, "name": s.Name})
+			out = append(out, gin.H{"id": p, "name": s.Name, "start_url": h.StartURL(c, p)})
 		}
 	}
+	c.Header("Cache-Control", "no-store")
 	ok(c, gin.H{"providers": out})
+}
+
+// canonicalStart returns where /start must move to first when this request
+// came in on another host than PUBLIC_API_URL (e.g. the app calls the
+// *.run.app address while Google calls back on api.example.com): the
+// browser cookie set here would otherwise never come back with the callback
+// ("started in a different browser"). "" = carry on here.
+func (h *Handler) canonicalStart(c *gin.Context, p string) string {
+	base := h.publicAPIBase()
+	if base == "" || c.Query("hop") != "" {
+		return ""
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" || strings.EqualFold(u.Host, requestHost(c)) {
+		return ""
+	}
+	q := c.Request.URL.Query()
+	q.Set("hop", "1") // never bounce twice
+	return h.StartURL(c, p) + "?" + q.Encode()
 }
 
 // Start sends the browser to the provider.
@@ -260,6 +349,11 @@ func (h *Handler) Start(c *gin.Context) {
 	p := c.Param("provider")
 	if !knownProvider(p) {
 		h.toAppError(c, "unknown_provider", "", "")
+		return
+	}
+	if to := h.canonicalStart(c, p); to != "" {
+		c.Header("Cache-Control", "no-store")
+		c.Redirect(http.StatusFound, to)
 		return
 	}
 	s := Load(h.DB, p)
@@ -287,6 +381,7 @@ func (h *Handler) Start(c *gin.Context) {
 	h.DB.Where("expires_at < ?", now.Add(-time.Hour)).Delete(&Flow{})
 	disc, err := h.OIDC.Discover(c.Request.Context(), s.DiscoveryURL)
 	if err != nil {
+		h.recordFailure(p, "provider_unavailable", err.Error(), true)
 		h.toAppError(c, "provider_unavailable", p, "")
 		return
 	}
@@ -305,7 +400,7 @@ func (h *Handler) Start(c *gin.Context) {
 		q.Set("response_mode", "query")
 	}
 	// Binds the callback to this browser (login CSRF).
-	http.SetCookie(c.Writer, &http.Cookie{Name: cookieName(f.State), Value: f.State, Path: cookiePath(c, p), MaxAge: int(flowTTL.Seconds()),
+	http.SetCookie(c.Writer, &http.Cookie{Name: cookieName(f.State), Value: f.State, Path: h.cookiePath(c, p), MaxAge: int(flowTTL.Seconds()),
 		HttpOnly: true, Secure: isHTTPS(c), SameSite: http.SameSiteLaxMode})
 	sep := "?"
 	if strings.Contains(disc.AuthorizationEndpoint, "?") {
@@ -333,27 +428,29 @@ func (h *Handler) Callback(c *gin.Context) {
 		return
 	}
 	state := c.Query("state")
+	perr := c.Query("error")
 	if state == "" {
+		if perr != "" { // some provider errors come back without the state
+			h.providerError(c, p, perr, false) // not tied to a real attempt: explain, don't record
+			return
+		}
 		h.toAppError(c, "expired", p, "")
 		return
 	}
 	ck, _ := c.Cookie(cookieName(state))
-	http.SetCookie(c.Writer, &http.Cookie{Name: cookieName(state), Value: "", Path: cookiePath(c, p), MaxAge: -1, HttpOnly: true, Secure: isHTTPS(c), SameSite: http.SameSiteLaxMode})
+	http.SetCookie(c.Writer, &http.Cookie{Name: cookieName(state), Value: "", Path: h.cookiePath(c, p), MaxAge: -1, HttpOnly: true, Secure: isHTTPS(c), SameSite: http.SameSiteLaxMode})
 	f, found := h.takeFlow(state)
 	if !found || f.Provider != p || h.now().After(f.ExpiresAt) {
 		h.toAppError(c, "expired", p, "")
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(ck), []byte(state)) != 1 {
+		h.recordFailure(p, "browser_mismatch", "the browser cookie set at /start did not come back with the callback (host "+requestHost(c)+")", false)
 		h.toAppError(c, "browser_mismatch", p, "")
 		return
 	}
-	if e := c.Query("error"); e != "" {
-		code := "provider_error"
-		if e == "access_denied" {
-			code = "cancelled"
-		}
-		h.toAppError(c, code, p, "")
+	if perr != "" {
+		h.providerError(c, p, perr, true)
 		return
 	}
 	s := Load(h.DB, p)
@@ -363,9 +460,16 @@ func (h *Handler) Callback(c *gin.Context) {
 	}
 	claims, err := h.verify(c, s, f, c.Query("code"))
 	if err != nil {
-		h.toAppError(c, "invalid_token", p, "")
+		code, detail := classifyVerifyError(err)
+		h.recordFailure(p, code, detail, true)
+		var extra url.Values
+		if code == "redirect_uri_mismatch" {
+			extra = url.Values{"redirect_uri": {h.RedirectURI(c, p)}}
+		}
+		h.toAppErrorV(c, code, p, "", extra)
 		return
 	}
+	h.recordSuccess(p)
 	if f.Mode == "link" {
 		h.finishLink(c, f, claims)
 		return
@@ -746,14 +850,13 @@ func (h *Handler) DeleteDomain(c *gin.Context) {
 
 // ---------------------------------------------------------------- super admin
 
-func (h *Handler) providerView(c *gin.Context, p string) gin.H {
+func (h *Handler) providerView(c *gin.Context, p string, refresh bool) gin.H {
 	s := Load(h.DB, p)
-	var row ProviderConfig
-	saved := h.DB.Where("provider = ?", p).Take(&row).Error == nil
 	v := gin.H{
-		"provider": p, "name": s.Name, "enabled": s.Enabled, "usable": s.Usable(), "configured": s.Configured(), "saved": saved,
-		"client_id": s.ClientID, "client_id_from": s.ClientIDFrom, "secret_set": s.ClientSecret != "", "secret_from": s.ClientSecretFrom,
-		"redirect_uri": h.RedirectURI(c, p), "test_issuer": s.TestIssuer,
+		"provider": p, "name": s.Name, "enabled": s.Enabled, "usable": s.Usable(), "configured": s.Configured(), "saved": s.Saved,
+		"switched": s.Switched, "client_id": s.ClientID, "client_id_from": s.ClientIDFrom, "secret_set": s.ClientSecret != "",
+		"secret_from": s.ClientSecretFrom, "secret_unreadable": s.SecretUnreadable,
+		"redirect_uri": h.RedirectURI(c, p), "test_issuer": s.TestIssuer, "status": h.Status(c, s, refresh),
 	}
 	if p == Microsoft {
 		v["tenant"] = s.Tenant
@@ -761,16 +864,37 @@ func (h *Handler) providerView(c *gin.Context, p string) gin.H {
 	return v
 }
 
-// AdminProviders shows the sign-in provider settings and redirect URIs.
+// AdminProviders shows the sign-in provider settings, redirect URIs and
+// status checklists (?refresh=1 re-runs the network checks).
 func (h *Handler) AdminProviders(c *gin.Context) {
+	refresh := c.Query("refresh") == "1"
+	h.warmChecks(c, refresh, Providers...)
 	out := []gin.H{}
 	for _, p := range Providers {
-		out = append(out, h.providerView(c, p))
+		out = append(out, h.providerView(c, p, false))
 	}
-	ok(c, gin.H{"providers": out, "public_api_url": strings.TrimSpace(h.PublicAPI), "public_app_url": strings.TrimSpace(h.PublicApp)})
+	ok(c, gin.H{"providers": out, "public_api_url": h.publicAPIBase(), "public_app_url": strings.TrimSpace(h.PublicApp)})
+}
+
+// ProviderStatus returns one provider's view with a fresh checklist when
+// ?refresh=1 ("Check now").
+func (h *Handler) ProviderStatus(c *gin.Context) {
+	p := c.Param("provider")
+	if !knownProvider(p) {
+		fail(c, http.StatusNotFound, "UNKNOWN_PROVIDER", "Unknown sign-in provider")
+		return
+	}
+	ok(c, h.providerView(c, p, c.Query("refresh") == "1"))
 }
 
 // SaveProvider stores a provider's settings (blank secret keeps the saved one).
+//
+// The switch: "enabled" is sent only when the admin flips it. Without it,
+// a provider that has a client ID and secret after the save and was never
+// switched off by an admin is turned on (auto_enabled) — saving credentials
+// and forgetting the switch must not leave the button missing from the
+// sign-in page. One an admin switched off stays off (kept_off), and the
+// page says so.
 func (h *Handler) SaveProvider(c *gin.Context) {
 	p := c.Param("provider")
 	if !knownProvider(p) {
@@ -778,7 +902,7 @@ func (h *Handler) SaveProvider(c *gin.Context) {
 		return
 	}
 	var in struct {
-		Enabled      bool    `json:"enabled"`
+		Enabled      *bool   `json:"enabled"`
 		ClientID     *string `json:"client_id"`
 		ClientSecret string  `json:"client_secret"`
 		ClearSecret  bool    `json:"clear_secret"`
@@ -790,50 +914,76 @@ func (h *Handler) SaveProvider(c *gin.Context) {
 	}
 	var row ProviderConfig
 	if h.DB.Where("provider = ?", p).Take(&row).Error != nil {
-		row = ProviderConfig{Provider: p}
+		// First save: start from what is in effect now (env credentials → on).
+		row = ProviderConfig{Provider: p, Enabled: Load(h.DB, p).Enabled}
 	}
 	if in.ClientID != nil {
-		row.ClientID = strings.TrimSpace(*in.ClientID)
+		row.ClientID = CleanCredential(*in.ClientID)
 	}
 	if in.ClearSecret {
 		row.ClientSecret = ""
 	}
-	if sec := strings.TrimSpace(in.ClientSecret); sec != "" {
+	secretChanged := false
+	if sec := CleanCredential(in.ClientSecret); sec != "" {
 		enc, err := mail.EncryptSecret(sec)
 		if err != nil {
 			fail(c, http.StatusInternalServerError, "ENCRYPTION_ERROR", "Could not store the secret")
 			return
 		}
-		row.ClientSecret = enc
+		row.ClientSecret, secretChanged = enc, true
 	}
 	if in.Tenant != nil && p == Microsoft {
-		t := strings.TrimSpace(*in.Tenant)
+		t := CleanCredential(*in.Tenant)
 		if t != "" && !ValidTenant(t) {
 			fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Tenant must be common, organizations, consumers, a tenant ID or a domain")
 			return
 		}
 		row.Tenant = t
 	}
-	row.Enabled = in.Enabled
+	now := h.now()
+	if in.Enabled != nil {
+		row.Enabled = *in.Enabled
+		row.Switched = map[bool]string{true: "on", false: "off"}[*in.Enabled]
+		row.SwitchedAt = &now
+	}
 	row.UpdatedBy = c.GetString("user_id")
-	row.UpdatedAt = h.now()
+	row.UpdatedAt = now
+	autoOn, keptOff := false, false
+	var notReady Settings
+	errNotConfigured := errors.New("not configured")
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Save(&row).Error; err != nil {
 			return err
 		}
-		if s := Load(tx, p); s.Enabled && !s.Configured() {
-			return errors.New("not configured")
+		s := Load(tx, p)
+		switch {
+		case in.Enabled != nil && *in.Enabled && !s.Configured():
+			notReady = s
+			return errNotConfigured
+		case in.Enabled == nil && !s.Enabled && s.Configured() && row.Switched == "off":
+			keptOff = true
+		case in.Enabled == nil && !s.Enabled && s.Configured():
+			row.Enabled, row.Switched, row.SwitchedAt = true, "auto", &now
+			autoOn = true
+			return tx.Save(&row).Error
 		}
 		return nil
 	})
 	if err != nil {
-		if err.Error() == "not configured" {
-			fail(c, http.StatusBadRequest, "NOT_CONFIGURED", "Enter the client ID and client secret before enabling "+providerNames[p]+" sign-in")
+		if err == errNotConfigured {
+			msg := "Enter the client ID and client secret before turning on " + providerNames[p] + " sign-in"
+			if notReady.SecretUnreadable && notReady.ClientSecret == "" {
+				msg = "The saved client secret can't be read any more (the server's encryption key changed). Paste the client secret again, then turn " + providerNames[p] + " sign-in on."
+			}
+			fail(c, http.StatusBadRequest, "NOT_CONFIGURED", msg)
 			return
 		}
 		fail(c, http.StatusInternalServerError, "DATABASE_ERROR", "Could not save")
 		return
 	}
-	h.audit(c, c.GetString("org_id"), c.GetString("user_id"), "platform.sso_provider_update", p, gin.H{"provider": p, "enabled": in.Enabled, "client_id": row.ClientID, "secret_changed": in.ClientSecret != "" || in.ClearSecret})
-	ok(c, h.providerView(c, p))
+	h.audit(c, c.GetString("org_id"), c.GetString("user_id"), "platform.sso_provider_update", p, gin.H{"provider": p, "enabled": row.Enabled,
+		"switched": in.Enabled != nil, "auto_enabled": autoOn, "client_id": row.ClientID, "secret_changed": secretChanged || in.ClearSecret})
+	v := h.providerView(c, p, false)
+	v["auto_enabled"], v["kept_off"] = autoOn, keptOff
+	ok(c, v)
 }

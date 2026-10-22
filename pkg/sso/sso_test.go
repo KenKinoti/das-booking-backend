@@ -98,10 +98,19 @@ func (f *fakeIDP) serve(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant"})
 			return
 		}
-		if r.Form.Get("client_id") != g.clientID || r.Form.Get("client_secret") != "secret-"+g.clientID || r.Form.Get("redirect_uri") != g.redirect ||
-			PKCEChallenge(r.Form.Get("code_verifier")) != g.challenge || r.Form.Get("grant_type") != "authorization_code" {
+		if r.Form.Get("client_id") != g.clientID || r.Form.Get("client_secret") != "secret-"+g.clientID {
+			w.WriteHeader(401) // as Google: {"error": "invalid_client", "error_description": "Unauthorized"}
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_client", "error_description": "Unauthorized"})
+			return
+		}
+		if r.Form.Get("redirect_uri") != g.redirect {
 			w.WriteHeader(400)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_request", "error_description": "client/redirect/pkce mismatch"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "redirect_uri_mismatch", "error_description": "Bad Request"})
+			return
+		}
+		if PKCEChallenge(r.Form.Get("code_verifier")) != g.challenge || r.Form.Get("grant_type") != "authorization_code" {
+			w.WriteHeader(400)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant", "error_description": "pkce mismatch"})
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "at", "token_type": "Bearer", "id_token": f.sign(g.claims, f.key, f.kid)})
@@ -213,6 +222,7 @@ func (e *env) do(method, path string, body interface{}, cookies []*http.Cookie) 
 		rd = strings.NewReader("")
 	}
 	req := httptest.NewRequest(method, path, rd)
+	req.Host = "api.example.test" // the address PUBLIC_API_URL names
 	req.Header.Set("Content-Type", "application/json")
 	for _, c := range cookies {
 		req.AddCookie(c)

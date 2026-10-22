@@ -264,7 +264,8 @@ func (Activity) TableName() string { return "billing_activities" }
 
 // Models lists everything that needs migrating.
 func Models() []interface{} {
-	return []interface{}{&Settings{}, &TaxRate{}, &Invoice{}, &InvoiceItem{}, &Payment{}, &Activity{}, &EmailLog{}, &Attachment{}, &CancelledReceipt{}}
+	return []interface{}{&Settings{}, &TaxRate{}, &Invoice{}, &InvoiceItem{}, &Payment{}, &Activity{}, &EmailLog{}, &Attachment{}, &CancelledReceipt{},
+		&EmailRecipient{}, &EmailTrackingSettings{}}
 }
 
 // EmailLog records every email about a document (sent, test or failed) with
@@ -294,7 +295,16 @@ type EmailLog struct {
 	Attachments    []string          `json:"attachments" gorm:"type:text;serializer:json"`
 	PaymentID      string            `json:"payment_id,omitempty" gorm:"type:varchar(64)"`
 	DurationMS     int               `json:"duration_ms"`
-	CreatedAt      time.Time         `json:"created_at" gorm:"index"`
+	// Tracking is how the email went out: "per_recipient" (each To/CC got
+	// their own copy with their own links and open image — see
+	// emailtrack.go), "single" (one message to everyone, untracked) or ""
+	// (sent before per-recipient tracking existed).
+	Tracking  string    `json:"tracking" gorm:"type:varchar(20)"`
+	Copies    int       `json:"copies"`        // messages handed to the mail server
+	CopyFails int       `json:"copies_failed"` // of them, refused
+	CreatedAt time.Time `json:"created_at" gorm:"index"`
+	// Recipients: every person's copy and what happened to it (email-log only).
+	Recipients []RecipientStatus `json:"recipients,omitempty" gorm:"-"`
 }
 
 func (EmailLog) TableName() string { return "invoice_email_log" }

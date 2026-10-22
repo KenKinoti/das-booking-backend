@@ -67,6 +67,13 @@ type EmailView struct {
 	Note      string // "A PDF copy (INV-1001.pdf) is attached."
 	FXNote    string // "Amounts in USD. Converted from KES at …"
 	ReplyTo   string // who a reply reaches
+	// AlsoSentTo is the "Also sent to: …" line under the message when each
+	// recipient gets their own copy (see emailtrack.go).
+	AlsoSentTo string
+	// TrackingPixelURL is this copy's 1×1 open-tracking image ("" = none).
+	TrackingPixelURL string
+	// FooterNotice is an optional privacy line in the footer.
+	FooterNotice string
 }
 
 // EmailActionGroup is a labelled row of secondary buttons with optional small
@@ -280,6 +287,9 @@ a{color:` + accent + `}
 		w(linkify(strings.TrimSpace(v.Message), accent))
 		w(`</td></tr></table>` + "\n")
 	}
+	if v.AlsoSentTo != "" {
+		w(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="px mt" data-also-sent-to style="padding:2px 32px 6px;font:13px/1.5 ` + fontStack + `;color:` + cMutedTxt + `">` + esc(v.AlsoSentTo) + `</td></tr></table>` + "\n")
+	}
 
 	// summary card
 	if v.Amount != "" {
@@ -383,7 +393,13 @@ a{color:` + accent + `}
 	if v.ReplyTo != "" {
 		w(`<div class="mt" style="color:` + cMutedTxt + `;margin-top:10px">` + esc(v.ReplyTo) + `</div>`)
 	}
+	if v.FooterNotice != "" {
+		w(`<div class="mt" style="color:#9aa1b1;margin-top:10px;font-size:11px">` + esc(v.FooterNotice) + `</div>`)
+	}
 	w(`<div class="mt" style="color:#9aa1b1;margin-top:12px;font-size:11px">Sent with DASYIN ERP</div>`)
+	if validURL(v.TrackingPixelURL) {
+		w(`<img src="` + esc(v.TrackingPixelURL) + `" width="1" height="1" alt="" border="0" style="display:block;width:1px;height:1px;border:0;margin:0;padding:0;opacity:0">`)
+	}
 	w(`</td></tr>` + "\n")
 	w(`</table>` + "\n")
 	w(`<!--[if mso]></td></tr></table><![endif]-->` + "\n")
@@ -447,6 +463,9 @@ func renderText(v EmailView) string {
 	msg := strings.TrimSpace(strings.ReplaceAll(v.Message, "\r\n", "\n"))
 	if msg != "" {
 		b.WriteString(msg + "\n\n")
+	}
+	if v.AlsoSentTo != "" {
+		b.WriteString(v.AlsoSentTo + "\n\n")
 	}
 	rule := strings.Repeat("-", 40) + "\n"
 	b.WriteString(rule)
@@ -523,6 +542,9 @@ func renderText(v EmailView) string {
 	}
 	if v.ReplyTo != "" {
 		b.WriteString(v.ReplyTo + "\n")
+	}
+	if v.FooterNotice != "" {
+		b.WriteString(v.FooterNotice + "\n")
 	}
 	b.WriteString("Sent with DASYIN ERP\n")
 	return b.String()

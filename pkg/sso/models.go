@@ -61,13 +61,20 @@ func (Code) TableName() string { return "sso_codes" }
 // admin → System settings → Sign-in providers). Empty values fall back to
 // the environment. The client secret is encrypted (pkg/mail EncryptSecret).
 type ProviderConfig struct {
-	Provider     string    `json:"provider" gorm:"type:varchar(20);primaryKey"`
-	Enabled      bool      `json:"enabled"`
-	ClientID     string    `json:"client_id" gorm:"type:varchar(255)"`
-	ClientSecret string    `json:"-" gorm:"type:text"`
-	Tenant       string    `json:"tenant" gorm:"type:varchar(100)"`
-	UpdatedBy    string    `json:"updated_by" gorm:"type:varchar(255)"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	Provider     string `json:"provider" gorm:"type:varchar(20);primaryKey"`
+	Enabled      bool   `json:"enabled"`
+	ClientID     string `json:"client_id" gorm:"type:varchar(255)"`
+	ClientSecret string `json:"-" gorm:"type:text"`
+	Tenant       string `json:"tenant" gorm:"type:varchar(100)"`
+	// Switched records how the switch was last set: "on" (by an admin),
+	// "auto" (turned on when credentials were saved), "off" (an admin turned
+	// it off — saving credentials later keeps it off) or "" (never;
+	// rows saved by earlier releases — the next save with credentials turns
+	// it on).
+	Switched   string     `json:"switched" gorm:"type:varchar(10)"`
+	SwitchedAt *time.Time `json:"switched_at"`
+	UpdatedBy  string     `json:"updated_by" gorm:"type:varchar(255)"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 // TableName keeps the table name explicit.
@@ -87,7 +94,28 @@ type DomainRule struct {
 // TableName keeps the table name explicit.
 func (DomainRule) TableName() string { return "sso_domain_rules" }
 
+// ProviderHealth remembers the outcome of the latest sign-in round trips per
+// provider, so System settings can show "last sign-in failed: invalid_client".
+// Kept apart from ProviderConfig: an env-only provider has no config row (and
+// creating one would switch it to saved settings).
+type ProviderHealth struct {
+	Provider        string     `gorm:"type:varchar(20);primaryKey"`
+	LastSuccessAt   *time.Time // the provider sent a valid ID token back
+	LastErrorAt     *time.Time
+	LastErrorCode   string `gorm:"type:varchar(40)"`  // the code the sign-in page shows (invalid_client …)
+	LastErrorDetail string `gorm:"type:varchar(500)"` // what the provider / verifier said
+	// LastErrorSource: "server" — seen by this server (token endpoint,
+	// discovery, ID token check), so it is certain; "browser" — reported
+	// through the browser's redirect (?error=, missing cookie), which anyone
+	// can fake, so the status page only warns.
+	LastErrorSource string `gorm:"type:varchar(10)"`
+	UpdatedAt       time.Time
+}
+
+// TableName keeps the table name explicit.
+func (ProviderHealth) TableName() string { return "sso_provider_health" }
+
 // Migrate creates the tables.
 func Migrate(db *gorm.DB) error {
-	return db.AutoMigrate(&Identity{}, &Flow{}, &Code{}, &ProviderConfig{}, &DomainRule{})
+	return db.AutoMigrate(&Identity{}, &Flow{}, &Code{}, &ProviderConfig{}, &DomainRule{}, &ProviderHealth{})
 }

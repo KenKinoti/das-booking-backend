@@ -4,6 +4,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
+	"unicode"
 
 	"gorm.io/gorm"
 
@@ -36,9 +38,22 @@ type Settings struct {
 	// DiscoveryURL and the issuer rule.
 	DiscoveryURL string
 	TestIssuer   bool // SSO_*_ISSUER override in effect (tests only)
-	// Where each value came from (for the admin page): env | settings | "".
+	// Where each value came from (for the admin page): env | settings | "",
+	// and which environment variable when env.
 	ClientIDFrom     string
 	ClientSecretFrom string
+	ClientIDEnv      string
+	ClientSecretEnv  string
+	// Saved: a row exists in sso_provider_configs (its Enabled wins).
+	Saved bool
+	// Switched / SwitchedAt: the saved switch history (ProviderConfig);
+	// UpdatedAt: when the saved settings last changed.
+	Switched   string
+	SwitchedAt *time.Time
+	UpdatedAt  time.Time
+	// SecretUnreadable: a secret is saved but can't be decrypted (the
+	// server's ENCRYPTION_KEY / JWT_SECRET changed since it was saved).
+	SecretUnreadable bool
 }
 
 // Configured: has the credentials needed to sign in.
@@ -52,13 +67,35 @@ var tenantRe = regexp.MustCompile(`^[A-Za-z0-9.\-]{1,100}$`)
 // ValidTenant accepts common/organizations/consumers, a GUID or a domain.
 func ValidTenant(t string) bool { return tenantRe.MatchString(t) }
 
-func envFirst(keys ...string) (string, string) {
+// CleanCredential removes what copy and paste adds to a client ID, secret or
+// tenant: whitespace and line breaks anywhere (none of them ever contain
+// any), zero-width characters and surrounding quotes.
+func CleanCredential(v string) string {
+	v = strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsSpace(r), r == '\u200b', r == '\u200c', r == '\u200d', r == '\u2060', r == '\ufeff':
+			return -1
+		}
+		return r
+	}, v)
+	for len(v) >= 2 {
+		f, l := v[0], v[len(v)-1]
+		if f != l || (f != '"' && f != '\'' && f != '`') {
+			break
+		}
+		v = v[1 : len(v)-1]
+	}
+	return v
+}
+
+// envFirst returns the first set variable: value, "env", its name.
+func envFirst(keys ...string) (string, string, string) {
 	for _, k := range keys {
-		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
-			return v, "env"
+		if v := CleanCredential(os.Getenv(k)); v != "" {
+			return v, "env", k
 		}
 	}
-	return "", ""
+	return "", "", ""
 }
 
 // testIssuer returns the SSO_<P>_ISSUER override — honoured only when
@@ -85,25 +122,29 @@ func Load(db *gorm.DB, provider string) Settings {
 	saved := db != nil && db.Where("provider = ?", provider).Take(&row).Error == nil
 	switch provider {
 	case Google:
-		s.ClientID, s.ClientIDFrom = envFirst("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_CLIENT_ID")
-		s.ClientSecret, s.ClientSecretFrom = envFirst("GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET")
+		s.ClientID, s.ClientIDFrom, s.ClientIDEnv = envFirst("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_CLIENT_ID")
+		s.ClientSecret, s.ClientSecretFrom, s.ClientSecretEnv = envFirst("GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET")
 	case Microsoft:
-		s.ClientID, s.ClientIDFrom = envFirst("MICROSOFT_CLIENT_ID")
-		s.ClientSecret, s.ClientSecretFrom = envFirst("MICROSOFT_CLIENT_SECRET")
-		s.Tenant, _ = envFirst("MICROSOFT_TENANT")
+		s.ClientID, s.ClientIDFrom, s.ClientIDEnv = envFirst("MICROSOFT_CLIENT_ID")
+		s.ClientSecret, s.ClientSecretFrom, s.ClientSecretEnv = envFirst("MICROSOFT_CLIENT_SECRET")
+		s.Tenant, _, _ = envFirst("MICROSOFT_TENANT")
 	default:
 		return s
 	}
 	if saved {
-		if v := strings.TrimSpace(row.ClientID); v != "" {
-			s.ClientID, s.ClientIDFrom = v, "settings"
+		s.Saved, s.Switched, s.SwitchedAt, s.UpdatedAt = true, row.Switched, row.SwitchedAt, row.UpdatedAt
+		if v := CleanCredential(row.ClientID); v != "" {
+			s.ClientID, s.ClientIDFrom, s.ClientIDEnv = v, "settings", ""
 		}
 		if row.ClientSecret != "" {
-			if v, err := mail.DecryptSecret(row.ClientSecret); err == nil && v != "" {
-				s.ClientSecret, s.ClientSecretFrom = v, "settings"
+			v, err := mail.DecryptSecret(row.ClientSecret)
+			if v = CleanCredential(v); err == nil && v != "" {
+				s.ClientSecret, s.ClientSecretFrom, s.ClientSecretEnv = v, "settings", ""
+			} else {
+				s.SecretUnreadable = true
 			}
 		}
-		if v := strings.TrimSpace(row.Tenant); v != "" {
+		if v := CleanCredential(row.Tenant); v != "" {
 			s.Tenant = v
 		}
 		s.Enabled = row.Enabled

@@ -471,7 +471,7 @@ func TestHTTP(t *testing.T) {
 	}
 	code, out := api("GET", "/email-recipients", "", c.owner, "admin")
 	d := data(out)
-	if code != 200 || d["mode"] != ep.ModeOwners || len(d["people"].([]any)) != 4 || len(d["categories"].([]any)) != 5 || len(d["modes"].([]any)) != 3 {
+	if code != 200 || d["mode"] != ep.ModeOwners || len(d["people"].([]any)) != 4 || len(d["categories"].([]any)) != len(ep.Categories) || len(d["modes"].([]any)) != 3 {
 		t.Fatalf("list %d %v", code, out)
 	}
 	p0 := d["people"].([]any)[0].(map[string]any)
@@ -542,7 +542,7 @@ func TestHTTP(t *testing.T) {
 		m := x.(map[string]any)
 		cats[m["key"].(string)] = m
 	}
-	if code != 200 || len(cats) != 2 || cats["bookings"]["locked"] != true || cats["bookings"]["reason_text"] != "Turned off by your administrator" || cats["agenda"]["locked"] != false {
+	if code != 200 || len(cats) != 3 || cats[ep.PlatformUpdates] == nil || cats["bookings"]["locked"] != true || cats["bookings"]["reason_text"] != "Turned off by your administrator" || cats["agenda"]["locked"] != false {
 		t.Fatalf("mine %d %v", code, out)
 	}
 	if code, out := api("PUT", "/me/email-preferences", `{"categories":{"bookings":true}}`, c.bartender, "staff"); code != http.StatusForbidden || out["error"].(map[string]any)["code"] != "LOCKED_BY_ADMIN" {

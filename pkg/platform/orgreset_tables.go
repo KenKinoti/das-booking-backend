@@ -73,6 +73,7 @@ var resetGroups = []resetGroup{
 	{Key: "sales", Label: "Point of sale", Description: "Sales with their lines and payments, cash drawer sessions and lay-bys.", Steps: []resetStep{
 		{Table: "pos_items", Label: "Sale lines", Where: child("transaction_id", "pos_transactions", "id", aOrg)},
 		{Table: "pos_payments", Label: "Sale payments", Where: child("transaction_id", "pos_transactions", "id", aOrg)},
+		{Table: "pos_sale_photos", Label: "Sale photos", Where: byOrg},
 		{Table: "pos_transactions", Label: "Sales", Where: byOrg},
 		{Table: "cash_drawers", Label: "Cash drawer sessions", Where: byOrg},
 		{Table: "layby_items", Label: "Lay-by lines", Where: child("layby_payment_id", "layby_payments", "id", aOrg)},
@@ -86,6 +87,7 @@ var resetGroups = []resetGroup{
 		{Table: "billing_activities", Label: "Invoice activity history", Where: byOrg},
 		{Table: "billing_attachments", Label: "Invoice attachments", Where: byOrg},
 		{Table: "billing_cancelled_receipts", Label: "Cancelled receipts", Where: byOrg},
+		{Table: "invoice_email_recipients", Label: "Who opened / viewed each email", Where: byOrg},
 		{Table: "invoice_email_log", Label: "Invoice & receipt email log", Where: byOrg},
 		{Table: "pay_transactions", Label: "Online payments (Flutterwave)", Where: byOrg},
 		{Table: "billing_invoices", Label: "Invoices, quotes & credit notes", Where: byOrg, Note: "Their public view / pay links stop working"},
@@ -178,7 +180,7 @@ var resetGroups = []resetGroup{
 		{Table: "inventory_items", Label: "Stock per location", Where: byOrg},
 		{Table: "products", Label: "Product stock on hand", Where: byOrg + " AND COALESCE(current_stock, 0) <> 0", Set: "current_stock = 0", Note: "Products are kept; stock on hand goes back to 0"},
 	}},
-	{Key: "communication", Label: "Notifications, messages & calls", Description: "Notifications, conversations with their messages, SMS / WhatsApp / email logs, video calls and live streams.", Steps: []resetStep{
+	{Key: "communication", Label: "Notifications, messages & calls", Description: "Notifications, conversations with their messages, SMS / WhatsApp / email logs, video calls, secure call links and live streams.", Steps: []resetStep{
 		{Table: "notifications", Label: "Notifications", Where: byOrg},
 		{Table: "message_attachments", Label: "Message attachments", Where: "message_id IN (SELECT m.id FROM messages m WHERE " + child("m.thread_id", "message_threads", "id", aOrg) + ")"},
 		{Table: "message_reactions", Label: "Message reactions", Where: "message_id IN (SELECT m.id FROM messages m WHERE " + child("m.thread_id", "message_threads", "id", aOrg) + ")"},
@@ -197,6 +199,9 @@ var resetGroups = []resetGroup{
 		{Table: "stream_viewers", Label: "Stream viewers", Where: child("stream_id", "live_streams", "id", aOrg)},
 		{Table: "stream_recordings", Label: "Stream recordings", Where: child("stream_id", "live_streams", "id", aOrg)},
 		{Table: "live_streams", Label: "Live streams", Where: byOrg},
+		{Table: "seccall_messages", Label: "Secure call signalling", Where: child("room_id", "seccall_rooms", "id", aOrg)},
+		{Table: "seccall_participants", Label: "Secure call participants", Where: child("room_id", "seccall_rooms", "id", aOrg)},
+		{Table: "seccall_rooms", Label: "Secure call links", Where: byOrg},
 		{Table: "web_socket_connections", Label: "Live connections", Where: byOrg},
 	}},
 	{Key: "meetings", Label: "Meetings", Description: "Meetings with their invitees and transcripts.", Steps: []resetStep{
@@ -343,6 +348,10 @@ var resetNotTouched = map[string]string{
 	"insights_custom_indicators":     "Insights indicators",
 	"insights_datasets":              "Insights datasets",
 	"insights_service_rules":         "Insights service rules",
+	"invoice_email_tracking":         "Email tracking settings",
+	"occasion_org_settings":          "Seasonal theme settings",
+	"broadcast_deliveries":           "Platform announcements (sent by the platform)",
+	"broadcast_unsubscribes":         "Platform announcement email choices",
 	"sso_domain_rules":               "Single sign-on rules",
 }
 
@@ -351,4 +360,8 @@ var resetNotTouched = map[string]string{
 // registered the table is reported as unclassified.
 var resetHookTables = map[string]string{
 	"onboarding_progress": "onboarding", // pkg/onboarding: getting-started progress
+	// pkg/subscriptions: client subscriptions (subscription_settings: numbering restarts, settings stay)
+	"client_subscriptions": "subscriptions", "client_subscription_lines": "subscriptions", "client_subscription_periods": "subscriptions",
+	"client_subscription_tasks": "subscriptions", "client_subscription_events": "subscriptions", "client_subscription_plan_map": "subscriptions",
+	"subscription_settings": "subscriptions",
 }

@@ -404,6 +404,25 @@ type TokenResponse struct {
 	ErrorDesc   string `json:"error_description"`
 }
 
+// TokenError is an error answer of the token endpoint (RFC 6749 §5.2), e.g.
+// invalid_client when the client secret is wrong.
+type TokenError struct {
+	Status      int
+	Code        string
+	Description string
+}
+
+func (e *TokenError) Error() string {
+	msg := e.Code
+	if e.Description != "" {
+		msg += ": " + e.Description
+	}
+	if msg == "" {
+		msg = fmt.Sprintf("HTTP %d", e.Status)
+	}
+	return "token endpoint: " + msg
+}
+
 // Exchange swaps an authorization code (with its PKCE verifier) for tokens.
 func (o *OIDC) Exchange(ctx context.Context, tokenURL, clientID, clientSecret, code, redirectURI, verifier string) (*TokenResponse, error) {
 	form := url.Values{
@@ -431,14 +450,7 @@ func (o *OIDC) Exchange(ctx context.Context, tokenURL, clientID, clientSecret, c
 	var tr TokenResponse
 	_ = json.Unmarshal(body, &tr)
 	if res.StatusCode != http.StatusOK || tr.Error != "" {
-		msg := tr.Error
-		if tr.ErrorDesc != "" {
-			msg += ": " + tr.ErrorDesc
-		}
-		if msg == "" {
-			msg = fmt.Sprintf("HTTP %d", res.StatusCode)
-		}
-		return nil, fmt.Errorf("token endpoint: %s", msg)
+		return nil, &TokenError{Status: res.StatusCode, Code: tr.Error, Description: tr.ErrorDesc}
 	}
 	if tr.IDToken == "" {
 		return nil, errors.New("token endpoint: no id_token in the response")

@@ -49,15 +49,25 @@ type POSTransaction struct {
 	TenderAmount      float64 `json:"tender_amount" gorm:"type:decimal(10,2);not null"`
 	ChangeAmount      float64 `json:"change_amount" gorm:"type:decimal(10,2);default:0"`
 	// Currency the sale was made in (the organisation's home currency then).
-	Currency       string         `json:"currency" gorm:"type:varchar(3)"`
-	Notes          string         `json:"notes" gorm:"type:text"`
-	ReceiptPrinted bool           `json:"receipt_printed" gorm:"default:false"`
-	VoidReason     string         `json:"void_reason,omitempty" gorm:"type:text"`
-	VoidedAt       *time.Time     `json:"voided_at,omitempty"`
-	VoidedBy       *string        `json:"voided_by,omitempty" gorm:"type:varchar(255)"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
+	Currency       string     `json:"currency" gorm:"type:varchar(3)"`
+	Notes          string     `json:"notes" gorm:"type:text"`
+	ReceiptPrinted bool       `json:"receipt_printed" gorm:"default:false"`
+	VoidReason     string     `json:"void_reason,omitempty" gorm:"type:text"`
+	VoidedAt       *time.Time `json:"voided_at,omitempty"`
+	VoidedBy       *string    `json:"voided_by,omitempty" gorm:"type:varchar(255)"`
+	// Fast sale on any device (pkg/mpos): the device that rang the sale up
+	// (an id kept on that device and the name its user gave it, e.g.
+	// "Brian's phone"), the bar it sold from, the till's idempotency key (a
+	// retried request on a bad network returns the same sale) and how many
+	// photos are attached (M-Pesa confirmation, damaged bottle).
+	DeviceID    string         `json:"device_id,omitempty" gorm:"type:varchar(64);index"`
+	DeviceLabel string         `json:"device_label,omitempty" gorm:"type:varchar(60)"`
+	LocationID  string         `json:"location_id,omitempty" gorm:"type:varchar(255);index"`
+	ClientRef   string         `json:"client_ref,omitempty" gorm:"type:varchar(64)"`
+	PhotoCount  int            `json:"photo_count" gorm:"default:0"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"-" gorm:"index"`
 
 	// Relationships
 	Customer *POSCustomerRef `json:"customer,omitempty" gorm:"foreignKey:CustomerID"`
