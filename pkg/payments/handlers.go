@@ -530,6 +530,11 @@ func notFound(c *gin.Context) {
 // PayPage serves GET /public/pay/:token: the invoice summary and the ways to
 // pay (cheapest first). ?amount= recomputes the fees for a part payment.
 func (h *Handler) PayPage(c *gin.Context) {
+	// A recalled email's pay link (?r=) or a switched-off invoice link:
+	// the withdrawn page, no amounts (pkg/invoicing recall.go).
+	if invoicing.RefuseWithdrawn(c, h.Svc.DB, c.Param("token"), c.Query("r")) {
+		return
+	}
 	inv, err := h.Svc.Invoice(c.Param("token"))
 	if err != nil {
 		notFound(c)
@@ -593,9 +598,18 @@ func (h *Handler) Checkout(c *gin.Context) {
 		Amount float64 `json:"amount"`
 		Method string  `json:"method"`
 		AppURL string  `json:"app_url"`
+		R      string  `json:"r"` // the recipient token of the email link the payer came from
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		fail(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request")
+		return
+	}
+	r := in.R
+	if r == "" {
+		r = c.Query("r")
+	}
+	// No online payment through a recalled email's link (pkg/invoicing recall.go).
+	if invoicing.RefuseWithdrawn(c, h.Svc.DB, c.Param("token"), r) {
 		return
 	}
 	inv, err := h.Svc.Invoice(c.Param("token"))
@@ -635,6 +649,16 @@ func (h *Handler) Verify(c *gin.Context) {
 	_ = c.ShouldBindJSON(&in)
 	inv, err := h.Svc.Invoice(c.Param("token"))
 	if err != nil {
+		// The invoice's links were switched off (recall) while the payer was
+		// at the checkout: the payment they started is still confirmed.
+		if id := invoicing.RetiredInvoiceID(h.Svc.DB, c.Param("token")); id != "" {
+			var cur invoicing.Invoice
+			if h.Svc.DB.Select("public_token").Where("id = ?", id).Take(&cur).Error == nil {
+				inv, err = h.Svc.Invoice(cur.PublicToken)
+			}
+		}
+	}
+	if err != nil {
 		notFound(c)
 		return
 	}
@@ -657,7 +681,9 @@ func (h *Handler) Verify(c *gin.Context) {
 		}
 		t = out.Tx
 	}
-	inv, _ = h.Svc.Invoice(c.Param("token"))
+	if again, err := h.Svc.Invoice(inv.PublicToken); err == nil {
+		inv = again
+	}
 	receipt := ""
 	if t.InvoicePaymentID != "" {
 		receipt = "/api/v1/public/invoices/" + c.Param("token") + "/receipts/" + t.InvoicePaymentID

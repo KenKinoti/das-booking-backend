@@ -253,6 +253,8 @@ type paymentEditInput struct {
 	// EmailReceipt emails the revised receipt to the client after saving.
 	EmailReceipt bool   `json:"email_receipt"`
 	AppURL       string `json:"app_url"`
+	// Hold holds the receipt email for the undo window (hold.go).
+	Hold bool `json:"hold"`
 }
 
 // normalizeMethod maps loose spellings to a stored method.
@@ -448,7 +450,7 @@ func (h *Handler) UpdatePayment(c *gin.Context) {
 	}
 	resp := gin.H{"invoice": out, "changed": changed}
 	if in.EmailReceipt {
-		resp["receipt_email"] = h.emailReceipt(c, org, out.ID, pid, user, in.AppURL)
+		resp["receipt_email"] = h.emailReceipt(c, org, out.ID, pid, user, in.AppURL, in.Hold)
 		if o, err := h.load(h.DB, org, out.ID, true); err == nil {
 			resp["invoice"] = o
 		}
@@ -479,13 +481,18 @@ type ReceiptEmailResult struct {
 	Reason  string   `json:"reason,omitempty"` // why it wasn't sent
 	Checks  []Check  `json:"checks,omitempty"`
 	LogID   string   `json:"log_id,omitempty"`
+	// Held: waiting for the undo window (hold.go) — SendAt is when it goes.
+	Held    bool       `json:"held,omitempty"`
+	SendAt  *time.Time `json:"send_at,omitempty"`
+	Seconds int        `json:"seconds,omitempty"`
 }
 
 // emailReceipt emails the receipt of payment pid to the client (recipients,
 // subject and message as the send dialog would suggest). Errors found by the
 // pre-send checks stop it; warnings don't. c may be nil (background sends).
-func (h *Handler) emailReceipt(c *gin.Context, org, invID, pid, user, appURL string) ReceiptEmailResult {
-	res, err := h.sendEmail(c, org, invID, sendInput{Kind: KindReceipt, PaymentID: pid, Mode: "email", AppURL: appURL}, user)
+// hold holds it for the undo window first.
+func (h *Handler) emailReceipt(c *gin.Context, org, invID, pid, user, appURL string, hold bool) ReceiptEmailResult {
+	res, err := h.sendEmail(c, org, invID, sendInput{Kind: KindReceipt, PaymentID: pid, Mode: "email", AppURL: appURL, Hold: hold}, user)
 	if err != nil {
 		out := ReceiptEmailResult{Reason: err.Error()}
 		var ce *checkError
@@ -494,13 +501,18 @@ func (h *Handler) emailReceipt(c *gin.Context, org, invID, pid, user, appURL str
 		}
 		return out
 	}
-	return ReceiptEmailResult{Emailed: res.Emailed, To: res.Built.To, CC: res.Built.CC, BCC: res.Built.BCC, Subject: res.Built.Subject, File: res.Built.Attachment.Filename, LogID: res.Log.ID}
+	out := ReceiptEmailResult{Emailed: res.Emailed, To: res.Built.To, CC: res.Built.CC, BCC: res.Built.BCC, Subject: res.Built.Subject, File: res.Built.Attachment.Filename, LogID: res.Log.ID}
+	if res.Hold != nil {
+		at := res.Hold.SendAt
+		out.Held, out.SendAt, out.Seconds = true, &at, res.Hold.Seconds
+	}
+	return out
 }
 
 // AutoReceipt emails the receipt for an online payment (called after a
 // Flutterwave payment is verified). Failures are logged on the invoice.
 func (h *Handler) AutoReceipt(org, invoiceID, paymentID string) ReceiptEmailResult {
-	r := h.emailReceipt(nil, org, invoiceID, paymentID, "", "")
+	r := h.emailReceipt(nil, org, invoiceID, paymentID, "", "", false)
 	if !r.Emailed && r.Reason != "" {
 		var inv Invoice
 		if h.DB.Where("id = ? AND organization_id = ?", invoiceID, org).Take(&inv).Error == nil {

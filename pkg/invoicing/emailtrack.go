@@ -358,7 +358,7 @@ type emailCopy struct {
 func (h *Handler) deliver(ctx context.Context, c *gin.Context, org string, mcfg mail.Config, b *builtEmail, entry *EmailLog) error {
 	prefs := LoadTrackingPrefs(h.DB, org)
 	people := append([]string{b.To}, b.CC...)
-	atts := []mail.Attachment{b.Attachment}
+	atts := b.attachments()
 	now := h.now()
 	pos := 0
 	base := func(email, role string) *EmailRecipient {
@@ -400,6 +400,9 @@ func (h *Handler) deliver(ctx context.Context, c *gin.Context, org string, mcfg 
 
 	entry.Tracking = TrackPerRecipient
 	apiBase := publicAPIBase(c)
+	if b.APIBase != "" {
+		apiBase = b.APIBase // a held email: the origin of the request that held it
+	}
 	pixelOn := prefs.TrackOpens && apiBase != ""
 	notice := ""
 	if pixelOn && prefs.OpenNotice {

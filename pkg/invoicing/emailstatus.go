@@ -38,6 +38,7 @@ type EmailStatus struct {
 	// AutoOpened those whose only opens looked automatic; Viewed those who
 	// used their View / Pay link; PaidVia who paid through their link.
 	SummaryKind  string            `json:"summary_kind,omitempty"`
+	SummaryLogID string            `json:"summary_log_id,omitempty"` // that email's log id (undo / recall)
 	Tracking     string            `json:"tracking"`
 	People       int               `json:"people"`
 	Opened       int               `json:"opened"`
@@ -48,6 +49,17 @@ type EmailStatus struct {
 	Recipients   []RecipientStatus `json:"recipients"`
 	// Summary is a one-line description ("Opened by 2 of 3 · viewed by 1").
 	Summary string `json:"summary"`
+
+	// Undo send / recall (hold.go, recall.go): emails still held (with the
+	// first one's send time and log id), disregard notices sent, and how
+	// many people the summary email was recalled for.
+	Held       int        `json:"held"`
+	HeldUntil  *time.Time `json:"held_until,omitempty"`
+	HeldLogID  string     `json:"held_log_id,omitempty"`
+	HeldKind   string     `json:"held_kind,omitempty"`
+	Notices    int        `json:"notices"`
+	Recalled   int        `json:"recalled"`
+	RecalledAt *time.Time `json:"recalled_at,omitempty"`
 }
 
 // RecipientStatus is one person's copy of one email and what happened to it.
@@ -82,6 +94,9 @@ type RecipientStatus struct {
 	// Timeline: "Sent 10:40 → Opened 10:42 (3×) → Viewed invoice 10:44" in
 	// the organisation's time zone.
 	Timeline string `json:"timeline"`
+	// Recalled: this copy was recalled (recall.go) — Recall says how.
+	Recalled bool          `json:"recalled"`
+	Recall   *RecallStatus `json:"recall,omitempty"`
 }
 
 // paidTx is a successful online payment started from a recipient's link.
@@ -236,8 +251,14 @@ func recipientsByLog(db *gorm.DB, org string, logIDs []string, loc *time.Locatio
 	db.Where("organization_id = ? AND email_log_id IN ?", org, logIDs).Order("created_at, position").Find(&rows)
 	sort.SliceStable(rows, func(i, j int) bool { return roleOrder(rows[i].Role) < roleOrder(rows[j].Role) })
 	paid := paidByRef(db, rows)
+	recalls, _ := recallsByLog(db, org, logIDs, loc)
 	for _, r := range rows {
-		out[r.EmailLogID] = append(out[r.EmailLogID], recipientStatus(r, paid, loc))
+		st := recipientStatus(r, paid, loc)
+		if rc := recalls[r.ID]; rc != nil {
+			st.Recalled, st.Recall = true, rc
+			st.Timeline += " → " + rc.Text
+		}
+		out[r.EmailLogID] = append(out[r.EmailLogID], st)
 	}
 	return out
 }
@@ -291,6 +312,20 @@ func EmailStatuses(db *gorm.DB, org string, invs []Invoice) map[string]*EmailSta
 		}
 		t := r.CreatedAt
 		switch {
+		case r.Status == "held":
+			// Waiting for the undo window (hold.go): not sent yet.
+			s.Held++
+			if s.HeldLogID == "" {
+				s.HeldLogID, s.HeldKind = r.ID, r.Kind
+			}
+			continue
+		case r.Status == "cancelled":
+			continue // undone: nothing was sent
+		case r.Kind == KindNotice:
+			if r.Status == "sent" {
+				s.Notices++
+			}
+			continue
 		case r.Mode == "mailto" || r.Status == "recorded":
 			s.Recorded++
 			continue
@@ -322,13 +357,42 @@ func EmailStatuses(db *gorm.DB, org string, invs []Invoice) map[string]*EmailSta
 	logIDs := []string{}
 	for invID, p := range summaryOf {
 		s := out[invID]
-		s.SummaryKind, s.Tracking, s.People = p.kind, p.tracking, p.people
+		s.SummaryKind, s.Tracking, s.People, s.SummaryLogID = p.kind, p.tracking, p.people, p.id
 		lastLog[invID] = p.id
 		logIDs = append(logIDs, p.id)
 	}
 	byLog := map[string][]RecipientStatus{}
 	if len(logIDs) > 0 {
 		byLog = recipientsByLog(db, org, logIDs, orgLocation(db, org))
+	}
+	// When the held emails go (the first one's time).
+	heldIDs := []string{}
+	for _, s := range out {
+		if s.HeldLogID != "" {
+			heldIDs = append(heldIDs, s.HeldLogID)
+		}
+	}
+	if hi := holdInfo(db, heldIDs); len(hi) > 0 {
+		for _, s := range out {
+			if x := hi[s.HeldLogID]; x != nil {
+				t := x.SendAt
+				s.HeldUntil = &t
+			}
+		}
+	}
+	// Recalls of the summary emails (also those without per-person rows).
+	_, recalledBy := recallsByLog(db, org, logIDs, time.UTC)
+	for invID, s := range out {
+		for _, rc := range recalledBy[lastLog[invID]] {
+			if rc.Role == "bcc" {
+				continue
+			}
+			s.Recalled++
+			if s.RecalledAt == nil || rc.At.After(*s.RecalledAt) {
+				t := rc.At
+				s.RecalledAt = &t
+			}
+		}
 	}
 	for invID, s := range out {
 		if s.ViewedAt != nil && s.LastSentAt != nil && !s.ViewedAt.Before(*s.LastSentAt) {
@@ -382,7 +446,20 @@ func summariseRecipients(s *EmailStatus) {
 	if s.PaidVia != "" {
 		parts = append(parts, "paid via "+s.PaidVia+"’s link")
 	}
+	if n := recalledPeople(s.Recipients); n > 0 {
+		parts = append(parts, fmt.Sprintf("recalled for %d of %d", n, s.People))
+	}
 	s.Summary = strings.Join(parts, " · ")
+}
+
+func recalledPeople(rs []RecipientStatus) int {
+	n := 0
+	for _, r := range rs {
+		if r.Recalled && r.Role != "bcc" {
+			n++
+		}
+	}
+	return n
 }
 
 func (h *Handler) withEmailStatus(org string, list []Invoice) {

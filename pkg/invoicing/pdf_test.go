@@ -58,7 +58,7 @@ func pageCount(pdf []byte) int {
 
 func TestRenderPDFBasics(t *testing.T) {
 	inv := sampleInvoice("KES", 3)
-	b := PDFBusiness{Name: "Mursa Supplies", Email: "hi@mursa.test", TaxNumber: "P051", TaxNumberLabel: "KRA PIN", Accent: "#0f766e", PaymentInstructions: "M-Pesa paybill 123456"}
+	b := PDFBusiness{Name: "Kilima Supplies", Email: "hi@kilima.test", TaxNumber: "P051", TaxNumberLabel: "KRA PIN", Accent: "#0f766e", PaymentInstructions: "M-Pesa paybill 123456"}
 	data, err := RenderPDF(inv, b, PDFOptions{PayURL: "https://app.test/pay/tok", ViewURL: "https://app.test/i/tok"})
 	if err != nil {
 		t.Fatal(err)

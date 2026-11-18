@@ -196,6 +196,19 @@ type builtEmail struct {
 	Unresolved []string
 	Amounts    map[string]string
 	View       EmailView
+	// APIBase is the API origin for the open image (a held email keeps the
+	// one of the request that held it; "" = from the request / env).
+	APIBase string
+	// NoPDF: the organisation sends invoice emails link-only (emailopts.go).
+	NoPDF bool
+}
+
+// attachments are the files the email carries (none when link-only).
+func (b *builtEmail) attachments() []mail.Attachment {
+	if b.Attachment.Filename == "" || len(b.Attachment.Data) == 0 {
+		return nil
+	}
+	return []mail.Attachment{b.Attachment}
 }
 
 func kindOf(inv *Invoice, requested string) string {
@@ -273,6 +286,10 @@ func (h *Handler) buildEmail(tx *gorm.DB, c *gin.Context, inv *Invoice, in sendI
 	b.Business = PDFBusinessFor(tx, s, org)
 	var cc = c
 	b.LogoURL = logoFor(cc, org)
+	if in.logoURL != "" {
+		b.LogoURL = in.logoURL // a held email keeps the logo of the request that held it
+	}
+	b.APIBase = in.apiBase
 
 	doc := *inv
 	if (kind == KindInvoice || kind == KindQuote) && doc.Status == StatusDraft {
@@ -322,6 +339,10 @@ func (h *Handler) buildEmail(tx *gorm.DB, c *gin.Context, inv *Invoice, in sendI
 		data, perr := RenderReceiptPDF(&doc, *b.Payment, b.Business)
 		b.PDFErr = perr
 		b.Attachment = mail.Attachment{Filename: ReceiptFilename(&doc, *b.Payment), ContentType: "application/pdf", Data: data}
+	} else if b.ViewURL != "" && !LoadSendOptions(tx, org).AttachPDF {
+		// Link-only (Invoice settings → Email): nothing lands in the inbox
+		// that can't be withdrawn later. Without a link the PDF still goes.
+		b.NoPDF = true
 	} else {
 		data, perr := h.DocumentPDF(tx, &doc, base)
 		b.PDFErr = perr
@@ -495,6 +516,7 @@ func (h *Handler) emailView(doc *Invoice, kind string, b *builtEmail, replyNote,
 			v.Note = "A PDF copy (" + b.Attachment.Filename + ") is attached."
 		}
 	}
+	v.NoPDF = b.NoPDF
 	return v
 }
 
@@ -641,6 +663,7 @@ type checkOptions struct {
 	Configured bool
 	MailCfg    mail.Config
 	ViaMail    bool
+	Release    bool // a held email going out (hold.go)
 }
 
 // runChecks validates stored document inv and (when b is not nil) the email
@@ -830,6 +853,8 @@ func (h *Handler) runChecks(tx *gorm.DB, inv *Invoice, b *builtEmail, o checkOpt
 		add(ck("pdf", "error", "The PDF could not be created", b.PDFErr.Error()))
 	} else if len(b.Attachment.Data) > 0 {
 		add(ck("pdf", "ok", "PDF attached", fmt.Sprintf("%s · %d KB", b.Attachment.Filename, (len(b.Attachment.Data)+1023)/1024)))
+	} else if b.NoPDF {
+		add(ck("pdf", "info", "Link only — no PDF attached", "The client opens the "+strings.ToLower(docLabel(inv.DocType))+" from the View link, so it can be fully withdrawn later (Invoice settings → Email)."))
 	}
 	// Placeholders.
 	if len(b.Unresolved) > 0 {
@@ -901,6 +926,12 @@ func (h *Handler) runChecks(tx *gorm.DB, inv *Invoice, b *builtEmail, o checkOpt
 				ago = fmt.Sprintf("%d minutes ago", mins)
 			}
 			add(ck("duplicate", "warning", "Already emailed a few minutes ago", fmt.Sprintf("This %s was emailed to %s %s.", b.Kind, last.To, ago)))
+		} else if !o.Release {
+			// One still waiting in the undo window (hold.go).
+			var held EmailLog
+			if err := tx.Where("invoice_id = ? AND kind = ? AND status = ?", inv.ID, b.Kind, "held").Order("created_at DESC").Limit(1).Find(&held).Error; err == nil && held.ID != "" {
+				add(ck("duplicate", "warning", "Already waiting to go", fmt.Sprintf("This %s to %s is waiting in the undo window and goes out in a few seconds — undo it on the Emails tab if this one replaces it.", b.Kind, held.To)))
+			}
 		}
 	}
 	return out
@@ -1131,7 +1162,7 @@ func (h *Handler) SendTest(c *gin.Context) {
 	}
 	entry := h.newLog(inv, b, "test", user, me, checks)
 	msg := mail.Message{To: []string{me}, Subject: "[Test] " + b.Subject, Text: b.Text, HTML: b.HTML,
-		Attachments: []mail.Attachment{b.Attachment}, MessageID: mail.NewMessageID(mcfg.FromEmail), ReplyTo: mcfg.ReplyTo}
+		Attachments: b.attachments(), MessageID: mail.NewMessageID(mcfg.FromEmail), ReplyTo: mcfg.ReplyTo}
 	entry.Subject, entry.MessageID = msg.Subject, msg.MessageID
 	start := time.Now()
 	sendErr := h.Mail.SendWith(c.Request.Context(), org, mcfg, msg)
@@ -1181,9 +1212,14 @@ func (h *Handler) EmailLogList(c *gin.Context) {
 	for _, e := range list {
 		ids = append(ids, e.ID)
 	}
-	byLog := recipientsByLog(h.DB, org, ids, orgLocation(h.DB, org))
+	loc := orgLocation(h.DB, org)
+	byLog := recipientsByLog(h.DB, org, ids, loc)
+	holdsBy := holdInfo(h.DB, ids)
+	_, recallsBy := recallsByLog(h.DB, org, ids, loc)
 	for i := range list {
 		list[i].Recipients = byLog[list[i].ID]
+		list[i].Hold = holdsBy[list[i].ID]
+		list[i].Recalls = recallsBy[list[i].ID]
 	}
 	st := EmailStatuses(h.DB, org, []Invoice{*inv})[inv.ID]
 	ok(c, http.StatusOK, gin.H{"log": list, "summary": st, "viewed_at": inv.ViewedAt, "timezone": orgprefs.Get(h.DB, org).Timezone,

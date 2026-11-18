@@ -97,6 +97,32 @@ func DefaultTax(country string) (string, float64, string) {
 	return "GST", 10, "ABN"
 }
 
+// StarterRate is one of the tax rates an organisation's invoices, quotes and
+// bills start with.
+type StarterRate struct {
+	Name      string
+	Rate      float64
+	IsDefault bool
+}
+
+// StarterTaxRates returns the tax rates a new organisation in country starts
+// with: the country's standard tax as the default, then the 0% rates used
+// there (Kenya: VAT 16% + Zero-rated + VAT exempt; Australia: GST 10% + GST
+// Free). Countries whose standard rate is 0 (e.g. US sales tax, set per
+// state) get just that one row for the business to edit.
+func StarterTaxRates(country string) []StarterRate {
+	label, rate, _ := DefaultTax(country)
+	out := []StarterRate{{Name: label, Rate: rate, IsDefault: true}}
+	if rate <= 0 {
+		return out
+	}
+	if _, known := DefaultsFor(country); !known || strings.EqualFold(strings.TrimSpace(country), "AU") {
+		// Australia (also the fallback when the country is unknown).
+		return append(out, StarterRate{Name: "GST Free"})
+	}
+	return append(out, StarterRate{Name: "Zero-rated"}, StarterRate{Name: label + " exempt"})
+}
+
 // Mismatch is a conflict between the organisation's country and its tax /
 // time zone settings.
 type Mismatch struct {
@@ -133,6 +159,21 @@ func taxSettings(db *gorm.DB, org string) (string, float64, bool) {
 	return row.TaxLabel, row.DefaultTaxRate, row.N == 1
 }
 
+// defaultTaxRow is the organisation's default tax rate (billing_tax_rates):
+// the one new invoice, quote and bill lines get.
+func defaultTaxRow(db *gorm.DB, org string) (string, float64, bool) {
+	if !hasTable(db, "billing_tax_rates") {
+		return "", 0, false
+	}
+	var row struct {
+		Name string
+		Rate float64
+		N    int
+	}
+	db.Raw("SELECT COALESCE(name,'') AS name, COALESCE(rate,0) AS rate, 1 AS n FROM billing_tax_rates WHERE organization_id = ? AND is_default ORDER BY created_at LIMIT 1", org).Scan(&row)
+	return row.Name, row.Rate, row.N == 1
+}
+
 func zoneOK(d CountryDefault, tz string) bool {
 	for _, z := range d.Timezones {
 		if z == tz {
@@ -162,11 +203,24 @@ func CheckMismatch(db *gorm.DB, org string, includeDismissed bool) *Mismatch {
 	if !ok || p.CountryCode == "" {
 		return nil
 	}
-	label, rate, has := taxSettings(db, org)
-	m := &Mismatch{CurrentTaxLabel: label, CurrentTaxRate: rate, CurrentTimezone: p.Timezone, Suggested: d}
 	// Rates of 0 are a deliberate choice (e.g. not registered for VAT); only a
 	// different, non-zero rate or another country's tax name is a conflict.
-	m.Tax = has && d.TaxRate > 0 && rate > 0 && (rate != d.TaxRate || !strings.EqualFold(strings.TrimSpace(label), d.TaxLabel))
+	conflict := func(l string, r float64) bool {
+		return d.TaxRate > 0 && r > 0 && (r != d.TaxRate || !strings.EqualFold(strings.TrimSpace(l), d.TaxLabel))
+	}
+	label, rate, has := taxSettings(db, org)
+	tax := has && conflict(label, rate)
+	if !tax {
+		// The default tax rate row is what new invoice, quote and bill lines
+		// use, so another country's default there (e.g. "GST 10%" in Kenya,
+		// seeded by older versions) is a conflict even when the invoice
+		// settings agree.
+		if rl, rr, ok := defaultTaxRow(db, org); ok && conflict(rl, rr) {
+			label, rate, tax = rl, rr, true
+		}
+	}
+	m := &Mismatch{CurrentTaxLabel: label, CurrentTaxRate: rate, CurrentTimezone: p.Timezone, Suggested: d}
+	m.Tax = tax
 	m.Timezone = !zoneOK(d, p.Timezone)
 	if !m.Tax && !m.Timezone {
 		return nil

@@ -265,7 +265,7 @@ func (Activity) TableName() string { return "billing_activities" }
 // Models lists everything that needs migrating.
 func Models() []interface{} {
 	return []interface{}{&Settings{}, &TaxRate{}, &Invoice{}, &InvoiceItem{}, &Payment{}, &Activity{}, &EmailLog{}, &Attachment{}, &CancelledReceipt{},
-		&EmailRecipient{}, &EmailTrackingSettings{}}
+		&EmailRecipient{}, &EmailTrackingSettings{}, &EmailOptions{}, &EmailHold{}, &EmailRecall{}}
 }
 
 // EmailLog records every email about a document (sent, test or failed) with
@@ -277,7 +277,7 @@ type EmailLog struct {
 	InvoiceID      string            `json:"invoice_id" gorm:"type:varchar(64);index;not null"`
 	Kind           string            `json:"kind" gorm:"type:varchar(20)"`   // invoice | quote | reminder | receipt
 	Mode           string            `json:"mode" gorm:"type:varchar(20)"`   // email | test | mailto
-	Status         string            `json:"status" gorm:"type:varchar(20)"` // sent | failed | recorded
+	Status         string            `json:"status" gorm:"type:varchar(20)"` // sent | failed | recorded | blocked | held | cancelled (undone)
 	UserID         string            `json:"user_id" gorm:"type:varchar(255)"`
 	UserEmail      string            `json:"user_email" gorm:"type:varchar(255)"`
 	FromAddress    string            `json:"from" gorm:"type:varchar(320)"`
@@ -305,6 +305,10 @@ type EmailLog struct {
 	CreatedAt time.Time `json:"created_at" gorm:"index"`
 	// Recipients: every person's copy and what happened to it (email-log only).
 	Recipients []RecipientStatus `json:"recipients,omitempty" gorm:"-"`
+	// Hold: an email held for undo (status held / cancelled, or sent after
+	// a hold) — hold.go. Recalls: who it was recalled for — recall.go.
+	Hold    *HoldInfo      `json:"hold,omitempty" gorm:"-"`
+	Recalls []RecallStatus `json:"recalls,omitempty" gorm:"-"`
 }
 
 func (EmailLog) TableName() string { return "invoice_email_log" }

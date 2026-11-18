@@ -70,7 +70,9 @@ func init() {
 		Title: "Get invoice or quote",
 		Description: "Full invoice or quote: client, line items, totals, tax, payments, activity history, the public share link, " +
 			"app link and email_status: the last email about it and, per recipient, whether their copy was delivered, opened " +
-			"(opened_automatic = likely a mail app or scanner, not a person), viewed through their own link or paid via it. " +
+			"(opened_automatic = likely a mail app or scanner, not a person), viewed through their own link or paid via it, " +
+			"and whether it was recalled (recall: links off, opened before the recall, disregard notice). held / held_until: an " +
+			"email still waiting in the undo window (not sent yet); summary_log_id: the email invoices_recall_email acts on. " +
 			"Pass invoice_id, or number (e.g. INV-1001 / QUO-1001).",
 		InputSchema: tObj(map[string]any{
 			"invoice_id": tStr("Invoice or quote id"),
@@ -185,9 +187,12 @@ func init() {
 		Name:  "invoices_send",
 		Title: "Email invoice or quote",
 		Description: "Emails an invoice or quote to the client (and the customer's CC contacts) and marks it sent. The email " +
-			"always has the PDF copy attached (e.g. INV-1005.pdf) and a View button (quotes: View & accept); invoices with a " +
-			"balance also get a Pay now link when online payments (Flutterwave) are on. Subject and message default to the " +
-			"invoice settings. kind=reminder sends a payment reminder for an unpaid invoice. Requires the server's " +
+			"has the PDF copy attached (e.g. INV-1005.pdf) unless the organisation sends link-only emails, and a View button " +
+			"(quotes: View & accept); invoices with a balance also get a Pay now link when online payments (Flutterwave) are on. " +
+			"Subject and message default to the invoice settings. kind=reminder sends a payment reminder for an unpaid invoice. " +
+			"Like the Send button, the email is held for the organisation's undo window (Invoice settings → Email, default 2 minutes): " +
+			"held=true and send_at say when it goes; the user can undo it on the document's Emails tab until then, and the " +
+			"document is marked sent only when it goes. Requires the server's " +
 			"email (SMTP) to be configured — otherwise returns a clear message with the share link so the user can send it " +
 			"themselves; mark_as_sent_only=true just marks it sent without emailing.",
 		InputSchema: tObj(map[string]any{
@@ -318,10 +323,24 @@ func invoiceFull(c *Ctx, inv map[string]any) map[string]any {
 // emailStatusBrief is the last email about the document and, per person,
 // what happened to their copy (pkg/invoicing emailstatus.go).
 func emailStatusBrief(es map[string]any) map[string]any {
-	m := tPick(es, "state", "last_kind", "last_sent_at", "last_to", "last_error", "sent", "failed", "tracking", "summary", "people", "opened", "auto_opened", "viewed", "paid_via", "open_tracking", "viewed_at")
+	m := tPick(es, "state", "last_kind", "last_sent_at", "last_to", "last_error", "sent", "failed", "tracking", "summary", "people", "opened", "auto_opened", "viewed", "paid_via", "open_tracking", "viewed_at",
+		"summary_kind", "summary_log_id", "held", "held_until", "held_log_id", "held_kind", "notices", "recalled", "recalled_at")
+	for _, k := range []string{"held", "notices", "recalled"} {
+		if tF(m, k) == 0 {
+			delete(m, k)
+		}
+	}
+	if tS(m, "held_log_id") != "" {
+		m["held_note"] = "An email is held in the undo window and has NOT been sent yet; it goes at held_until unless undone."
+	}
 	rs := []map[string]any{}
 	for _, r := range tList(es["recipients"]) {
-		rs = append(rs, tPick(r, "email", "role", "state", "timeline", "error", "opens", "auto_opens", "opened_automatic", "opened_at", "last_open_at", "open_via", "views", "viewed_at", "pay_page_at", "accepted_at", "paid_at", "paid_amount"))
+		x := tPick(r, "email", "role", "state", "timeline", "error", "opens", "auto_opens", "opened_automatic", "opened_at", "last_open_at", "open_via", "views", "viewed_at", "pay_page_at", "accepted_at", "paid_at", "paid_amount")
+		if b, _ := r["recalled"].(bool); b {
+			x["recalled"] = true
+			x["recall"] = tPick(tObjOf(r, "recall"), "at", "by", "links_off", "all_links", "opened_before", "auto_opened_before", "viewed_before", "attachment", "notice", "notice_opened_at", "text")
+		}
+		rs = append(rs, x)
 	}
 	if len(rs) > 0 {
 		m["recipients"] = rs
@@ -582,7 +601,7 @@ func invoicesAddPayment(c *Ctx, a map[string]any) (any, error) {
 	if !ok {
 		amt = tF(inv, "balance_due")
 	}
-	body := map[string]any{"amount": amt}
+	body := map[string]any{"amount": amt, "hold": true}
 	copyArgs(body, a, "date", "method", "reference", "notes", "email_receipt")
 	if AppURL() != "" {
 		body["app_url"] = AppURL()
@@ -662,7 +681,7 @@ func invoicesUpdatePayment(c *Ctx, a map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	body := map[string]any{}
+	body := map[string]any{"hold": true}
 	copyArgs(body, a, "amount", "date", "method", "reference", "notes", "reason", "email_receipt")
 	if AppURL() != "" {
 		body["app_url"] = AppURL()
@@ -690,7 +709,7 @@ func invoicesSendReceipt(c *Ctx, a map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	body := map[string]any{"mode": "email", "kind": "receipt", "payment_id": tS(p, "id")}
+	body := map[string]any{"mode": "email", "kind": "receipt", "payment_id": tS(p, "id"), "hold": true}
 	copyArgs(body, a, "to", "subject", "message")
 	if argHas(a, "cc") {
 		body["cc"] = argStrList(a, "cc")
@@ -711,7 +730,24 @@ func invoicesSendReceipt(c *Ctx, a map[string]any) (any, error) {
 	for k, val := range tPick(d, "emailed", "to", "cc", "bcc", "subject", "attachment", "skipped") {
 		out[k] = val
 	}
+	heldNote(d, out)
 	return out, nil
+}
+
+// heldNote describes an email held for the undo window (pkg/invoicing
+// hold.go): nothing has gone yet.
+func heldNote(d, out map[string]any) {
+	if b, _ := d["held"].(bool); !b {
+		return
+	}
+	h := tObjOf(d, "hold")
+	out["emailed"] = false
+	out["held"] = true
+	out["send_at"] = tS(h, "send_at")
+	out["hold_seconds"] = h["seconds"]
+	out["email_log_id"] = tS(h, "log_id")
+	out["note"] = fmt.Sprintf("Held for %v s so it can be undone: it goes out by itself at send_at unless the user clicks Undo on "+
+		"the document's Emails tab (or invoices_recall_email is called for it before then). Nothing has been sent yet.", h["seconds"])
 }
 
 func invoicesSend(c *Ctx, a map[string]any) (any, error) {
@@ -729,7 +765,7 @@ func invoicesSend(c *Ctx, a map[string]any) (any, error) {
 		out["message"] = "Marked as sent (no email was sent)."
 		return out, nil
 	}
-	body := map[string]any{"mode": "email"}
+	body := map[string]any{"mode": "email", "hold": true}
 	copyArgs(body, a, "to", "subject", "message", "kind")
 	if AppURL() != "" {
 		body["app_url"] = AppURL()
@@ -755,6 +791,7 @@ func invoicesSend(c *Ctx, a map[string]any) (any, error) {
 	for k, val := range tPick(d, "emailed", "to", "cc", "bcc", "kind", "skipped", "sender", "attachment", "view_url", "pay_url") {
 		out[k] = val
 	}
+	heldNote(d, out)
 	return out, nil
 }
 

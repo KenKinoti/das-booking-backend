@@ -17,6 +17,7 @@ import (
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/internal/models"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/wa"
 )
 
 // secretFields are never returned to the browser. Each entry is
@@ -269,6 +270,13 @@ func (h *Handler) UpdateIntegrations(c *gin.Context) {
 	if enc, err := mail.EncryptSecret(merged.EmailSettings.SMTPPassword); err == nil {
 		merged.EmailSettings.SMTPPassword = enc
 	}
+	// WhatsApp secrets are stored encrypted too (pkg/wa decrypts them).
+	if enc, err := mail.EncryptSecret(strings.TrimSpace(merged.WhatsAppSettings.AccessToken)); err == nil {
+		merged.WhatsAppSettings.AccessToken = enc
+	}
+	if enc, err := mail.EncryptSecret(strings.TrimSpace(merged.WhatsAppSettings.VerifyToken)); err == nil {
+		merged.WhatsAppSettings.VerifyToken = enc
+	}
 	merged.UpdatedAt = time.Now()
 	if err := h.DB.Omit("Organization").Save(&merged).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "DATABASE_ERROR", "Failed to save settings")
@@ -471,10 +479,16 @@ func testWhatsApp(s models.WhatsAppSettings) (string, error) {
 	}
 	ver := s.APIVersion
 	if ver == "" {
-		ver = "v18.0"
+		ver = wa.DefaultAPIVersion
 	}
-	req, _ := http.NewRequest(http.MethodGet, "https://graph.facebook.com/"+url.PathEscape(ver)+"/"+url.PathEscape(s.PhoneNumberID)+"?fields=display_phone_number,verified_name", nil)
-	req.Header.Set("Authorization", "Bearer "+s.AccessToken)
+	token := s.AccessToken
+	if mail.IsEncrypted(token) {
+		if p, err := mail.DecryptSecret(token); err == nil {
+			token = p
+		}
+	}
+	req, _ := http.NewRequest(http.MethodGet, wa.BaseURL()+"/"+url.PathEscape(ver)+"/"+url.PathEscape(s.PhoneNumberID)+"?fields=display_phone_number,verified_name", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	status, m, err := getJSON(req)
 	if err != nil {
 		return "", fmt.Errorf("Could not reach the WhatsApp Cloud API: %v", err)

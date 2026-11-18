@@ -74,6 +74,8 @@ type EmailView struct {
 	TrackingPixelURL string
 	// FooterNotice is an optional privacy line in the footer.
 	FooterNotice string
+	// NoPDF: the email has no PDF (link-only) — "more items" points online.
+	NoPDF bool
 }
 
 // EmailActionGroup is a labelled row of secondary buttons with optional small
@@ -199,6 +201,14 @@ func actionGroup(g EmailActionGroup, accent string) string {
 
 func validURL(u string) bool {
 	return strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://")
+}
+
+// moreWhere is where the lines not listed in the email can be seen.
+func moreWhere(v EmailView) string {
+	if v.NoPDF {
+		return "see the full document online"
+	}
+	return "see the attached PDF"
 }
 
 // RenderEmail renders v as HTML and plain text.
@@ -343,7 +353,7 @@ a{color:` + accent + `}
 			if v.MoreLines == 1 {
 				s = ""
 			}
-			w(`<tr><td colspan="2" class="mt" style="padding:8px 0 0;font:13px/1.4 ` + fontStack + `;color:` + cMutedTxt + `">and ` + fmt.Sprint(v.MoreLines) + ` more item` + s + ` — see the attached PDF</td></tr>`)
+			w(`<tr><td colspan="2" class="mt" style="padding:8px 0 0;font:13px/1.4 ` + fontStack + `;color:` + cMutedTxt + `">and ` + fmt.Sprint(v.MoreLines) + ` more item` + s + ` — ` + moreWhere(v) + `</td></tr>`)
 		}
 		w(`</table>`)
 		if len(v.Totals) > 0 {
@@ -521,7 +531,7 @@ func renderText(v EmailView) string {
 			if v.MoreLines == 1 {
 				s = ""
 			}
-			b.WriteString(fmt.Sprintf("and %d more item%s — see the attached PDF\n", v.MoreLines, s))
+			b.WriteString(fmt.Sprintf("and %d more item%s — %s\n", v.MoreLines, s, moreWhere(v)))
 		}
 		if len(v.Totals) > 0 {
 			b.WriteString("\n")

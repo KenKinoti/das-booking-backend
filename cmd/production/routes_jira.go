@@ -25,6 +25,7 @@ func init() {
 	extraRoutes = append(extraRoutes, func(auth, public *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 		h := projects2.NewHandler(db, encryption.NewEncryptionService())
 		applyJiraTestSite(h, cfg)
+		jiraHandler = h // the morning brief syncs Jira with it (routes_brief.go)
 		h.RegisterRoutes(auth.Group("/pm"), middleware.RequireRole("admin", "owner", "manager"))
 	})
 	extraMigrations = append(extraMigrations, func(db *gorm.DB) {

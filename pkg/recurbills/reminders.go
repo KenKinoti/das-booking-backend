@@ -496,12 +496,18 @@ func (s *Service) SendDigest(ctx context.Context, org, key, period string) (stri
 	}
 	d := s.Digest(org)
 	to := s.Recipients(org, st, nil)
+	var briefed []string // get these bills in their morning brief (pkg/brief)
+	if !manual {
+		to, briefed = withoutBriefed(org, to)
+	}
 	msg := s.digestMessage(org, d, to)
 	row.Subject, row.Recipients = clip(d.Subject, 480), strings.Join(to, ", ")
 	var err error
-	if len(to) == 0 {
+	switch {
+	case len(to) == 0 && len(briefed) > 0:
+	case len(to) == 0:
 		err = errors.New("no recipients — add admins with an email or recipients in Settings → Bill reminders")
-	} else {
+	default:
 		_, err = s.Mail.SendAs(ctx, org, msg)
 	}
 	inApp := 0
@@ -516,6 +522,11 @@ func (s *Service) SendDigest(ctx context.Context, org, key, period string) (stri
 	}
 	if err != nil {
 		return "failed", err
+	}
+	if len(to) == 0 && len(briefed) > 0 {
+		s.DB.Model(&ReminderLog{}).Where("id = ?", row.ID).Updates(map[string]any{"status": "skipped",
+			"error": clip("In the morning brief of "+strings.Join(briefed, ", "), 1000)})
+		return "skipped", nil
 	}
 	return "sent", nil
 }

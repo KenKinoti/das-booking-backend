@@ -164,7 +164,7 @@ func setup(t *testing.T, tz, cur, country string) *fixture {
 	gin.SetMode(gin.TestMode)
 	db := testDB(t)
 	t.Setenv("SMTP_HOST", "smtp.test.invalid")
-	t.Setenv("SMTP_FROM", "Mursa Billing <billing@mursa.example>")
+	t.Setenv("SMTP_FROM", "Kilima Billing <billing@kilima.example>")
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
 		t.Fatal(err)
@@ -204,17 +204,17 @@ func setup(t *testing.T, tz, cur, country string) *fixture {
 }
 
 func (f *fixture) addOrg(org, tz, cur, country string, admins ...string) {
-	f.db.Exec(`INSERT INTO organizations (id, name, email, country_code, currency, timezone, region_source) VALUES (?, 'Mursa Hosting', 'hello@mursa.example', ?, ?, ?, 'user')`, org, country, cur, tz)
+	f.db.Exec(`INSERT INTO organizations (id, name, email, country_code, currency, timezone, region_source) VALUES (?, 'Kilima Hosting', 'hello@kilima.example', ?, ?, ?, 'user')`, org, country, cur, tz)
 	for i, a := range admins {
 		f.db.Exec(`INSERT INTO users (id, email, role, first_name, last_name, organization_id, created_at) VALUES (?, ?, 'admin', 'Ada', 'Owner', ?, now() + (? * interval '1 second'))`,
-			a, fmt.Sprintf("owner%d.%s@mursa.example", i+1, org[:6]), org, i)
+			a, fmt.Sprintf("owner%d.%s@kilima.example", i+1, org[:6]), org, i)
 	}
 	f.db.Exec(`INSERT INTO users (id, email, role, first_name, last_name, organization_id, created_at) VALUES (?, ?, 'care_worker', 'Sam', 'Staff', ?, now())`,
-		uuid.NewString(), "staff."+org[:6]+"@mursa.example", org)
+		uuid.NewString(), "staff."+org[:6]+"@kilima.example", org)
 }
 
 func (f *fixture) adminEmail(i int) string {
-	return fmt.Sprintf("owner%d.%s@mursa.example", i, f.org[:6])
+	return fmt.Sprintf("owner%d.%s@kilima.example", i, f.org[:6])
 }
 
 func (f *fixture) addCustomer(org, first, last, email, phone, cur, country string) string {

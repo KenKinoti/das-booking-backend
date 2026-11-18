@@ -104,6 +104,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/invoices/:id/pdf", h.PDF)
 	r.GET("/invoices/:id/pay-link", h.PayLink)
 	r.GET("/invoices/:id/payments/:paymentId/receipt", h.ReceiptPDF)
+	// Undo send, recall and the sending options (hold.go, recall.go, emailopts.go).
+	h.registerRecallRoutes(r)
 }
 
 // RegisterPublicRoutes mounts unauthenticated, token-based client views.
@@ -869,6 +871,15 @@ type sendInput struct {
 	// false makes warnings block too (the send dialog passes true only after
 	// the user chose "Send anyway"); nil (API callers) lets warnings through.
 	AcceptWarnings *bool `json:"accept_warnings"`
+	// Hold keeps the checked email on the server for the organisation's undo
+	// window (Invoice settings → Email) so it can be undone (hold.go). The
+	// send dialog, the payment dialog's receipt and the AI tools pass it;
+	// scheduled and automatic sends don't and go out at once.
+	Hold bool `json:"hold"`
+	// Set when a held email goes out (hold.go): the log entry to complete and
+	// the request's origins (links, open image, logo) kept when it was held.
+	logID, apiBase, logoURL string
+	release                 bool
 }
 
 // Send emails the document when SMTP is configured; otherwise it marks it sent
@@ -903,6 +914,11 @@ func (h *Handler) Send(c *gin.Context) {
 	}
 	resp := gin.H{"invoice": res.Invoice, "emailed": entry.Status == "sent", "to": built.To, "cc": ccOut, "bcc": bccOut, "kind": built.Kind, "skipped": skipped,
 		"subject": built.Subject, "message": built.Message, "checks": res.Checks, "log_id": entry.ID, "message_id": entry.MessageID}
+	if res.Hold != nil {
+		// Held for undo (hold.go): nothing has gone yet.
+		resp["held"] = true
+		resp["hold"] = gin.H{"log_id": res.Hold.ID, "seconds": res.Hold.Seconds, "send_at": res.Hold.SendAt, "seconds_left": res.Hold.Seconds}
+	}
 	if s := h.sender(org); s != nil {
 		resp["sender"] = s
 	}
@@ -921,6 +937,7 @@ type sendResult struct {
 	Log     *EmailLog
 	Checks  []Check
 	Emailed bool
+	Hold    *EmailHold // set when the email is held for undo (hold.go)
 }
 
 // sendEmail runs the pre-send checks and sends (or records) one email about
@@ -948,6 +965,7 @@ func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, use
 	var built *builtEmail
 	var entry *EmailLog
 	var checks []Check
+	var hold *EmailHold
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		inv, err := h.load(tx, org, invID, false)
 		if err != nil {
@@ -965,8 +983,11 @@ func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, use
 			return err
 		}
 		built = b
-		checks = h.runChecks(tx, inv, b, checkOptions{Mode: mode, Configured: configured, MailCfg: mcfg, ViaMail: viaMail})
+		checks = h.runChecks(tx, inv, b, checkOptions{Mode: mode, Configured: configured, MailCfg: mcfg, ViaMail: viaMail, Release: in.release})
 		entry = h.newLog(inv, b, mode, user, "", checks)
+		if in.logID != "" {
+			entry.ID = in.logID // a held email going out completes its own entry
+		}
 		if countSeverity(checks, "error") > 0 {
 			entry.Status = "blocked"
 			return blocked(checks, false)
@@ -974,6 +995,20 @@ func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, use
 		if countSeverity(checks, "warning") > 0 && in.AcceptWarnings != nil && !*in.AcceptWarnings {
 			entry.Status = "blocked"
 			return blocked(checks, true)
+		}
+		// Undo send (hold.go): checked, then held — nothing goes out and the
+		// document is not marked sent until the hold ends.
+		if in.Hold && !in.release && useEmail && viaMail {
+			if wait := h.holdWindow(org); wait > 0 {
+				hold = h.newHold(c, inv, b, in, entry, user, wait)
+				if err := tx.Create(hold).Error; err != nil {
+					return err
+				}
+				entry.Status = "held"
+				entry.Response = fmt.Sprintf("Held for %d s so it can be undone", hold.Seconds)
+				out, err = h.load(tx, org, inv.ID, true)
+				return err
+			}
 		}
 		rec := Recipients{Kind: kind, To: b.To, CC: b.CC, BCC: b.BCC}
 		if kind == KindReceipt {
@@ -1068,14 +1103,21 @@ func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, use
 	})
 	if entry != nil && entry.Status != "" {
 		entry.UserEmail = h.userEmail(user)
-		if err := h.DB.Create(entry).Error; err != nil {
+		save := h.DB.Create
+		if in.logID != "" {
+			save = h.DB.Save // the held entry becomes the sent (or failed) one
+		}
+		if err := save(entry).Error; err != nil {
 			fmt.Printf("invoicing: email log: %v\n", err)
 		}
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &sendResult{Invoice: out, Built: built, Log: entry, Checks: checks, Emailed: entry.Status == "sent"}, nil
+	if hold != nil {
+		scheduleHold(hold.ID, hold.SendAt)
+	}
+	return &sendResult{Invoice: out, Built: built, Log: entry, Checks: checks, Emailed: entry.Status == "sent", Hold: hold}, nil
 }
 
 func (h *Handler) logRecipients(tx *gorm.DB, inv *Invoice, typ, msg, user string, rec *Recipients) {
@@ -1360,6 +1402,8 @@ type addPaymentInput struct {
 	// EmailReceipt emails the receipt to the client after recording.
 	EmailReceipt bool   `json:"email_receipt"`
 	AppURL       string `json:"app_url"`
+	// Hold holds the receipt email for the undo window (hold.go).
+	Hold bool `json:"hold"`
 }
 
 // AddPayment serves POST /invoices/:id/payments. The response is the
@@ -1395,7 +1439,7 @@ func (h *Handler) AddPayment(c *gin.Context) {
 	}
 	var rec *ReceiptEmailResult
 	if in.EmailReceipt {
-		r := h.emailReceipt(c, org, out.ID, pid, user, in.AppURL)
+		r := h.emailReceipt(c, org, out.ID, pid, user, in.AppURL, in.Hold)
 		rec = &r
 		if o, err := h.load(h.DB, org, out.ID, true); err == nil {
 			out = o
@@ -1899,11 +1943,15 @@ func (h *Handler) ListTaxRates(c *gin.Context) {
 		return
 	}
 	var rates []TaxRate
-	h.DB.Where("organization_id = ?", org).Order("is_default DESC, rate DESC").Find(&rates)
+	h.DB.Where("organization_id = ?", org).Order("is_default DESC, rate DESC, created_at").Find(&rates)
 	if len(rates) == 0 {
-		rates = []TaxRate{
-			{ID: uuid.NewString(), OrganizationID: org, Name: "GST", Rate: 10, IsDefault: true, CreatedAt: h.now()},
-			{ID: uuid.NewString(), OrganizationID: org, Name: "GST Free", Rate: 0, CreatedAt: h.now()},
+		// First use: the organisation's country decides the starting rates
+		// (Kenya VAT 16% + Zero-rated + VAT exempt, Australia GST 10% + GST
+		// Free …). Rates already saved are never changed here; a conflict
+		// with the country is offered as a fix by orgprefs.CheckMismatch.
+		for i, s := range orgprefs.StarterTaxRates(orgprefs.Country(h.DB, org)) {
+			rates = append(rates, TaxRate{ID: uuid.NewString(), OrganizationID: org, Name: s.Name, Rate: s.Rate, IsDefault: s.IsDefault,
+				CreatedAt: h.now().Add(time.Duration(i) * time.Millisecond)})
 		}
 		h.DB.Create(&rates)
 	}
@@ -2116,6 +2164,17 @@ func money(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) }
 
 // ---------- public ----------
 
+// publicGate answers a public link that was withdrawn (recall.go): the
+// recipient's own links (?r=) of a recalled email, or an invoice link that
+// was switched off. It writes the 410 "withdrawn" answer and returns false.
+func (h *Handler) publicGate(c *gin.Context, token string) bool {
+	if w := Withdrawn(h.DB, token, c.Query("r")); w != nil {
+		w.write(c, h)
+		return false
+	}
+	return true
+}
+
 func (h *Handler) publicLoad(token string) (*Invoice, *Settings, error) {
 	if len(token) < 20 {
 		return nil, nil, gorm.ErrRecordNotFound
@@ -2138,6 +2197,9 @@ func (h *Handler) publicLoad(token string) (*Invoice, *Settings, error) {
 }
 
 func (h *Handler) PublicView(c *gin.Context) {
+	if !h.publicGate(c, c.Param("token")) {
+		return
+	}
 	inv, s, err := h.publicLoad(c.Param("token"))
 	if err != nil {
 		fail(c, http.StatusNotFound, "NOT_FOUND", "This link is invalid or has expired")
@@ -2160,6 +2222,9 @@ func (h *Handler) PublicView(c *gin.Context) {
 }
 
 func (h *Handler) PublicAccept(c *gin.Context) {
+	if !h.publicGate(c, c.Param("token")) {
+		return
+	}
 	inv, _, err := h.publicLoad(c.Param("token"))
 	if err != nil {
 		fail(c, http.StatusNotFound, "NOT_FOUND", "This link is invalid or has expired")

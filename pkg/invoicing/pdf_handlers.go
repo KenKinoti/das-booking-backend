@@ -124,6 +124,9 @@ func (h *Handler) PDF(c *gin.Context) {
 
 // PublicPDF serves GET /public/invoices/:token/pdf.
 func (h *Handler) PublicPDF(c *gin.Context) {
+	if !h.publicGate(c, c.Param("token")) {
+		return
+	}
 	inv, _, err := h.publicLoad(c.Param("token"))
 	if err != nil {
 		fail(c, http.StatusNotFound, "NOT_FOUND", "This link is invalid or has expired")
@@ -186,6 +189,9 @@ func (h *Handler) ReceiptPDF(c *gin.Context) {
 
 // PublicReceiptPDF serves GET /public/invoices/:token/receipts/:paymentId.
 func (h *Handler) PublicReceiptPDF(c *gin.Context) {
+	if !h.publicGate(c, c.Param("token")) {
+		return
+	}
 	inv, _, err := h.publicLoad(c.Param("token"))
 	if err != nil {
 		fail(c, http.StatusNotFound, "NOT_FOUND", "This link is invalid or has expired")

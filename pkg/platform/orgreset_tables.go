@@ -87,6 +87,8 @@ var resetGroups = []resetGroup{
 		{Table: "billing_activities", Label: "Invoice activity history", Where: byOrg},
 		{Table: "billing_attachments", Label: "Invoice attachments", Where: byOrg},
 		{Table: "billing_cancelled_receipts", Label: "Cancelled receipts", Where: byOrg},
+		{Table: "invoice_email_recalls", Label: "Recalled emails", Where: byOrg},
+		{Table: "invoice_email_holds", Label: "Emails held for undo", Where: byOrg},
 		{Table: "invoice_email_recipients", Label: "Who opened / viewed each email", Where: byOrg},
 		{Table: "invoice_email_log", Label: "Invoice & receipt email log", Where: byOrg},
 		{Table: "pay_transactions", Label: "Online payments (Flutterwave)", Where: byOrg},
@@ -202,6 +204,12 @@ var resetGroups = []resetGroup{
 		{Table: "seccall_messages", Label: "Secure call signalling", Where: child("room_id", "seccall_rooms", "id", aOrg)},
 		{Table: "seccall_participants", Label: "Secure call participants", Where: child("room_id", "seccall_rooms", "id", aOrg)},
 		{Table: "seccall_rooms", Label: "Secure call links", Where: byOrg},
+		{Table: "scheduled_message_deliveries", Label: "Scheduled message results (per recipient)", Where: byOrg},
+		{Table: "scheduled_message_runs", Label: "Scheduled message runs", Where: byOrg},
+		{Table: "scheduled_messages", Label: "Scheduled messages (Communication → Scheduled)", Where: byOrg, Note: "Nothing scheduled is sent after the reset"},
+		{Table: "whatsapp_message_log", Label: "WhatsApp delivery log", Where: byOrg},
+		{Table: "whatsapp_windows", Label: "WhatsApp conversations (24-hour windows)", Where: byOrg},
+		{Table: "brief_snapshots", Label: "Morning brief history", Where: byOrg},
 		{Table: "web_socket_connections", Label: "Live connections", Where: byOrg},
 	}},
 	{Key: "meetings", Label: "Meetings", Description: "Meetings with their invitees and transcripts.", Steps: []resetStep{
@@ -225,9 +233,11 @@ var resetGroups = []resetGroup{
 	{Key: "online_orders", Label: "Online store orders", Description: "Orders imported from connected online stores (the connections are kept).", Steps: []resetStep{
 		{Table: "ecom_orders", Label: "Online orders", Where: byOrgID},
 	}},
-	{Key: "insights", Label: "Insights feed & briefs", Description: "Industry-watch items and strategy briefs (feeds, rules and settings are kept).", Steps: []resetStep{
+	{Key: "insights", Label: "Insights feed & briefs", Description: "Industry-watch items, strategy briefs and the market scout's opportunities and market signals (feeds, rules, scout settings and its spend history are kept).", Steps: []resetStep{
 		{Table: "insights_watch_items", Label: "Watch items", Where: byOrg},
 		{Table: "insights_briefs", Label: "Strategy briefs", Where: byOrg},
+		{Table: "scout_opportunities", Label: "Market scout opportunities", Where: byOrg},
+		{Table: "scout_signals", Label: "Market scout signals", Where: byOrg},
 	}},
 	{Key: "assistant", Label: "Assistant conversations & usage", Description: "Ask DASYIN conversations and the AI / MCP tool usage log.", Steps: []resetStep{
 		{Table: "assistant_messages", Label: "Assistant messages", Where: byOrgID},
@@ -246,6 +256,7 @@ var resetGroups = []resetGroup{
 	{Key: "customers", Option: optCustomers, Label: "Customers & guests", Description: "Customers with their contacts and invoice / receipt copy lists, vehicles, CRM customers, participants and hosted sites.", Steps: []resetStep{
 		{Table: "import_external_refs", Label: "Import links (customers)", Where: byOrg + " AND entity IN " + refCustomerEntities},
 		{Table: "customer_contacts", Label: "Customer contacts & cc lists", Where: byOrg},
+		{Table: "customer_marketing_optouts", Label: "Customers' “no marketing messages” choices", Where: byOrg},
 		{Table: "vehicles", Label: "Vehicles", Where: byOrg},
 		{Table: "synergy_sites", Label: "Hosted sites (customer links)", Where: byOrg},
 		{Table: "crm_customers", Label: "CRM customers", Where: byOrg},
@@ -287,6 +298,7 @@ var resetGroups = []resetGroup{
 		{Table: "booking_email_user_prefs", Label: "Booking email preferences", Where: "user_id IN @staff"},
 		{Table: "email_recipient_prefs", Label: "Email copy preferences", Where: byOrg + " AND user_id IN @staff"},
 		{Table: "assistant_user_settings", Label: "Assistant preferences", Where: "user_id IN @staff"},
+		{Table: "brief_settings", Label: "Morning brief settings", Where: byOrg + " AND user_id IN @staff"},
 		{Table: "booking_calendar_feeds", Label: "Calendar feed links", Where: byOrg + " AND user_id IN @staff"},
 		{Table: "user_permissions", Label: "User permissions", Where: "user_id IN @staff"},
 		{Table: "user_identities", Label: "Single sign-on links", Where: "user_id IN @staff"},
@@ -348,7 +360,11 @@ var resetNotTouched = map[string]string{
 	"insights_custom_indicators":     "Insights indicators",
 	"insights_datasets":              "Insights datasets",
 	"insights_service_rules":         "Insights service rules",
+	"scout_settings":                 "Market scout settings",
+	"scout_runs":                     "Market scout spend history (counts towards the monthly budget)",
 	"invoice_email_tracking":         "Email tracking settings",
+	"invoice_email_options":          "Invoice email sending options (undo window, PDF attachment)",
+	"schedsend_sms_settings":         "SMS provider settings (Africa's Talking / Twilio)",
 	"occasion_org_settings":          "Seasonal theme settings",
 	"broadcast_deliveries":           "Platform announcements (sent by the platform)",
 	"broadcast_unsubscribes":         "Platform announcement email choices",

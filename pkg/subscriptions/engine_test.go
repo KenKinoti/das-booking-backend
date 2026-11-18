@@ -137,7 +137,7 @@ func TestPaymentMovesForwardAnyPath(t *testing.T) {
 	// Manual payment through the invoicing API: the watcher applies it within seconds.
 	f.pay(pe.InvoiceID)
 	deadline := time.Now().Add(8 * time.Second)
-	for time.Now().Before(deadline) && f.periods(sub.ID)[0].Status != PerPaid {
+	for time.Now().Before(deadline) && (f.periods(sub.ID)[0].Status != PerPaid || f.sub(sub.ID).PaidThrough == nil || DayStr(f.sub(sub.ID).NextBillingDate) != "2030-02-12") {
 		time.Sleep(100 * time.Millisecond)
 	}
 	got := f.periods(sub.ID)[0]
@@ -163,7 +163,7 @@ func TestPaymentMovesForwardAnyPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	deadline = time.Now().Add(8 * time.Second)
-	for time.Now().Before(deadline) && f.sub(sub.ID).Status != StatusActive {
+	for time.Now().Before(deadline) && (f.sub(sub.ID).Status != StatusActive || f.periods(sub.ID)[1].Status != PerPaid || DayStr(f.sub(sub.ID).NextBillingDate) != "2030-03-12") {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if f.periods(sub.ID)[1].Status != PerPaid || f.sub(sub.ID).Status != StatusActive || DayStr(f.sub(sub.ID).NextBillingDate) != "2030-03-12" {
@@ -453,8 +453,14 @@ func TestSynergySuspendAndUnsuspend(t *testing.T) {
 	f.at(f.day(9, due))
 	f.out.reset()
 	f.pay(f.periods(a.ID)[0].InvoiceID)
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) && f.sub(a.ID).Status != StatusActive {
+	deadline := time.Now().Add(25 * time.Second) // generous: the payment watcher is slower on a loaded machine
+	// The status flips first; the Synergy call and the restore task follow in the same goroutine.
+	restored := func() bool {
+		var n int64
+		f.db.Model(&Task{}).Where("subscription_id = ? AND kind = ? AND status = ?", a.ID, TaskRestore, TaskDone).Count(&n)
+		return n > 0
+	}
+	for time.Now().Before(deadline) && (f.sub(a.ID).Status != StatusActive || len(fs.callsOf("hostingUnsuspendService")) == 0 || !restored()) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if f.sub(a.ID).Status != StatusActive {
@@ -603,14 +609,14 @@ func TestEmailPrefsRespected(t *testing.T) {
 	if err := emailprefs.SetAdmin(f.db, f.org, f.admin2, nil, map[string]*bool{AlertsCategory: &off}, f.admin); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.s.SaveSettings(f.org, SettingsInput{Recipients: &[]string{"accounts@mursa.example"}}); err != nil {
+	if _, err := f.s.SaveSettings(f.org, SettingsInput{Recipients: &[]string{"accounts@kilima.example"}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, d := range []int{-7, 4} {
 		f.at(f.day(d, due))
 		f.run()
 	}
-	if !hasSubject(f.out.to(f.adminEmail(1)), "will be suspended in 3 days") || !hasSubject(f.out.to("accounts@mursa.example"), "will be suspended in 3 days") {
+	if !hasSubject(f.out.to(f.adminEmail(1)), "will be suspended in 3 days") || !hasSubject(f.out.to("accounts@kilima.example"), "will be suspended in 3 days") {
 		t.Fatal("alert to the admin and the extra recipient")
 	}
 	if len(f.out.to(f.adminEmail(2))) != 0 {

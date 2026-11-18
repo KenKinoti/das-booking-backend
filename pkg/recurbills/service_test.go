@@ -85,9 +85,9 @@ func setup(t *testing.T, cur string) *fixture {
 	t.Setenv("SMTP_HOST", "smtp.test.invalid")
 	t.Setenv("SMTP_FROM", "Billing <billing@test.example>")
 	f := &fixture{db: db, org: uuid.NewString(), out: &sent{}}
-	db.Exec(`INSERT INTO organizations (id, name, email, country_code, currency, timezone, region_source) VALUES (?, 'Mursa Hosting', 'hello@mursa.example', 'AU', ?, 'Australia/Sydney', 'user')`, f.org, cur)
-	db.Exec(`INSERT INTO users (id, email, role, first_name, last_name, organization_id, created_at) VALUES (?, 'owner@mursa.example', 'admin', 'Ada', 'Owner', ?, now()),
-		(?, 'staff@mursa.example', 'care_worker', 'Sam', 'Staff', ?, now())`, uuid.NewString(), f.org, uuid.NewString(), f.org)
+	db.Exec(`INSERT INTO organizations (id, name, email, country_code, currency, timezone, region_source) VALUES (?, 'Kilima Hosting', 'hello@kilima.example', 'AU', ?, 'Australia/Sydney', 'user')`, f.org, cur)
+	db.Exec(`INSERT INTO users (id, email, role, first_name, last_name, organization_id, created_at) VALUES (?, 'owner@kilima.example', 'admin', 'Ada', 'Owner', ?, now()),
+		(?, 'staff@kilima.example', 'care_worker', 'Sam', 'Staff', ?, now())`, uuid.NewString(), f.org, uuid.NewString(), f.org)
 	ms := mail.NewService(db)
 	ms.Transport = func(_ context.Context, _ mail.Config, m mail.Message) error {
 		f.out.mu.Lock()
@@ -234,7 +234,7 @@ func TestRemindersStagesIdempotentSnoozeAndDigest(t *testing.T) {
 	f := setup(t, "AUD")
 	f.at("2026-10-01")
 	r, err := f.s.Create(f.org, "u1", Input{Name: "Synergy Wholesale hosting", VendorID: f.vendor, Amount: 89.25, Frequency: FreqMonthly, StartDate: "2026-10-25",
-		CreateAs: "approved", Service: "Web hosting", SynergyDomain: "mursa.example", ExtraRecipients: []string{"ops@mursa.example"}})
+		CreateAs: "approved", Service: "Web hosting", SynergyDomain: "kilima.example", ExtraRecipients: []string{"ops@kilima.example"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,10 +252,10 @@ func TestRemindersStagesIdempotentSnoozeAndDigest(t *testing.T) {
 		t.Fatalf("subject %q", m.Subject)
 	}
 	to := strings.Join(m.To, ",")
-	if !strings.Contains(to, "owner@mursa.example") || !strings.Contains(to, "ops@mursa.example") || strings.Contains(to, "staff@mursa.example") {
+	if !strings.Contains(to, "owner@kilima.example") || !strings.Contains(to, "ops@kilima.example") || strings.Contains(to, "staff@kilima.example") {
 		t.Fatalf("recipients %v", m.To)
 	}
-	for _, s := range []string{"Mark as paid", "https://app.example/bills?pay=", "View bill", "Needs manual payment", "mursa.example", "Not recorded yet"} {
+	for _, s := range []string{"Mark as paid", "https://app.example/bills?pay=", "View bill", "Needs manual payment", "kilima.example", "Not recorded yet"} {
 		if !strings.Contains(m.HTML, s) {
 			t.Fatalf("html lacks %q", s)
 		}
@@ -350,7 +350,7 @@ func TestDigestAndTrackMode(t *testing.T) {
 	if len(d.Overdue) != 1 || len(d.Upcoming) != 1 || d.Total != 66 || !strings.Contains(d.Subject, "1 overdue, 1 due in the next 14 days") {
 		t.Fatalf("digest %+v", d)
 	}
-	msg := f.s.digestMessage(f.org, d, []string{"owner@mursa.example"})
+	msg := f.s.digestMessage(f.org, d, []string{"owner@kilima.example"})
 	for _, s := range []string{"OVERDUE (1)", "Domain renewal", "Google Workspace", "auto-pay", "Weekly bills digest"} {
 		if !strings.Contains(msg.Text+msg.HTML, s) {
 			t.Fatalf("digest lacks %q:\n%s", s, msg.Text)

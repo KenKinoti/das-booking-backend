@@ -691,7 +691,9 @@ func TestOrgResetDefaults(t *testing.T) {
 	for _, u := range dry.Unclassified {
 		if u.Table == "rt_unknown" {
 			unknown = u.Rows == before.cnt["rt_unknown"][a.ID] && u.Rows > 0
-		} else if !testFixtureTable(u.Table) {
+		} else if !testFixtureTable(u.Table) && resetHookTables[u.Table] == "" {
+			// (tables owned by another package's reset hook are unclassified here only because
+			// that package isn't linked into this test binary; production registers the hook)
 			t.Errorf("unclassified table: %+v", u)
 		}
 	}

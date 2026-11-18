@@ -451,7 +451,17 @@ func (s *Service) SendDigest(ctx context.Context, org, key string, manual bool) 
 				len(d.DueSoon), len(d.Domains)), Link: "/subscriptions", EntityType: "subscription_digest", EntityID: clip(key, 250)})
 	}
 	to := s.AdminRecipients(org, st)
+	var briefed []string // get client billing in their morning brief (pkg/brief)
+	if !manual {
+		to, briefed = withoutBriefed(org, to)
+	}
 	row.Subject, row.Recipients, row.InApp = d.Subject, strings.Join(to, ", "), inApp
+	if len(to) == 0 && len(briefed) > 0 {
+		row.Subject = clip(d.Subject+" — in the morning brief of "+strings.Join(briefed, ", "), 480)
+		s.finish(row, "skipped", nil)
+		markDay()
+		return "skipped", nil
+	}
 	var err error
 	if len(to) == 0 {
 		err = errors.New("no administrator gets client billing emails — check Settings → Who gets emails")
