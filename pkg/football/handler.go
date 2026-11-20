@@ -104,6 +104,8 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
 	if h.S.TestClock {
 		sa.POST("/test/clock", h.testClock)
 	}
+	// v2.17: free sources, news, team news, source check, jackpots (freehandler.go).
+	h.registerFree(g, sa)
 }
 
 func ok(c *gin.Context, v any) { c.JSON(http.StatusOK, gin.H{"success": true, "data": v}) }
@@ -231,6 +233,7 @@ func (h *Handler) fixtures(c *gin.Context) {
 		h.err(c, err)
 		return
 	}
+	h.S.addTeamNewsCounts(rows, org)
 	st, _ := h.S.Settings()
 	ok(c, gin.H{"fixtures": rows, "count": len(rows), "now": h.S.Now(), "last_run_at": st.LastRunAt, "timezone": loc.String(), "disclaimer": Disclaimer})
 }
@@ -248,6 +251,9 @@ func (h *Handler) analysis(c *gin.Context) {
 	if err != nil {
 		h.err(c, err)
 		return
+	}
+	if a.TeamNews != nil {
+		a.TeamNews.CanReview = canReviewRole(c.GetString("user_role"))
 	}
 	ok(c, a)
 }
@@ -797,21 +803,22 @@ func (h *Handler) aliases(c *gin.Context) {
 	var rows []TeamAlias
 	h.S.DB.Order("source DESC, alias").Limit(2000).Find(&rows)
 	for _, r := range rows {
-		out = append(out, map[string]any{"alias": r.Alias, "name": r.Name, "team_id": r.TeamID, "team": h.S.teamName(r.TeamID), "source": r.Source, "created_at": r.CreatedAt})
+		out = append(out, map[string]any{"alias": r.Alias, "name": r.Name, "team_id": r.TeamID, "team": h.S.teamName(r.TeamID), "source": r.Source, "provider": r.Provider, "created_at": r.CreatedAt})
 	}
 	ok(c, gin.H{"aliases": out})
 }
 
 func (h *Handler) setAlias(c *gin.Context) {
 	var in struct {
-		Name   string `json:"name"`
-		TeamID int64  `json:"team_id"`
+		Name     string `json:"name"`
+		TeamID   int64  `json:"team_id"`
+		Provider string `json:"provider"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil {
 		fail(c, http.StatusBadRequest, "VALIDATION", "Invalid request body")
 		return
 	}
-	a, err := h.S.SetAlias(in.Name, in.TeamID)
+	a, err := h.S.SetAliasFor(in.Name, in.TeamID, in.Provider)
 	if err != nil {
 		h.err(c, err)
 		return

@@ -1,0 +1,10 @@
+[{"fixtureId":"id1000001761301153","participant1Id":35,"participant2Id":34,"sportId":10,"tournamentId":17,"seasonId":130281,"statusId":0,"hasOdds":true,
+  "startTime":"2026-11-21T17:30:00.000Z","trueStartTime":null,"trueEndTime":null,"updatedAt":"2026-11-19T23:17:08.202Z","sportName":"Soccer",
+  "tournamentName":"Premier League","tournamentSlug":"premier-league","categoryName":"England","categorySlug":"england","statusName":"Pre-Game",
+  "participant1Name":"Liverpool FC","participant1ShortName":"Liverpool","participant1Abbr":"LIV","participant2Name":"Manchester United","participant2ShortName":"Man Utd","participant2Abbr":"MNU",
+  "externalProviders":{"betradarId":61301153,"sofascoreId":null,"pinnacleId":1620599468,"lsportsId":null,"txoddsId":null,"oddinId":null}},
+ {"fixtureId":"id1000003969653792","participant1Id":7781,"participant2Id":7790,"sportId":10,"tournamentId":202,"seasonId":131120,"statusId":0,"hasOdds":true,
+  "startTime":"2026-11-20T17:00:00.000Z","trueStartTime":null,"trueEndTime":null,"updatedAt":"2026-11-19T21:02:00.000Z","sportName":"Soccer",
+  "tournamentName":"Ekstraklasa","tournamentSlug":"ekstraklasa","categoryName":"Poland","categorySlug":"poland","statusName":"Pre-Game",
+  "participant1Name":"Piast Gliwice","participant1ShortName":"Piast","participant1Abbr":"PIA","participant2Name":"Korona Kielce","participant2ShortName":"Korona","participant2Abbr":"KOR",
+  "externalProviders":{"betradarId":61401177,"sofascoreId":null,"pinnacleId":1620700001,"lsportsId":null,"txoddsId":null,"oddinId":null}}]

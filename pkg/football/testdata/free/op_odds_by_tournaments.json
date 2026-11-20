@@ -1,0 +1,10 @@
+[{"fixtureId":"id1000003969653792","participant1Id":7781,"participant2Id":7790,"sportId":10,"tournamentId":202,"seasonId":131120,"statusId":0,"hasOdds":true,
+  "startTime":"2026-11-20T17:00:00.000Z","trueStartTime":null,"trueEndTime":null,"updatedAt":"2026-11-20T08:01:48.812Z",
+  "bookmakerOdds":{"betika":{"bookmakerIsActive":true,"bookmakerFixtureId":"5512871","fixturePath":"https://www.betika.com/en-ke/m/5512871",
+    "markets":{"101":{"outcomes":{
+      "101":{"players":{"0":{"active":true,"betslip":null,"bookmakerOutcomeId":"home","changedAt":"2026-11-20T07:50:48.515996+00:00","limit":null,"playerName":null,"price":2.44,"exchangeMeta":{}}}},
+      "102":{"players":{"0":{"active":true,"betslip":null,"bookmakerOutcomeId":"draw","changedAt":"2026-11-20T07:50:48.515996+00:00","limit":null,"playerName":null,"price":3.35,"exchangeMeta":{}}}},
+      "103":{"players":{"0":{"active":true,"betslip":null,"bookmakerOutcomeId":"away","changedAt":"2026-11-20T07:50:48.515996+00:00","limit":null,"playerName":null,"price":2.55,"exchangeMeta":{}}}}},
+      "bookmakerMarketId":"1x2"},
+     "104":{"outcomes":{"104":{"players":{"0":{"active":true,"bookmakerOutcomeId":"over","changedAt":"2026-11-20T07:50:48+00:00","price":1.95}}},
+      "105":{"players":{"0":{"active":true,"bookmakerOutcomeId":"under","changedAt":"2026-11-20T07:50:48+00:00","price":1.8}}}},"bookmakerMarketId":"ou-2.5"}}}}}]

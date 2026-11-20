@@ -1,0 +1,8 @@
+[{"fixtureId":"id1000003969653792","participant1Id":7781,"participant2Id":7790,"sportId":10,"tournamentId":202,"seasonId":131120,"statusId":0,"hasOdds":true,
+  "startTime":"2026-11-20T17:00:00.000Z","trueStartTime":null,"trueEndTime":null,"updatedAt":"2026-11-20T08:01:48.812Z",
+  "bookmakerOdds":{"pinnacle":{"bookmakerIsActive":true,"bookmakerFixtureId":"1620700001","fixturePath":"https://www.pinnacle.com/en/e/e/e/1620700001/#all",
+    "markets":{"101":{"outcomes":{
+      "101":{"players":{"0":{"active":true,"betslip":null,"bookmakerOutcomeId":"home","changedAt":"2026-11-20T07:52:01.1+00:00","limit":5000,"playerName":null,"price":2.52,"exchangeMeta":{}}}},
+      "102":{"players":{"0":{"active":true,"betslip":null,"bookmakerOutcomeId":"draw","changedAt":"2026-11-20T07:52:01.1+00:00","limit":5000,"playerName":null,"price":3.56,"exchangeMeta":{}}}},
+      "103":{"players":{"0":{"active":true,"betslip":null,"bookmakerOutcomeId":"away","changedAt":"2026-11-20T07:52:01.1+00:00","limit":5000,"playerName":null,"price":2.84,"exchangeMeta":{}}}}},
+      "bookmakerMarketId":"line/29/1980/1620700001/3377661430/0/moneyline"}}}}}]

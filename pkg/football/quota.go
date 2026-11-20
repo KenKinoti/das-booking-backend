@@ -56,6 +56,9 @@ func providerName(p string) string {
 	case ProviderOddsAPI:
 		return "The Odds API"
 	}
+	if n, ok := freeProviderNames[p]; ok {
+		return n
+	}
 	return p
 }
 
@@ -190,6 +193,9 @@ func (s *Service) Allow(provider string, cost, prio int) (bool, string) {
 	day := s.quotaRow(provider, dayPeriod(now))
 	if day.BackoffUntil != nil && day.BackoffUntil.After(now) {
 		return false, "backing off until " + day.BackoffUntil.Format(time.RFC3339)
+	}
+	if isFreeProvider(provider) {
+		return s.allowFree(provider, cost, prio, day)
 	}
 	switch provider {
 	case ProviderAPIFootball:
@@ -432,7 +438,7 @@ func (s *Service) record(lg FetchLog, h http.Header, sp callSpec, cost int) {
 	}
 	now := s.Now()
 	periods := []string{dayPeriod(now)}
-	if sp.Provider == ProviderOddsAPI {
+	if sp.Provider == ProviderOddsAPI || monthlyFree(sp.Provider) {
 		periods = append(periods, monthPeriod(now))
 	}
 	for _, p := range periods {
@@ -472,7 +478,7 @@ func (s *Service) backoff(provider string, e *ProviderError) {
 	period := dayPeriod(now)
 	switch e.Kind {
 	case "quota":
-		if provider == ProviderOddsAPI {
+		if provider == ProviderOddsAPI || monthlyFree(provider) {
 			first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 			until, period = first.AddDate(0, 1, 0), monthPeriod(now)
 		} else {

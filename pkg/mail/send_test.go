@@ -32,7 +32,8 @@ func TestBuildHeadersCcBccReplyToUTF8(t *testing.T) {
 	}
 	raw := string(Build(cfg, msg, env, time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)))
 	head := raw[:strings.Index(raw, "\r\n\r\n")]
-	if strings.Contains(strings.ToLower(head), "secret@x.test") || strings.Contains(strings.ToLower(head), "bcc") {
+	// (a "Bcc:" header line — not the letters "bcc", which a random Message-ID or boundary can contain)
+	if strings.Contains(strings.ToLower(head), "secret@x.test") || strings.Contains("\r\n"+strings.ToLower(head), "\r\nbcc:") {
 		t.Fatalf("BCC leaked into headers:\n%s", head)
 	}
 	if strings.Contains(raw, "evil@x.test") && !strings.Contains(raw, "=?") {

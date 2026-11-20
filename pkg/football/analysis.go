@@ -271,6 +271,8 @@ type ModelOut struct {
 	DrawNoBet     map[string]float64            `json:"draw_no_bet"`
 	Inputs        []string                      `json:"inputs"`
 	Note          string                        `json:"note,omitempty"`
+	OrgAdjusted   bool                          `json:"org_adjusted"` // v2.17: recomputed with this organisation's team-news reviews
+	OrgNote       string                        `json:"org_note,omitempty"`
 	Graded        *struct {
 		Outcome       int      `json:"outcome"`
 		Brier         float64  `json:"brier"`
@@ -364,12 +366,19 @@ type Analysis struct {
 		KellyCap      float64  `json:"kelly_cap"`
 		MinEdge       float64  `json:"min_edge"`
 	} `json:"bankroll"`
-	Sources     []SourceOut `json:"sources"`
-	Stale       bool        `json:"stale"`
-	StaleItems  []string    `json:"stale_items"`
-	AsOf        *time.Time  `json:"as_of"`
-	GeneratedAt time.Time   `json:"generated_at"`
-	Disclaimer  string      `json:"disclaimer"`
+	// v2.17 (freeanalysis.go): team news from keyword rules, the news list,
+	// the cross-source stats check, ClubElo and Kenyan bookmakers (OddsPapi).
+	TeamNews    *TeamNewsSection `json:"team_news"`
+	News        *NewsSection     `json:"news"`
+	SourceCheck *SourceCheck     `json:"source_check"`
+	ClubElo     *ClubEloOut      `json:"clubelo"`
+	KenyanOdds  *KenyanOddsOut   `json:"kenyan_odds"`
+	Sources     []SourceOut      `json:"sources"`
+	Stale       bool             `json:"stale"`
+	StaleItems  []string         `json:"stale_items"`
+	AsOf        *time.Time       `json:"as_of"`
+	GeneratedAt time.Time        `json:"generated_at"`
+	Disclaimer  string           `json:"disclaimer"`
 }
 
 // Disclaimer is shown with every analysis.
@@ -619,6 +628,10 @@ func (s *Service) Analysis(id int64, org, user string) (*Analysis, error) {
 			src.Endpoint, src.URL = "GET /v4/sports/{sport}/odds", docOA
 		case ProviderAPIFootball:
 			src.Endpoint, src.URL = "GET /odds?league&season", docAF+"#tag/Odds-(Pre-Match)"
+		case ProviderOddsPapi:
+			src.Endpoint, src.URL = "GET /v4/odds-by-tournaments", "https://oddspapi.io/en/docs/get-odds-by-tournament"
+		case ProviderFDCOUK:
+			src.Endpoint, src.URL, src.Note = "closing odds CSV", "https://www.football-data.co.uk/data.php", "closing prices from football-data.co.uk"
 		default:
 			src.Note = "typed in by someone in your organisation"
 		}
@@ -655,6 +668,8 @@ func (s *Service) Analysis(id int64, org, user string) (*Analysis, error) {
 		t := f.PredictionRef.FetchedAt
 		addSrc(SourceOut{Provider: ProviderAPIFootball, Object: "reference prediction", ID: tid(f.ID), Endpoint: "GET /predictions?fixture=" + tid(f.ID), FetchedAt: &t, URL: docAF + "#tag/Predictions"})
 	}
+	// v2.17: team news, news, source check, ClubElo, Kenyan bookmakers.
+	s.freeSections(a, f, org, user, upcoming, addSrc)
 	return a, nil
 }
 
@@ -1242,6 +1257,7 @@ type FixtureRow struct {
 	OddsAt       *time.Time           `json:"odds_at"`
 	Stale        bool                 `json:"stale"`
 	Watched      bool                 `json:"watched"`
+	TeamNews     *TeamNewsCount       `json:"team_news,omitempty"` // v2.17: confirmed injured/suspended facts per side (freeanalysis.go)
 }
 
 // FixtureQuery filters the list.

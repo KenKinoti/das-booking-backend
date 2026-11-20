@@ -1,0 +1,14 @@
+{"filters":{"dateFrom":"2026-11-06","dateTo":"2026-11-27","permission":"TIER_ONE"},"resultSet":{"count":2,"competitions":"PL","first":"2026-11-08","last":"2026-11-22","played":1},
+ "competition":{"id":2021,"name":"Premier League","code":"PL","type":"LEAGUE","emblem":"https://crests.football-data.org/PL.png"},
+ "matches":[
+  {"area":{"id":2072,"name":"England","code":"ENG"},"competition":{"id":2021,"name":"Premier League","code":"PL"},"season":{"id":2403,"startDate":"2026-08-15","endDate":"2027-05-23","currentMatchday":12},
+   "id":537911,"utcDate":"2026-11-08T15:00:00Z","status":"FINISHED","matchday":11,"stage":"REGULAR_SEASON","group":null,"lastUpdated":"2026-11-09T00:20:44Z",
+   "homeTeam":{"id":64,"name":"Liverpool FC","shortName":"Liverpool","tla":"LIV","crest":"https://crests.football-data.org/64.png"},
+   "awayTeam":{"id":1044,"name":"AFC Bournemouth","shortName":"Bournemouth","tla":"BOU","crest":"https://crests.football-data.org/bournemouth.png"},
+   "score":{"winner":"HOME_TEAM","duration":"REGULAR","fullTime":{"home":2,"away":0},"halfTime":{"home":1,"away":0}},"odds":{"msg":"Activate Odds-Package in User-Panel to retrieve odds."},"referees":[]},
+  {"area":{"id":2072,"name":"England","code":"ENG"},"competition":{"id":2021,"name":"Premier League","code":"PL"},"season":{"id":2403,"startDate":"2026-08-15","endDate":"2027-05-23","currentMatchday":12},
+   "id":537925,"utcDate":"2026-11-22T17:30:00Z","status":"TIMED","matchday":12,"stage":"REGULAR_SEASON","group":null,"lastUpdated":"2026-11-19T08:20:44Z",
+   "homeTeam":{"id":65,"name":"Manchester City FC","shortName":"Man City","tla":"MCI","crest":"https://crests.football-data.org/65.png"},
+   "awayTeam":{"id":64,"name":"Liverpool FC","shortName":"Liverpool","tla":"LIV","crest":"https://crests.football-data.org/64.png"},
+   "score":{"winner":null,"duration":"REGULAR","fullTime":{"home":null,"away":null},"halfTime":{"home":null,"away":null}},"odds":{"msg":"Activate Odds-Package in User-Panel to retrieve odds."},"referees":[]}
+ ]}

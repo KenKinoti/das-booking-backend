@@ -178,6 +178,12 @@ func (s *Service) runLocked(ctx context.Context, o RunOpts) (RunSummary, error) 
 			}
 		}
 	}
+	// v2.17 free sources (ClubElo, football-data.co.uk / .org, OddsPapi,
+	// news), seeded-fixture dedupe and jackpot grading (freeplan.go). They
+	// run even when no paid key is saved.
+	if !o.NoFetch || o.Trigger == "schedule" {
+		s.runFree(ctx, o, &sum)
+	}
 	// Internal work (no provider calls).
 	sum.Fitted = s.FitDue(o.Refit)
 	sum.Predicted = s.PredictUpcoming()

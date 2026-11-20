@@ -494,8 +494,9 @@ func (TaskState) TableName() string { return "fb_task_state" }
 type TeamAlias struct {
 	Alias     string    `json:"alias" gorm:"primaryKey;type:varchar(160)"`
 	TeamID    int64     `json:"team_id" gorm:"index"`
-	Source    string    `json:"source" gorm:"type:varchar(20)"` // auto | manual
-	Name      string    `json:"name" gorm:"type:varchar(160)"`  // as the provider wrote it
+	Source    string    `json:"source" gorm:"type:varchar(20)"`   // auto | manual
+	Name      string    `json:"name" gorm:"type:varchar(160)"`    // as the provider wrote it
+	Provider  string    `json:"provider" gorm:"type:varchar(20)"` // whose spelling: oddsapi, clubelo, oddspapi, fdcouk, fdorg, jackpot, news ("" = any)
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -644,9 +645,11 @@ func (ManualOdd) TableName() string { return "fb_manual_odds" }
 
 // AllModels lists every table.
 func AllModels() []any {
-	return []any{&Settings{}, &Competition{}, &Team{}, &Fixture{}, &FixtureStat{}, &FixtureEvent{}, &Lineup{}, &FixturePlayer{},
+	out := []any{&Settings{}, &Competition{}, &Team{}, &Fixture{}, &FixtureStat{}, &FixtureEvent{}, &Lineup{}, &FixturePlayer{},
 		&Player{}, &PlayerSeason{}, &Injury{}, &Standing{}, &H2H{}, &Odd{}, &Rating{}, &Prediction{}, &FetchLog{}, &Quota{},
 		&TaskState{}, &TeamAlias{}, &UnmatchedEvent{}, &Bet{}, &BankrollEntry{}, &Limits{}, &WatchItem{}, &ManualOdd{}}
+	// v2.17 (free sources, news, jackpots): free_models.go.
+	return append(out, FreeModels()...)
 }
 
 // Migrate creates the tables and seeds the settings row and the default
@@ -657,5 +660,8 @@ func Migrate(db *gorm.DB) error {
 			return err
 		}
 	}
-	return seed(db)
+	if err := seed(db); err != nil {
+		return err
+	}
+	return seedFree(db)
 }

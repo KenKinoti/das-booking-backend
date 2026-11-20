@@ -37,6 +37,8 @@ type Service struct {
 	OrgZone     func(org string) *time.Location
 	// Sleep is used between pages and on back-off (tests replace it).
 	Sleep func(time.Duration)
+	// Free are the v2.17 free sources' base URLs (env FOOTBALL_*_BASE; see freequota.go).
+	Free *FreeBases
 
 	runMu       sync.Mutex
 	offset      atomic.Int64
@@ -58,7 +60,7 @@ func New(db *gorm.DB) *Service {
 		AFBase:    strings.TrimRight(envOr("FOOTBALL_APIFOOTBALL_BASE", DefaultAFBase), "/"),
 		OABase:    strings.TrimRight(envOr("FOOTBALL_ODDSAPI_BASE", DefaultOABase), "/"),
 		TestClock: strings.TrimSpace(os.Getenv("FOOTBALL_TEST_CLOCK")) == "1",
-		Sleep:     time.Sleep}
+		Sleep:     time.Sleep, Free: freeBasesFromEnv()}
 	return s
 }
 

@@ -41,8 +41,12 @@ func init() {
 			"line-up) and the missing-player impact, line-ups when published, the model (Dixon–Coles + Elo blend, expected goals, most likely scores, " +
 			"over/under, both teams to score, Asian handicap), bookmaker odds with the de-margined consensus and best prices, value / expected value / " +
 			"fractional Kelly stake per selection, live score and events when in play, the model's measured track record in this competition (Brier, " +
-			"RPS, log loss vs the market) and the data sources with fetch times. Always mention 'data as of' and the sources, say probabilities are " +
-			"estimates, and never call a bet sure or guaranteed. Give fixture_id (from football_fixtures) or a search like 'Arsenal v Chelsea'.",
+			"RPS, log loss vs the market) and the data sources with fetch times; also team news found in the news by keyword rules (each fact " +
+			"'confirmed' or only 'reported (1 source)' — only confirmed injured/suspended players change the model), the latest headlines with " +
+			"links, a cross-source stats check (agree / minor difference / conflict per stat), ClubElo's independent ratings and probabilities, and " +
+			"Kenyan bookmakers' prices (e.g. Betika via OddsPapi) against the sharp fair price. Always mention 'data as of' and the sources, say " +
+			"probabilities are estimates, say whether team news is confirmed or only reported, and never call a bet sure or guaranteed. Give " +
+			"fixture_id (from football_fixtures) or a search like 'Arsenal v Chelsea'.",
 		InputSchema: tObj(map[string]any{
 			"fixture_id": tInt("Fixture id from football_fixtures", 1, 1<<53-1),
 			"q":          tStr("Find the next match by team names, e.g. 'Gor Mahia' or 'Arsenal v Chelsea'"),
@@ -303,6 +307,7 @@ func footballAnalysis(c *Ctx, a map[string]any) (any, error) {
 		srcs = append(srcs, tPick(s, "provider", "object", "fetched_at", "updated_at", "stale"))
 	}
 	res["sources"] = srcs
+	footballFreeSummary(d, res)
 	return res, nil
 }
 

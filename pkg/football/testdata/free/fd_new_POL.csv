@@ -1,0 +1,4 @@
+Country,League,Season,Date,Time,Home,Away,HG,AG,Res,PSCH,PSCD,PSCA,MaxCH,MaxCD,MaxCA,AvgCH,AvgCD,AvgCA,BFECH,BFECD,BFECA
+Poland,Ekstraklasa,2024/2025,19/07/2024,18:00,Piast Gliwice,Korona Kielce,1,1,D,2.08,3.42,3.86,2.15,3.55,4.02,2.04,3.33,3.69,2.12,3.5,4.1
+Poland,Ekstraklasa,2025/2026,08/11/2025,15:30,Korona Kielce,Piast Gliwice,0,2,A,2.61,3.21,2.89,2.7,3.36,3.02,2.52,3.15,2.8,2.66,3.3,3.05
+Poland,Ekstraklasa,2025/2026,09/11/2025,18:00,Lech Poznan,Legia,3,1,H,1.95,3.6,4.05,2.01,3.75,4.25,1.92,3.52,3.88,1.99,3.7,4.3

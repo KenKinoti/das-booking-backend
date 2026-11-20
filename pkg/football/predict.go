@@ -55,6 +55,7 @@ func ResetModelCache() {
 	eloCache = eloEntry{}
 	cacheMu.Unlock()
 	lastFit.Store(0)
+	resetReliabilityCache()
 }
 
 func tid(id int64) string { return strconv.FormatInt(id, 10) }
@@ -278,11 +279,16 @@ type PredDetail struct {
 }
 
 // compute builds the current prediction of a fixture.
-func (s *Service) compute(f Fixture) (Prediction, error) {
+func (s *Service) compute(f Fixture) (Prediction, error) { return s.computeOrg(f, "") }
+
+// computeOrg is compute with an organisation's own team-news reviews
+// (v2.17: confirmed / dismissed facts change the missing players for that
+// organisation's view only; org "" = the global prediction).
+func (s *Service) computeOrg(f Fixture, org string) (Prediction, error) {
 	now := s.Now()
 	d := PredDetail{Weights: map[string]float64{}, Over: map[string]float64{}, AH: map[string]float64{}, Inputs: []string{}, DataAsOf: now, TopScores: []ScoreP{}}
 	h, a := tid(f.HomeID), tid(f.AwayID)
-	adj, adjOut := s.availability(f)
+	adj, adjOut := s.availabilityOrg(f, org)
 	d.Adjust = adjOut
 	e := s.eloNow()
 	eh, ed, ea := e.Probabilities(h, a, false)
@@ -370,7 +376,9 @@ func foldMatrix(m [][]float64, n int) [][]float64 {
 
 // availability builds the AvailabilityAdjust inputs from injuries,
 // suspensions and published line-ups.
-func (s *Service) availability(f Fixture) (model.Adjust, AdjustOut) {
+func (s *Service) availability(f Fixture) (model.Adjust, AdjustOut) { return s.availabilityOrg(f, "") }
+
+func (s *Service) availabilityOrg(f Fixture, org string) (model.Adjust, AdjustOut) {
 	adj := model.Adjust{HomeAttack: 1, HomeDefence: 1, AwayAttack: 1, AwayDefence: 1}
 	out := AdjustOut{HomeAttack: 1, HomeDefence: 1, AwayAttack: 1, AwayDefence: 1, HomeMissing: []int64{}, AwayMissing: []int64{}}
 	for _, side := range []string{"home", "away"} {
@@ -379,7 +387,7 @@ func (s *Service) availability(f Fixture) (model.Adjust, AdjustOut) {
 			team = f.AwayID
 		}
 		contrib := s.contributions(team, f.Season)
-		missing := s.missingFor(f, team)
+		missing := s.missingForOrg(f, team, org)
 		ids := []string{}
 		for _, id := range missing {
 			ids = append(ids, tid(id))
@@ -419,8 +427,14 @@ func (s *Service) contributions(team int64, season int) []model.PlayerContributi
 
 // missingFor: injured or suspended for this fixture, plus — once line-ups
 // are out — regulars who are neither starting nor on the bench.
-func (s *Service) missingFor(f Fixture, team int64) []int64 {
+func (s *Service) missingFor(f Fixture, team int64) []int64 { return s.missingForOrg(f, team, "") }
+
+func (s *Service) missingForOrg(f Fixture, team int64, org string) []int64 {
 	set := map[int64]bool{}
+	// v2.17: confirmed team news (injured / suspended players) — newsrules.go.
+	for _, id := range s.newsMissing(f, team, org) {
+		set[id] = true
+	}
 	var inj []Injury
 	s.DB.Where("fixture_id = ? AND team_id = ? AND status IN ?", f.ID, team, []string{"injured", "suspended"}).Find(&inj)
 	for _, i := range inj {
