@@ -1,0 +1,407 @@
+{
+ "get": "odds/live",
+ "parameters": {},
+ "errors": [],
+ "results": 5,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "fixture": {
+    "id": 1200141,
+    "status": {
+     "long": "First Half",
+     "elapsed": 32,
+     "seconds": "32:00"
+    }
+   },
+   "league": {
+    "id": 39,
+    "season": 2026
+   },
+   "teams": {
+    "home": {
+     "id": 9008,
+     "goals": 0
+    },
+    "away": {
+     "id": 9017,
+     "goals": 0
+    }
+   },
+   "status": {
+    "stopped": false,
+    "blocked": false,
+    "finished": false
+   },
+   "update": "2026-11-21T15:31:00.050Z",
+   "odds": [
+    {
+     "id": 59,
+     "name": "Fulltime Result",
+     "values": [
+      {
+       "value": "Home",
+       "odd": "3.74",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      },
+      {
+       "value": "Draw",
+       "odd": "1.67",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      },
+      {
+       "value": "Away",
+       "odd": "4.87",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      }
+     ]
+    },
+    {
+     "id": 36,
+     "name": "Over/Under Line",
+     "values": [
+      {
+       "value": "Over",
+       "odd": "1.90",
+       "handicap": "0.5",
+       "main": true,
+       "suspended": false
+      },
+      {
+       "value": "Under",
+       "odd": "1.90",
+       "handicap": "0.5",
+       "main": true,
+       "suspended": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "fixture": {
+    "id": 1200142,
+    "status": {
+     "long": "First Half",
+     "elapsed": 32,
+     "seconds": "32:00"
+    }
+   },
+   "league": {
+    "id": 39,
+    "season": 2026
+   },
+   "teams": {
+    "home": {
+     "id": 9011,
+     "goals": 0
+    },
+    "away": {
+     "id": 9015,
+     "goals": 0
+    }
+   },
+   "status": {
+    "stopped": false,
+    "blocked": false,
+    "finished": false
+   },
+   "update": "2026-11-21T15:31:00.050Z",
+   "odds": [
+    {
+     "id": 59,
+     "name": "Fulltime Result",
+     "values": [
+      {
+       "value": "Home",
+       "odd": "3.93",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      },
+      {
+       "value": "Draw",
+       "odd": "1.67",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      },
+      {
+       "value": "Away",
+       "odd": "4.62",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      }
+     ]
+    },
+    {
+     "id": 36,
+     "name": "Over/Under Line",
+     "values": [
+      {
+       "value": "Over",
+       "odd": "1.90",
+       "handicap": "0.5",
+       "main": true,
+       "suspended": false
+      },
+      {
+       "value": "Under",
+       "odd": "1.90",
+       "handicap": "0.5",
+       "main": true,
+       "suspended": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "fixture": {
+    "id": 1200143,
+    "status": {
+     "long": "First Half",
+     "elapsed": 32,
+     "seconds": "32:00"
+    }
+   },
+   "league": {
+    "id": 39,
+    "season": 2026
+   },
+   "teams": {
+    "home": {
+     "id": 9019,
+     "goals": 1
+    },
+    "away": {
+     "id": 9020,
+     "goals": 0
+    }
+   },
+   "status": {
+    "stopped": false,
+    "blocked": false,
+    "finished": false
+   },
+   "update": "2026-11-21T15:31:00.050Z",
+   "odds": [
+    {
+     "id": 59,
+     "name": "Fulltime Result",
+     "values": [
+      {
+       "value": "Home",
+       "odd": "1.30",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      },
+      {
+       "value": "Draw",
+       "odd": "6.03",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      },
+      {
+       "value": "Away",
+       "odd": "7.25",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      }
+     ]
+    },
+    {
+     "id": 36,
+     "name": "Over/Under Line",
+     "values": [
+      {
+       "value": "Over",
+       "odd": "1.90",
+       "handicap": "1.5",
+       "main": true,
+       "suspended": false
+      },
+      {
+       "value": "Under",
+       "odd": "1.90",
+       "handicap": "1.5",
+       "main": true,
+       "suspended": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "fixture": {
+    "id": 1200144,
+    "status": {
+     "long": "First Half",
+     "elapsed": 32,
+     "seconds": "32:00"
+    }
+   },
+   "league": {
+    "id": 39,
+    "season": 2026
+   },
+   "teams": {
+    "home": {
+     "id": 9014,
+     "goals": 1
+    },
+    "away": {
+     "id": 9003,
+     "goals": 0
+    }
+   },
+   "status": {
+    "stopped": false,
+    "blocked": false,
+    "finished": false
+   },
+   "update": "2026-11-21T15:31:00.050Z",
+   "odds": [
+    {
+     "id": 59,
+     "name": "Fulltime Result",
+     "values": [
+      {
+       "value": "Home",
+       "odd": "1.32",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      },
+      {
+       "value": "Draw",
+       "odd": "5.06",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      },
+      {
+       "value": "Away",
+       "odd": "8.88",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      }
+     ]
+    },
+    {
+     "id": 36,
+     "name": "Over/Under Line",
+     "values": [
+      {
+       "value": "Over",
+       "odd": "1.90",
+       "handicap": "1.5",
+       "main": true,
+       "suspended": false
+      },
+      {
+       "value": "Under",
+       "odd": "1.90",
+       "handicap": "1.5",
+       "main": true,
+       "suspended": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "fixture": {
+    "id": 1200145,
+    "status": {
+     "long": "First Half",
+     "elapsed": 32,
+     "seconds": "32:00"
+    }
+   },
+   "league": {
+    "id": 39,
+    "season": 2026
+   },
+   "teams": {
+    "home": {
+     "id": 9013,
+     "goals": 1
+    },
+    "away": {
+     "id": 9004,
+     "goals": 0
+    }
+   },
+   "status": {
+    "stopped": false,
+    "blocked": false,
+    "finished": false
+   },
+   "update": "2026-11-21T15:31:00.050Z",
+   "odds": [
+    {
+     "id": 59,
+     "name": "Fulltime Result",
+     "values": [
+      {
+       "value": "Home",
+       "odd": "1.83",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      },
+      {
+       "value": "Draw",
+       "odd": "4.68",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      },
+      {
+       "value": "Away",
+       "odd": "3.22",
+       "handicap": null,
+       "main": null,
+       "suspended": false
+      }
+     ]
+    },
+    {
+     "id": 36,
+     "name": "Over/Under Line",
+     "values": [
+      {
+       "value": "Over",
+       "odd": "1.90",
+       "handicap": "1.5",
+       "main": true,
+       "suspended": false
+      },
+      {
+       "value": "Under",
+       "odd": "1.90",
+       "handicap": "1.5",
+       "main": true,
+       "suspended": false
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

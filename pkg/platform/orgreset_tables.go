@@ -239,6 +239,12 @@ var resetGroups = []resetGroup{
 		{Table: "scout_opportunities", Label: "Market scout opportunities", Where: byOrg},
 		{Table: "scout_signals", Label: "Market scout signals", Where: byOrg},
 	}},
+	{Key: "football", Label: "Football bets & bankroll", Description: "Recorded bets, bankroll entries, watchlists and odds typed in by hand. Football data (fixtures, odds, predictions) is shared by every organisation and kept; betting limits and breaks are kept too, so a reset can't lift them.", Steps: []resetStep{
+		{Table: "fb_bets", Label: "Recorded bets", Where: byOrg},
+		{Table: "fb_bankroll", Label: "Bankroll entries", Where: byOrg},
+		{Table: "fb_watchlist", Label: "Football watchlists", Where: byOrg},
+		{Table: "fb_manual_odds", Label: "Odds typed in by hand", Where: byOrg},
+	}},
 	{Key: "assistant", Label: "Assistant conversations & usage", Description: "Ask DASYIN conversations and the AI / MCP tool usage log.", Steps: []resetStep{
 		{Table: "assistant_messages", Label: "Assistant messages", Where: byOrgID},
 		{Table: "assistant_conversations", Label: "Assistant conversations", Where: byOrgID},
@@ -369,6 +375,7 @@ var resetNotTouched = map[string]string{
 	"broadcast_deliveries":           "Platform announcements (sent by the platform)",
 	"broadcast_unsubscribes":         "Platform announcement email choices",
 	"sso_domain_rules":               "Single sign-on rules",
+	"fb_limits":                      "Football betting limits and breaks (kept so a reset can't lift them)",
 }
 
 // resetHookTables are organisation tables cleared by an orghooks reset hook

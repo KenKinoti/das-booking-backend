@@ -21,6 +21,7 @@ func DefaultModules() []Module {
 		{Key: "projects", Name: "Projects", Description: "Boards, issues, sprints and time tracking.", Icon: "fa-solid fa-diagram-project", MonthlyPriceUSD: 19, Active: true, SortOrder: 12},
 		{Key: "documents", Name: "Documents", Description: "Secure document storage and sharing.", Icon: "fa-solid fa-folder-open", MonthlyPriceUSD: 9, Active: true, SortOrder: 13},
 		{Key: "communication", Name: "Communication", Description: "Meetings, video calls, messaging, SMS and WhatsApp.", Icon: "fa-solid fa-comments", MonthlyPriceUSD: 15, Active: true, SortOrder: 14},
+		{Key: "football", Name: "Football analysis", Description: "Match analysis with win probabilities, odds and value, and a personal bet tracker with limits (data from API-Football and The Odds API).", Icon: "fa-solid fa-futbol", MonthlyPriceUSD: 9, Active: true, SortOrder: 15},
 	}
 }
 
@@ -28,7 +29,7 @@ func DefaultModules() []Module {
 func DefaultIndustries() []Industry {
 	return []Industry{
 		{Key: "retail", Name: "Retail & e-commerce", Icon: "fa-solid fa-bag-shopping", Description: "Shops, boutiques and online stores.", Modules: []string{"pos", "inventory", "ecommerce", "invoicing", "crm"}, RecommendedTier: TierSME, Active: true, SortOrder: 1},
-		{Key: "hospitality", Name: "Hospitality & food", Icon: "fa-solid fa-utensils", Description: "Cafés, restaurants, bars and catering.", Modules: []string{"pos", "inventory", "bookings", "hr", "invoicing"}, RecommendedTier: TierSME, Active: true, SortOrder: 2},
+		{Key: "hospitality", Name: "Hospitality & food", Icon: "fa-solid fa-utensils", Description: "Cafés, restaurants, bars and catering.", Modules: []string{"pos", "inventory", "bookings", "hr", "invoicing", "football"}, RecommendedTier: TierSME, Active: true, SortOrder: 2},
 		{Key: "automotive", Name: "Automotive & garages", Icon: "fa-solid fa-car", Description: "Workshops, mechanics, detailing and tyre shops.", Modules: []string{"bookings", "invoicing", "inventory", "crm", "pos"}, RecommendedTier: TierSME, Active: true, SortOrder: 3},
 		{Key: "beauty", Name: "Beauty & wellness", Icon: "fa-solid fa-spa", Description: "Salons, barbers, spas, nail studios and gyms.", Modules: []string{"bookings", "pos", "crm", "invoicing", "communication"}, RecommendedTier: TierSmall, Active: true, SortOrder: 4},
 		{Key: "healthcare", Name: "Healthcare & NDIS / care", Icon: "fa-solid fa-hand-holding-medical", Description: "Clinics, allied health, NDIS and aged-care providers.", Modules: []string{"bookings", "hr", "documents", "invoicing", "communication"}, RecommendedTier: TierSME, Active: true, SortOrder: 5},
@@ -40,6 +41,13 @@ func DefaultIndustries() []Industry {
 		{Key: "nonprofit", Name: "Non-profit", Icon: "fa-solid fa-hand-holding-heart", Description: "Charities, associations, clubs and community groups.", Modules: []string{"crm", "events", "accounting", "documents", "communication"}, RecommendedTier: TierSME, Active: true, SortOrder: 11},
 		{Key: "general", Name: "General business", Icon: "fa-solid fa-building", Description: "Anything else — start small and add what you need.", Modules: []string{"smallbiz", "invoicing", "crm", "accounting"}, RecommendedTier: TierSmall, Active: true, SortOrder: 12},
 	}
+}
+
+// BundleAdditions are modules added to an industry bundle after it was
+// first seeded. Seed applies each once (recorded in plan_meta), so a super
+// admin who later removes the module keeps it removed.
+var BundleAdditions = []struct{ Industry, Module string }{
+	{"hospitality", "football"}, // v2.16: football analysis for bars and clubs
 }
 
 // DefaultTiers are the three packages.

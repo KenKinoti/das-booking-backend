@@ -1,0 +1,153 @@
+{
+ "get": "fixtures/headtohead",
+ "parameters": {
+  "h2h": "9008-9017",
+  "last": "10"
+ },
+ "errors": [],
+ "results": 2,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "fixture": {
+    "id": 1100193,
+    "referee": "B. Holm",
+    "timezone": "UTC",
+    "date": "2025-12-27T15:00:00+00:00",
+    "timestamp": 1766847600,
+    "periods": {
+     "first": 1766847600,
+     "second": 1766851200
+    },
+    "venue": {
+     "id": 9017,
+     "name": "Oakvale Ground",
+     "city": "Oakvale"
+    },
+    "status": {
+     "long": "Match Finished",
+     "short": "FT",
+     "elapsed": 90,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": "https://media.api-sports.io/flags/gb.svg",
+    "season": 2025,
+    "round": "Regular Season - 20"
+   },
+   "teams": {
+    "home": {
+     "id": 9017,
+     "name": "Oakvale United",
+     "logo": "https://media.api-sports.io/football/teams/9017.png",
+     "winner": null
+    },
+    "away": {
+     "id": 9008,
+     "name": "Eastmoor Albion",
+     "logo": "https://media.api-sports.io/football/teams/9008.png",
+     "winner": null
+    }
+   },
+   "goals": {
+    "home": 2,
+    "away": 2
+   },
+   "score": {
+    "halftime": {
+     "home": 2,
+     "away": 2
+    },
+    "fulltime": {
+     "home": 2,
+     "away": 2
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  },
+  {
+   "fixture": {
+    "id": 1100003,
+    "referee": "F. Otieno",
+    "timezone": "UTC",
+    "date": "2025-08-16T15:00:00+00:00",
+    "timestamp": 1755356400,
+    "periods": {
+     "first": 1755356400,
+     "second": 1755360000
+    },
+    "venue": {
+     "id": 9008,
+     "name": "Eastmoor Ground",
+     "city": "Eastmoor"
+    },
+    "status": {
+     "long": "Match Finished",
+     "short": "FT",
+     "elapsed": 90,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": "https://media.api-sports.io/flags/gb.svg",
+    "season": 2025,
+    "round": "Regular Season - 1"
+   },
+   "teams": {
+    "home": {
+     "id": 9008,
+     "name": "Eastmoor Albion",
+     "logo": "https://media.api-sports.io/football/teams/9008.png",
+     "winner": true
+    },
+    "away": {
+     "id": 9017,
+     "name": "Oakvale United",
+     "logo": "https://media.api-sports.io/football/teams/9017.png",
+     "winner": false
+    }
+   },
+   "goals": {
+    "home": 3,
+    "away": 1
+   },
+   "score": {
+    "halftime": {
+     "home": 2,
+     "away": 0
+    },
+    "fulltime": {
+     "home": 3,
+     "away": 1
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  }
+ ]
+}

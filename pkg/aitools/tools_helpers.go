@@ -32,7 +32,7 @@ var moduleLabels = map[string]string{
 	"core": "Core", "smallbiz": "Business hub", "invoicing": "Invoicing & quotes", "pos": "Point of sale",
 	"ecommerce": "E-commerce", "crm": "CRM", "bookings": "Bookings", "events": "Events", "inventory": "Inventory & suppliers",
 	"manufacturing": "Manufacturing", "accounting": "Accounting & finance", "hr": "HR & payroll", "projects": "Projects",
-	"documents": "Documents", "communication": "Meetings & messaging",
+	"documents": "Documents", "communication": "Meetings & messaging", "football": "Football analysis",
 }
 
 // ModuleLabel is a readable name for a plan module key.

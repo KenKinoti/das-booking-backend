@@ -1,0 +1,1915 @@
+{
+ "get": "players",
+ "parameters": {
+  "team": "9005",
+  "season": "2026"
+ },
+ "errors": [],
+ "results": 20,
+ "paging": {
+  "current": 1,
+  "total": 2
+ },
+ "response": [
+  {
+   "player": {
+    "id": 900501,
+    "name": "Xavier Yilmaz",
+    "firstname": "Xavier",
+    "lastname": "Yilmaz",
+    "age": 27,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900501.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Goalkeeper",
+      "rating": "6.571429",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 22,
+      "on": 7
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 7,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 2,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900502,
+    "name": "Dennis Sato",
+    "firstname": "Dennis",
+    "lastname": "Sato",
+    "age": 24,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900502.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 0,
+      "minutes": 280,
+      "number": null,
+      "position": "Goalkeeper",
+      "rating": "6.142857",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 6,
+      "on": 7
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 7,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900503,
+    "name": "Amos Tembo",
+    "firstname": "Amos",
+    "lastname": "Tembo",
+    "age": 19,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900503.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Defender",
+      "rating": "6.264286",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 14,
+      "on": 7
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 7,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 4,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900504,
+    "name": "Peter Mwangi",
+    "firstname": "Peter",
+    "lastname": "Mwangi",
+    "age": 25,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900504.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Defender",
+      "rating": "6.485714",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 23,
+      "on": 8
+     },
+     "goals": {
+      "total": 1,
+      "conceded": 0,
+      "assists": 1,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 1,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900505,
+    "name": "Moses Varga",
+    "firstname": "Moses",
+    "lastname": "Varga",
+    "age": 21,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900505.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 980,
+      "number": null,
+      "position": "Defender",
+      "rating": "6.542857",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 6,
+      "on": 7
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": 1,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 3,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900506,
+    "name": "Peter Okafor",
+    "firstname": "Peter",
+    "lastname": "Okafor",
+    "age": 22,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": true,
+    "photo": "https://media.api-sports.io/football/players/900506.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Defender",
+      "rating": "6.621429",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 14,
+      "on": 7
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": 2,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 9,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 1,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900507,
+    "name": "Kevin Gathoni",
+    "firstname": "Kevin",
+    "lastname": "Gathoni",
+    "age": 22,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900507.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 0,
+      "lineups": 0,
+      "minutes": 0,
+      "number": null,
+      "position": "Defender",
+      "rating": null,
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": null,
+      "on": null
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": null,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900508,
+    "name": "Amos Gathoni",
+    "firstname": "Amos",
+    "lastname": "Gathoni",
+    "age": 29,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900508.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 13,
+      "lineups": 0,
+      "minutes": 260,
+      "number": null,
+      "position": "Defender",
+      "rating": "6.176923",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 4,
+      "on": 6
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 6,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900509,
+    "name": "Noah Underhill",
+    "firstname": "Noah",
+    "lastname": "Underhill",
+    "age": 24,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900509.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 1,
+      "lineups": 0,
+      "minutes": 20,
+      "number": null,
+      "position": "Defender",
+      "rating": "6.200000",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 0,
+      "on": 0
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 0,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900510,
+    "name": "Ivan Castell",
+    "firstname": "Ivan",
+    "lastname": "Castell",
+    "age": 30,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900510.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 13,
+      "lineups": 13,
+      "minutes": 1170,
+      "number": null,
+      "position": "Midfielder",
+      "rating": "6.684615",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 25,
+      "on": 10
+     },
+     "goals": {
+      "total": 4,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 6,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 3,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 1,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900511,
+    "name": "Zane Mwangi",
+    "firstname": "Zane",
+    "lastname": "Mwangi",
+    "age": 29,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900511.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Midfielder",
+      "rating": "6.828571",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 8,
+      "on": 9
+     },
+     "goals": {
+      "total": 2,
+      "conceded": 0,
+      "assists": 5,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 12,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 2,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 1,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900512,
+    "name": "Yusuf Gathoni",
+    "firstname": "Yusuf",
+    "lastname": "Gathoni",
+    "age": 31,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900512.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Midfielder",
+      "rating": "6.864286",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 17,
+      "on": 10
+     },
+     "goals": {
+      "total": 3,
+      "conceded": 0,
+      "assists": 3,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 10,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 1,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900513,
+    "name": "Peter Petrov",
+    "firstname": "Peter",
+    "lastname": "Petrov",
+    "age": 19,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900513.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1000,
+      "number": null,
+      "position": "Midfielder",
+      "rating": "6.278571",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 23,
+      "on": 8
+     },
+     "goals": {
+      "total": 1,
+      "conceded": 0,
+      "assists": 2,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 9,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 5,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900514,
+    "name": "Yusuf Yilmaz",
+    "firstname": "Yusuf",
+    "lastname": "Yilmaz",
+    "age": 33,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900514.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 1,
+      "minutes": 330,
+      "number": null,
+      "position": "Midfielder",
+      "rating": "6.264286",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 6,
+      "on": 7
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 7,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900515,
+    "name": "Dennis Fairley",
+    "firstname": "Dennis",
+    "lastname": "Fairley",
+    "age": 21,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900515.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 0,
+      "lineups": 0,
+      "minutes": 0,
+      "number": null,
+      "position": "Midfielder",
+      "rating": null,
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": null,
+      "on": null
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": null,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900516,
+    "name": "Oscar Mwangi",
+    "firstname": "Oscar",
+    "lastname": "Mwangi",
+    "age": 28,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900516.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 1,
+      "lineups": 0,
+      "minutes": 20,
+      "number": null,
+      "position": "Midfielder",
+      "rating": "6.500000",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 1,
+      "on": 1
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 1,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900517,
+    "name": "Brian Mwangi",
+    "firstname": "Brian",
+    "lastname": "Mwangi",
+    "age": 26,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900517.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.492857",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 19,
+      "on": 20
+     },
+     "goals": {
+      "total": 13,
+      "conceded": 0,
+      "assists": 3,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 10,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 1,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 1,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900518,
+    "name": "Amos Varga",
+    "firstname": "Amos",
+    "lastname": "Varga",
+    "age": 21,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900518.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 980,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.271429",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 23,
+      "on": 16
+     },
+     "goals": {
+      "total": 9,
+      "conceded": 0,
+      "assists": 3,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 10,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 3,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 2,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900519,
+    "name": "Tobias Juma",
+    "firstname": "Tobias",
+    "lastname": "Juma",
+    "age": 30,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900519.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 0,
+      "lineups": 0,
+      "minutes": 0,
+      "number": null,
+      "position": "Attacker",
+      "rating": null,
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": null,
+      "on": null
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": null,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900520,
+    "name": "Yusuf Lindqvist",
+    "firstname": "Yusuf",
+    "lastname": "Lindqvist",
+    "age": 23,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900520.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 0,
+      "lineups": 0,
+      "minutes": 0,
+      "number": null,
+      "position": "Attacker",
+      "rating": null,
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": null,
+      "on": null
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": null,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,74 @@
+[
+ {
+  "key": "soccer_epl",
+  "group": "Soccer",
+  "title": "EPL",
+  "description": "Premier League - England",
+  "active": true,
+  "has_outrights": false
+ },
+ {
+  "key": "soccer_efl_champ",
+  "group": "Soccer",
+  "title": "Championship",
+  "description": "EFL Championship",
+  "active": true,
+  "has_outrights": false
+ },
+ {
+  "key": "soccer_spain_la_liga",
+  "group": "Soccer",
+  "title": "La Liga - Spain",
+  "description": "Spanish Soccer",
+  "active": true,
+  "has_outrights": false
+ },
+ {
+  "key": "soccer_italy_serie_a",
+  "group": "Soccer",
+  "title": "Serie A - Italy",
+  "description": "Italian Soccer",
+  "active": true,
+  "has_outrights": false
+ },
+ {
+  "key": "soccer_germany_bundesliga",
+  "group": "Soccer",
+  "title": "Bundesliga - Germany",
+  "description": "German Soccer",
+  "active": true,
+  "has_outrights": false
+ },
+ {
+  "key": "soccer_france_ligue_one",
+  "group": "Soccer",
+  "title": "Ligue 1 - France",
+  "description": "French Soccer",
+  "active": true,
+  "has_outrights": false
+ },
+ {
+  "key": "soccer_uefa_champs_league",
+  "group": "Soccer",
+  "title": "UEFA Champions League",
+  "description": "European Champions League",
+  "active": true,
+  "has_outrights": false
+ },
+ {
+  "key": "soccer_africa_cup_of_nations",
+  "group": "Soccer",
+  "title": "Africa Cup of Nations",
+  "description": "AFCON",
+  "active": true,
+  "has_outrights": false
+ },
+ {
+  "key": "basketball_nba",
+  "group": "Basketball",
+  "title": "NBA",
+  "description": "US Basketball",
+  "active": true,
+  "has_outrights": false
+ }
+]

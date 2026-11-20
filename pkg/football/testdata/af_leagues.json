@@ -1,0 +1,309 @@
+{
+ "get": "leagues",
+ "parameters": {
+  "current": "true"
+ },
+ "errors": [],
+ "results": 5,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "type": "League",
+    "logo": "https://media.api-sports.io/football/leagues/39.png"
+   },
+   "country": {
+    "name": "England",
+    "code": "GB",
+    "flag": "https://media.api-sports.io/flags/gb.svg"
+   },
+   "seasons": [
+    {
+     "year": 2025,
+     "start": "2025-08-16",
+     "end": "2026-05-24",
+     "current": false,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": true,
+       "statistics_players": true
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": true,
+      "predictions": true,
+      "odds": true
+     }
+    },
+    {
+     "year": 2026,
+     "start": "2026-08-15",
+     "end": "2027-05-23",
+     "current": true,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": true,
+       "statistics_players": true
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": true,
+      "predictions": true,
+      "odds": true
+     }
+    }
+   ]
+  },
+  {
+   "league": {
+    "id": 2,
+    "name": "UEFA Champions League",
+    "type": "Cup",
+    "logo": "https://media.api-sports.io/football/leagues/2.png"
+   },
+   "country": {
+    "name": "World",
+    "code": null,
+    "flag": null
+   },
+   "seasons": [
+    {
+     "year": 2025,
+     "start": "2025-08-16",
+     "end": "2026-05-24",
+     "current": false,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": false,
+       "statistics_players": false
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": false,
+      "predictions": true,
+      "odds": false
+     }
+    },
+    {
+     "year": 2026,
+     "start": "2026-08-15",
+     "end": "2027-05-23",
+     "current": true,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": false,
+       "statistics_players": false
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": false,
+      "predictions": true,
+      "odds": false
+     }
+    }
+   ]
+  },
+  {
+   "league": {
+    "id": 276,
+    "name": "Premier League",
+    "type": "League",
+    "logo": "https://media.api-sports.io/football/leagues/276.png"
+   },
+   "country": {
+    "name": "Kenya",
+    "code": "KE",
+    "flag": "https://media.api-sports.io/flags/ke.svg"
+   },
+   "seasons": [
+    {
+     "year": 2025,
+     "start": "2025-08-16",
+     "end": "2026-05-24",
+     "current": false,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": false,
+       "statistics_players": false
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": false,
+      "predictions": true,
+      "odds": false
+     }
+    },
+    {
+     "year": 2026,
+     "start": "2026-08-15",
+     "end": "2027-05-23",
+     "current": true,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": false,
+       "statistics_players": false
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": false,
+      "predictions": true,
+      "odds": false
+     }
+    }
+   ]
+  },
+  {
+   "league": {
+    "id": 12,
+    "name": "CAF Champions League",
+    "type": "Cup",
+    "logo": "https://media.api-sports.io/football/leagues/12.png"
+   },
+   "country": {
+    "name": "World",
+    "code": null,
+    "flag": null
+   },
+   "seasons": [
+    {
+     "year": 2025,
+     "start": "2025-08-16",
+     "end": "2026-05-24",
+     "current": false,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": false,
+       "statistics_players": false
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": false,
+      "predictions": true,
+      "odds": false
+     }
+    },
+    {
+     "year": 2026,
+     "start": "2026-08-15",
+     "end": "2027-05-23",
+     "current": true,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": false,
+       "statistics_players": false
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": false,
+      "predictions": true,
+      "odds": false
+     }
+    }
+   ]
+  },
+  {
+   "league": {
+    "id": 999,
+    "name": "Second Division",
+    "type": "League",
+    "logo": "https://media.api-sports.io/football/leagues/999.png"
+   },
+   "country": {
+    "name": "Elsewhere",
+    "code": null,
+    "flag": null
+   },
+   "seasons": [
+    {
+     "year": 2025,
+     "start": "2025-08-16",
+     "end": "2026-05-24",
+     "current": false,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": false,
+       "statistics_players": false
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": false,
+      "predictions": true,
+      "odds": false
+     }
+    },
+    {
+     "year": 2026,
+     "start": "2026-08-15",
+     "end": "2027-05-23",
+     "current": true,
+     "coverage": {
+      "fixtures": {
+       "events": true,
+       "lineups": true,
+       "statistics_fixtures": false,
+       "statistics_players": false
+      },
+      "standings": true,
+      "players": true,
+      "top_scorers": true,
+      "top_assists": true,
+      "top_cards": true,
+      "injuries": false,
+      "predictions": true,
+      "odds": false
+     }
+    }
+   ]
+  }
+ ]
+}

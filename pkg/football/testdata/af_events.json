@@ -1,0 +1,256 @@
+{
+ "get": "fixtures/events",
+ "parameters": {
+  "fixture": "1200141"
+ },
+ "errors": [],
+ "results": 11,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "time": {
+    "elapsed": 12,
+    "extra": null
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "player": {
+    "id": 901701,
+    "name": "Liam Juma"
+   },
+   "assist": {
+    "id": null,
+    "name": null
+   },
+   "type": "Card",
+   "detail": "Yellow Card",
+   "comments": null
+  },
+  {
+   "time": {
+    "elapsed": 23,
+    "extra": null
+   },
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "logo": "https://media.api-sports.io/football/teams/9008.png"
+   },
+   "player": {
+    "id": 900804,
+    "name": "Moses Holloway"
+   },
+   "assist": {
+    "id": null,
+    "name": null
+   },
+   "type": "Card",
+   "detail": "Yellow Card",
+   "comments": null
+  },
+  {
+   "time": {
+    "elapsed": 44,
+    "extra": null
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "player": {
+    "id": 901705,
+    "name": "George Yilmaz"
+   },
+   "assist": {
+    "id": null,
+    "name": null
+   },
+   "type": "Card",
+   "detail": "Yellow Card",
+   "comments": null
+  },
+  {
+   "time": {
+    "elapsed": 57,
+    "extra": null
+   },
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "logo": "https://media.api-sports.io/football/teams/9008.png"
+   },
+   "player": {
+    "id": 900818,
+    "name": "Zane Tembo"
+   },
+   "assist": {
+    "id": null,
+    "name": null
+   },
+   "type": "Card",
+   "detail": "Yellow Card",
+   "comments": null
+  },
+  {
+   "time": {
+    "elapsed": 70,
+    "extra": null
+   },
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "logo": "https://media.api-sports.io/football/teams/9008.png"
+   },
+   "player": {
+    "id": 900802,
+    "name": "Brian Dlamini"
+   },
+   "assist": {
+    "id": 900805,
+    "name": "Felix Quist"
+   },
+   "type": "subst",
+   "detail": "Substitution 1",
+   "comments": null
+  },
+  {
+   "time": {
+    "elapsed": 70,
+    "extra": null
+   },
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "logo": "https://media.api-sports.io/football/teams/9008.png"
+   },
+   "player": {
+    "id": 900808,
+    "name": "Liam Kamau"
+   },
+   "assist": {
+    "id": 900813,
+    "name": "Hassan Achterberg"
+   },
+   "type": "subst",
+   "detail": "Substitution 2",
+   "comments": null
+  },
+  {
+   "time": {
+    "elapsed": 70,
+    "extra": null
+   },
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "logo": "https://media.api-sports.io/football/teams/9008.png"
+   },
+   "player": {
+    "id": 900814,
+    "name": "Yusuf Lindqvist"
+   },
+   "assist": {
+    "id": 900818,
+    "name": "Zane Tembo"
+   },
+   "type": "subst",
+   "detail": "Substitution 3",
+   "comments": null
+  },
+  {
+   "time": {
+    "elapsed": 70,
+    "extra": null
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "player": {
+    "id": 901702,
+    "name": "Samuel Ibsen"
+   },
+   "assist": {
+    "id": 901705,
+    "name": "George Yilmaz"
+   },
+   "type": "subst",
+   "detail": "Substitution 1",
+   "comments": null
+  },
+  {
+   "time": {
+    "elapsed": 70,
+    "extra": null
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "player": {
+    "id": 901708,
+    "name": "Samuel Castell"
+   },
+   "assist": {
+    "id": 901713,
+    "name": "Caleb Nordin"
+   },
+   "type": "subst",
+   "detail": "Substitution 2",
+   "comments": null
+  },
+  {
+   "time": {
+    "elapsed": 70,
+    "extra": null
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "player": {
+    "id": 901714,
+    "name": "Quinn Fairley"
+   },
+   "assist": {
+    "id": 901719,
+    "name": "Noah Petrov"
+   },
+   "type": "subst",
+   "detail": "Substitution 3",
+   "comments": null
+  },
+  {
+   "time": {
+    "elapsed": 83,
+    "extra": null
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "player": {
+    "id": 901706,
+    "name": "Caleb Gathoni"
+   },
+   "assist": {
+    "id": null,
+    "name": null
+   },
+   "type": "Card",
+   "detail": "Yellow Card",
+   "comments": null
+  }
+ ]
+}

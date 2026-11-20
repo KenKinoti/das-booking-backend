@@ -1,0 +1,415 @@
+{
+ "get": "teams",
+ "parameters": {
+  "league": "39",
+  "season": "2026"
+ },
+ "errors": [],
+ "results": 20,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "team": {
+    "id": 9001,
+    "name": "Northbridge Athletic",
+    "code": "NOR",
+    "country": "England",
+    "founded": 1890,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9001.png"
+   },
+   "venue": {
+    "id": 9001,
+    "name": "Northbridge Ground",
+    "address": null,
+    "city": "Northbridge",
+    "capacity": 20000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9002,
+    "name": "Kingsport United",
+    "code": "KIN",
+    "country": "England",
+    "founded": 1891,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9002.png"
+   },
+   "venue": {
+    "id": 9002,
+    "name": "Kingsport Ground",
+    "address": null,
+    "city": "Kingsport",
+    "capacity": 21000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9003,
+    "name": "Ashford Rovers",
+    "code": "ASH",
+    "country": "England",
+    "founded": 1892,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9003.png"
+   },
+   "venue": {
+    "id": 9003,
+    "name": "Ashford Ground",
+    "address": null,
+    "city": "Ashford",
+    "capacity": 22000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9004,
+    "name": "Riverside City",
+    "code": "RIV",
+    "country": "England",
+    "founded": 1893,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9004.png"
+   },
+   "venue": {
+    "id": 9004,
+    "name": "Riverside Ground",
+    "address": null,
+    "city": "Riverside",
+    "capacity": 23000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9005,
+    "name": "Hollowmere Town",
+    "code": "HOL",
+    "country": "England",
+    "founded": 1894,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9005.png"
+   },
+   "venue": {
+    "id": 9005,
+    "name": "Hollowmere Ground",
+    "address": null,
+    "city": "Hollowmere",
+    "capacity": 24000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9006,
+    "name": "Saint Albury",
+    "code": "SAI",
+    "country": "England",
+    "founded": 1895,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9006.png"
+   },
+   "venue": {
+    "id": 9006,
+    "name": "Albury Ground",
+    "address": null,
+    "city": "Albury",
+    "capacity": 25000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9007,
+    "name": "Westholm Wanderers",
+    "code": "WES",
+    "country": "England",
+    "founded": 1896,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9007.png"
+   },
+   "venue": {
+    "id": 9007,
+    "name": "Westholm Ground",
+    "address": null,
+    "city": "Westholm",
+    "capacity": 26000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "code": "EAS",
+    "country": "England",
+    "founded": 1897,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9008.png"
+   },
+   "venue": {
+    "id": 9008,
+    "name": "Eastmoor Ground",
+    "address": null,
+    "city": "Eastmoor",
+    "capacity": 27000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9009,
+    "name": "Brackenfield",
+    "code": "BRA",
+    "country": "England",
+    "founded": 1898,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9009.png"
+   },
+   "venue": {
+    "id": 9009,
+    "name": "Brackenfield Ground",
+    "address": null,
+    "city": "Brackenfield",
+    "capacity": 28000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9010,
+    "name": "Coldwater Rangers",
+    "code": "COL",
+    "country": "England",
+    "founded": 1899,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9010.png"
+   },
+   "venue": {
+    "id": 9010,
+    "name": "Coldwater Ground",
+    "address": null,
+    "city": "Coldwater",
+    "capacity": 29000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9011,
+    "name": "Fairhaven Town",
+    "code": "FAI",
+    "country": "England",
+    "founded": 1900,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9011.png"
+   },
+   "venue": {
+    "id": 9011,
+    "name": "Fairhaven Ground",
+    "address": null,
+    "city": "Fairhaven",
+    "capacity": 30000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9012,
+    "name": "Greywick County",
+    "code": "GRE",
+    "country": "England",
+    "founded": 1901,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9012.png"
+   },
+   "venue": {
+    "id": 9012,
+    "name": "Greywick Ground",
+    "address": null,
+    "city": "Greywick",
+    "capacity": 31000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9013,
+    "name": "Harrowgate Park",
+    "code": "HAR",
+    "country": "England",
+    "founded": 1902,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9013.png"
+   },
+   "venue": {
+    "id": 9013,
+    "name": "Harrowgate Ground",
+    "address": null,
+    "city": "Harrowgate",
+    "capacity": 32000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9014,
+    "name": "Ironbridge Forest",
+    "code": "IRO",
+    "country": "England",
+    "founded": 1903,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9014.png"
+   },
+   "venue": {
+    "id": 9014,
+    "name": "Ironbridge Ground",
+    "address": null,
+    "city": "Ironbridge",
+    "capacity": 33000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9015,
+    "name": "Larkspur Villa",
+    "code": "LAR",
+    "country": "England",
+    "founded": 1904,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9015.png"
+   },
+   "venue": {
+    "id": 9015,
+    "name": "Larkspur Ground",
+    "address": null,
+    "city": "Larkspur",
+    "capacity": 34000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9016,
+    "name": "Marlow Heath",
+    "code": "MAR",
+    "country": "England",
+    "founded": 1905,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9016.png"
+   },
+   "venue": {
+    "id": 9016,
+    "name": "Marlow Ground",
+    "address": null,
+    "city": "Marlow",
+    "capacity": 35000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "code": "OAK",
+    "country": "England",
+    "founded": 1906,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "venue": {
+    "id": 9017,
+    "name": "Oakvale Ground",
+    "address": null,
+    "city": "Oakvale",
+    "capacity": 36000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9018,
+    "name": "Pendleton Borough",
+    "code": "PEN",
+    "country": "England",
+    "founded": 1907,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9018.png"
+   },
+   "venue": {
+    "id": 9018,
+    "name": "Pendleton Ground",
+    "address": null,
+    "city": "Pendleton",
+    "capacity": 37000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9019,
+    "name": "Redcliffe Athletic",
+    "code": "RED",
+    "country": "England",
+    "founded": 1908,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9019.png"
+   },
+   "venue": {
+    "id": 9019,
+    "name": "Redcliffe Ground",
+    "address": null,
+    "city": "Redcliffe",
+    "capacity": 38000,
+    "surface": "grass",
+    "image": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9020,
+    "name": "Thornbury City",
+    "code": "THO",
+    "country": "England",
+    "founded": 1909,
+    "national": false,
+    "logo": "https://media.api-sports.io/football/teams/9020.png"
+   },
+   "venue": {
+    "id": 9020,
+    "name": "Thornbury Ground",
+    "address": null,
+    "city": "Thornbury",
+    "capacity": 39000,
+    "surface": "grass",
+    "image": ""
+   }
+  }
+ ]
+}

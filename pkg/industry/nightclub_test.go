@@ -25,7 +25,7 @@ func TestNightclubTypeDefinition(t *testing.T) {
 	for _, m := range ModuleKeys() {
 		known[m] = true
 	}
-	want := []string{"bookings", "crm", "events", "hr", "inventory", "pos"}
+	want := []string{"bookings", "crm", "events", "football", "hr", "inventory", "pos"}
 	got := append([]string{}, bt.Modules...)
 	sort.Strings(got)
 	if strings.Join(got, ",") != strings.Join(want, ",") {

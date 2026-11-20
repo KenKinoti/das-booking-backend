@@ -22,7 +22,19 @@ type Access struct {
 	HiddenPath []string
 	Role       *OrgRole // nil = unknown → fail open
 	UserID     string
+	// Platform is the platform operator's own organisation (it has a super
+	// admin): it gets the opt-in modules.
+	Platform bool
 }
+
+// OptInModules are shown only where the business type lists them by name,
+// an admin added them (Settings → Business type → extra modules) or for the
+// platform's own organisation — never through "*" types or for unconfirmed
+// organisations. Roles get them only by an explicit grant, except managers
+// (and owners/admins), who have them by default. Football analysis
+// (pkg/football) is opt-in: betting analysis must not appear for a business
+// that did not ask for it.
+var OptInModules = map[string]bool{"football": true}
 
 func normKey(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
 
@@ -36,6 +48,9 @@ func (a Access) InPlan(m string) bool {
 
 // TypeShows reports whether the business type shows module m.
 func (a Access) TypeShows(m string) bool {
+	if OptInModules[m] {
+		return a.Platform || a.TypeMods[m]
+	}
 	if m == "" || m == plans.CoreModule || m == PermCore || m == PermTeam || !a.Restricted {
 		return true
 	}
@@ -76,6 +91,12 @@ func RoleCan(r *OrgRole, m, act string) bool {
 		if act != ActView {
 			return false
 		}
+	}
+	if OptInModules[m] {
+		if acts, ok := r.Perms[m]; ok {
+			return contains(acts, act)
+		}
+		return r.Base == BaseManager // managers by default; staff only when granted
 	}
 	return contains(actionsFor(r.Perms, m), act)
 }

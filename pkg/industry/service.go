@@ -30,6 +30,7 @@ type Service struct {
 }
 
 type orgEntry struct {
+	platform bool // the organisation has a super admin
 	settings OrgSettings
 	roles    []OrgRole
 	assign   map[string]string // user → role id
@@ -63,8 +64,40 @@ func Seed(db *gorm.DB) error {
 			return err
 		}
 	}
+	if err := applyModuleAdditions(db); err != nil {
+		return err
+	}
 	m := Meta{Key: "installed_at", Value: time.Now().UTC().Format(time.RFC3339)}
 	return db.Clauses(clause.OnConflict{DoNothing: true}).Create(&m).Error
+}
+
+// ModuleAdditions are modules added to a seeded business type in a later
+// release. Each is applied once (recorded in industry_meta), so a super
+// admin who removes the module afterwards keeps it removed.
+var ModuleAdditions = []struct{ Type, Module string }{
+	{"nightclub", "football"}, // v2.16: football analysis & bet tracker
+}
+
+func applyModuleAdditions(db *gorm.DB) error {
+	for _, a := range ModuleAdditions {
+		key := "added:" + a.Type + ":" + a.Module
+		var done int64
+		db.Model(&Meta{}).Where("key = ?", key).Count(&done)
+		if done > 0 {
+			continue
+		}
+		var t BusinessType
+		if err := db.Where("key = ?", a.Type).First(&t).Error; err == nil && !contains(t.Modules, a.Module) && !contains(t.Modules, AllModules) {
+			t.Modules = append(t.Modules, a.Module)
+			if err := db.Model(&BusinessType{}).Where("key = ?", a.Type).Select("modules").Updates(&BusinessType{Modules: t.Modules}).Error; err != nil {
+				return err
+			}
+		}
+		if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&Meta{Key: key, Value: time.Now().UTC().Format(time.RFC3339)}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // LegacyReport summarises MigrateLegacy.
@@ -292,6 +325,9 @@ func (s *Service) org(org string) (orgEntry, error) {
 	var ur []UserRole
 	s.DB.Where("organization_id = ?", org).Find(&ur)
 	e := orgEntry{settings: st, roles: roles, assign: map[string]string{}, at: s.Now()}
+	var supers int64
+	s.DB.Table("users").Where("organization_id = ? AND role = ? AND deleted_at IS NULL", org, "super_admin").Count(&supers)
+	e.platform = supers > 0
 	for _, a := range ur {
 		e.assign[a.UserID] = a.RoleID
 	}
@@ -395,6 +431,7 @@ func (s *Service) AccessFor(org, user, legacy string) (Access, error) {
 	}
 	t := s.Type(e.settings.TypeKey)
 	a.TypeKey = t.Key
+	a.Platform = e.platform
 	a.HiddenPath = t.HiddenPaths
 	a.TypeMods = map[string]bool{}
 	all := false

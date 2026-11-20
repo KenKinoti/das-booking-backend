@@ -473,7 +473,8 @@ func nightclub() BusinessType {
 	return BusinessType{
 		Key: "nightclub", Name: "Nightclub / bar / lounge", Icon: "fa-solid fa-martini-glass-citrus", PlanIndustry: "hospitality",
 		Description: "Nightclubs, bars, lounges and pubs — tots, bottles, stock takes and tables.",
-		Modules:     []string{"pos", "inventory", "events", "bookings", "hr", "crm"},
+		// Football analysis & bet tracker (pkg/football, opt-in module).
+		Modules: []string{"pos", "inventory", "events", "bookings", "hr", "crm", "football"},
 		// The deals pipeline is not for a club (guests stay under Guests), and
 		// the generic product list gives way to the Bar stock area
 		// (/bar-stock), which reads the same products as stock items.
@@ -484,7 +485,7 @@ func nightclub() BusinessType {
 		Roles: []RoleTemplate{
 			owner("Owner"),
 			{Key: "bar_manager", Name: "Bar manager", Description: "Runs the bar: stock, stock takes and variance, purchasing, the till, reservations and events.", Base: BaseManager, Scope: ScopeAll, Legacy: "manager",
-				Perms: perms(PermCore, view, PermTeam, view, "inventory", full, "pos", full, "bookings", crud, "events", crud, "crm", work, "hr", view)},
+				Perms: perms(PermCore, view, PermTeam, view, "inventory", full, "pos", full, "bookings", crud, "events", crud, "crm", work, "hr", view, "football", full)},
 			{Key: "store_keeper", Name: "Store keeper", Description: "Receives deliveries, issues stock to the bars and counts stock. Cannot approve counts or see costs.", Base: BaseStaff, Scope: ScopeAll, Home: "/bar-stock",
 				Perms: perms("inventory", work)},
 			{Key: "bartender", Name: "Bartender", Description: "Sells drinks at the till, records wastage and requests stock for their bar.", Base: BaseStaff, Scope: ScopeAll, Legacy: "staff", Home: "/pos",

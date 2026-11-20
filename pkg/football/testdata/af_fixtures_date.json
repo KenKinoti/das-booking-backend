@@ -1,0 +1,636 @@
+{
+ "get": "fixtures",
+ "parameters": {
+  "date": "2026-11-21",
+  "timezone": "UTC"
+ },
+ "errors": [],
+ "results": 9,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "fixture": {
+    "id": 1990001,
+    "referee": "A. Kariuki",
+    "timezone": "UTC",
+    "date": "2026-11-21T13:00:00+00:00",
+    "timestamp": 1795266000,
+    "periods": {
+     "first": null,
+     "second": null
+    },
+    "venue": {
+     "id": 9901,
+     "name": "Ground",
+     "city": "Elsewhere"
+    },
+    "status": {
+     "long": "Not Started",
+     "short": "NS",
+     "elapsed": null,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 999,
+    "name": "Second Division",
+    "country": "Elsewhere",
+    "logo": "https://media.api-sports.io/football/leagues/999.png",
+    "flag": null,
+    "season": 2026,
+    "round": "Regular Season - 9"
+   },
+   "teams": {
+    "home": {
+     "id": 9901,
+     "name": "Moorland Town",
+     "logo": "https://media.api-sports.io/football/teams/9901.png",
+     "winner": null
+    },
+    "away": {
+     "id": 9902,
+     "name": "Quarry Lane",
+     "logo": "https://media.api-sports.io/football/teams/9902.png",
+     "winner": null
+    }
+   },
+   "goals": {
+    "home": null,
+    "away": null
+   },
+   "score": {
+    "halftime": {
+     "home": null,
+     "away": null
+    },
+    "fulltime": {
+     "home": null,
+     "away": null
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  },
+  {
+   "fixture": {
+    "id": 1990002,
+    "referee": "A. Kariuki",
+    "timezone": "UTC",
+    "date": "2026-11-21T13:00:00+00:00",
+    "timestamp": 1795266000,
+    "periods": {
+     "first": null,
+     "second": null
+    },
+    "venue": {
+     "id": 9903,
+     "name": "Ground",
+     "city": "Elsewhere"
+    },
+    "status": {
+     "long": "Not Started",
+     "short": "NS",
+     "elapsed": null,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 999,
+    "name": "Second Division",
+    "country": "Elsewhere",
+    "logo": "https://media.api-sports.io/football/leagues/999.png",
+    "flag": null,
+    "season": 2026,
+    "round": "Regular Season - 9"
+   },
+   "teams": {
+    "home": {
+     "id": 9903,
+     "name": "Sandown Wells",
+     "logo": "https://media.api-sports.io/football/teams/9903.png",
+     "winner": null
+    },
+    "away": {
+     "id": 9904,
+     "name": "Tidewater FC",
+     "logo": "https://media.api-sports.io/football/teams/9904.png",
+     "winner": null
+    }
+   },
+   "goals": {
+    "home": null,
+    "away": null
+   },
+   "score": {
+    "halftime": {
+     "home": null,
+     "away": null
+    },
+    "fulltime": {
+     "home": null,
+     "away": null
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  },
+  {
+   "fixture": {
+    "id": 1200141,
+    "referee": "E. Marsh",
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200,
+    "periods": {
+     "first": null,
+     "second": null
+    },
+    "venue": {
+     "id": 9008,
+     "name": "Eastmoor Ground",
+     "city": "Eastmoor"
+    },
+    "status": {
+     "long": "Not Started",
+     "short": "NS",
+     "elapsed": null,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": "https://media.api-sports.io/flags/gb.svg",
+    "season": 2026,
+    "round": "Regular Season - 15"
+   },
+   "teams": {
+    "home": {
+     "id": 9008,
+     "name": "Eastmoor Albion",
+     "logo": "https://media.api-sports.io/football/teams/9008.png",
+     "winner": null
+    },
+    "away": {
+     "id": 9017,
+     "name": "Oakvale United",
+     "logo": "https://media.api-sports.io/football/teams/9017.png",
+     "winner": null
+    }
+   },
+   "goals": {
+    "home": null,
+    "away": null
+   },
+   "score": {
+    "halftime": {
+     "home": null,
+     "away": null
+    },
+    "fulltime": {
+     "home": null,
+     "away": null
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  },
+  {
+   "fixture": {
+    "id": 1200142,
+    "referee": "C. Duarte",
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200,
+    "periods": {
+     "first": null,
+     "second": null
+    },
+    "venue": {
+     "id": 9011,
+     "name": "Fairhaven Ground",
+     "city": "Fairhaven"
+    },
+    "status": {
+     "long": "Not Started",
+     "short": "NS",
+     "elapsed": null,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": "https://media.api-sports.io/flags/gb.svg",
+    "season": 2026,
+    "round": "Regular Season - 15"
+   },
+   "teams": {
+    "home": {
+     "id": 9011,
+     "name": "Fairhaven Town",
+     "logo": "https://media.api-sports.io/football/teams/9011.png",
+     "winner": null
+    },
+    "away": {
+     "id": 9015,
+     "name": "Larkspur Villa",
+     "logo": "https://media.api-sports.io/football/teams/9015.png",
+     "winner": null
+    }
+   },
+   "goals": {
+    "home": null,
+    "away": null
+   },
+   "score": {
+    "halftime": {
+     "home": null,
+     "away": null
+    },
+    "fulltime": {
+     "home": null,
+     "away": null
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  },
+  {
+   "fixture": {
+    "id": 1200143,
+    "referee": "E. Marsh",
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200,
+    "periods": {
+     "first": null,
+     "second": null
+    },
+    "venue": {
+     "id": 9019,
+     "name": "Redcliffe Ground",
+     "city": "Redcliffe"
+    },
+    "status": {
+     "long": "Not Started",
+     "short": "NS",
+     "elapsed": null,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": "https://media.api-sports.io/flags/gb.svg",
+    "season": 2026,
+    "round": "Regular Season - 15"
+   },
+   "teams": {
+    "home": {
+     "id": 9019,
+     "name": "Redcliffe Athletic",
+     "logo": "https://media.api-sports.io/football/teams/9019.png",
+     "winner": null
+    },
+    "away": {
+     "id": 9020,
+     "name": "Thornbury City",
+     "logo": "https://media.api-sports.io/football/teams/9020.png",
+     "winner": null
+    }
+   },
+   "goals": {
+    "home": null,
+    "away": null
+   },
+   "score": {
+    "halftime": {
+     "home": null,
+     "away": null
+    },
+    "fulltime": {
+     "home": null,
+     "away": null
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  },
+  {
+   "fixture": {
+    "id": 1200144,
+    "referee": "F. Otieno",
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200,
+    "periods": {
+     "first": null,
+     "second": null
+    },
+    "venue": {
+     "id": 9014,
+     "name": "Ironbridge Ground",
+     "city": "Ironbridge"
+    },
+    "status": {
+     "long": "Not Started",
+     "short": "NS",
+     "elapsed": null,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": "https://media.api-sports.io/flags/gb.svg",
+    "season": 2026,
+    "round": "Regular Season - 15"
+   },
+   "teams": {
+    "home": {
+     "id": 9014,
+     "name": "Ironbridge Forest",
+     "logo": "https://media.api-sports.io/football/teams/9014.png",
+     "winner": null
+    },
+    "away": {
+     "id": 9003,
+     "name": "Ashford Rovers",
+     "logo": "https://media.api-sports.io/football/teams/9003.png",
+     "winner": null
+    }
+   },
+   "goals": {
+    "home": null,
+    "away": null
+   },
+   "score": {
+    "halftime": {
+     "home": null,
+     "away": null
+    },
+    "fulltime": {
+     "home": null,
+     "away": null
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  },
+  {
+   "fixture": {
+    "id": 1200145,
+    "referee": "F. Otieno",
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200,
+    "periods": {
+     "first": null,
+     "second": null
+    },
+    "venue": {
+     "id": 9013,
+     "name": "Harrowgate Ground",
+     "city": "Harrowgate"
+    },
+    "status": {
+     "long": "Not Started",
+     "short": "NS",
+     "elapsed": null,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": "https://media.api-sports.io/flags/gb.svg",
+    "season": 2026,
+    "round": "Regular Season - 15"
+   },
+   "teams": {
+    "home": {
+     "id": 9013,
+     "name": "Harrowgate Park",
+     "logo": "https://media.api-sports.io/football/teams/9013.png",
+     "winner": null
+    },
+    "away": {
+     "id": 9004,
+     "name": "Riverside City",
+     "logo": "https://media.api-sports.io/football/teams/9004.png",
+     "winner": null
+    }
+   },
+   "goals": {
+    "home": null,
+    "away": null
+   },
+   "score": {
+    "halftime": {
+     "home": null,
+     "away": null
+    },
+    "fulltime": {
+     "home": null,
+     "away": null
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  },
+  {
+   "fixture": {
+    "id": 1200146,
+    "referee": "E. Marsh",
+    "timezone": "UTC",
+    "date": "2026-11-21T17:30:00+00:00",
+    "timestamp": 1795282200,
+    "periods": {
+     "first": null,
+     "second": null
+    },
+    "venue": {
+     "id": 9010,
+     "name": "Coldwater Ground",
+     "city": "Coldwater"
+    },
+    "status": {
+     "long": "Not Started",
+     "short": "NS",
+     "elapsed": null,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": "https://media.api-sports.io/flags/gb.svg",
+    "season": 2026,
+    "round": "Regular Season - 15"
+   },
+   "teams": {
+    "home": {
+     "id": 9010,
+     "name": "Coldwater Rangers",
+     "logo": "https://media.api-sports.io/football/teams/9010.png",
+     "winner": null
+    },
+    "away": {
+     "id": 9009,
+     "name": "Brackenfield",
+     "logo": "https://media.api-sports.io/football/teams/9009.png",
+     "winner": null
+    }
+   },
+   "goals": {
+    "home": null,
+    "away": null
+   },
+   "score": {
+    "halftime": {
+     "home": null,
+     "away": null
+    },
+    "fulltime": {
+     "home": null,
+     "away": null
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  },
+  {
+   "fixture": {
+    "id": 1200147,
+    "referee": "F. Otieno",
+    "timezone": "UTC",
+    "date": "2026-11-21T17:30:00+00:00",
+    "timestamp": 1795282200,
+    "periods": {
+     "first": null,
+     "second": null
+    },
+    "venue": {
+     "id": 9016,
+     "name": "Marlow Ground",
+     "city": "Marlow"
+    },
+    "status": {
+     "long": "Not Started",
+     "short": "NS",
+     "elapsed": null,
+     "extra": null
+    }
+   },
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": "https://media.api-sports.io/flags/gb.svg",
+    "season": 2026,
+    "round": "Regular Season - 15"
+   },
+   "teams": {
+    "home": {
+     "id": 9016,
+     "name": "Marlow Heath",
+     "logo": "https://media.api-sports.io/football/teams/9016.png",
+     "winner": null
+    },
+    "away": {
+     "id": 9001,
+     "name": "Northbridge Athletic",
+     "logo": "https://media.api-sports.io/football/teams/9001.png",
+     "winner": null
+    }
+   },
+   "goals": {
+    "home": null,
+    "away": null
+   },
+   "score": {
+    "halftime": {
+     "home": null,
+     "away": null
+    },
+    "fulltime": {
+     "home": null,
+     "away": null
+    },
+    "extratime": {
+     "home": null,
+     "away": null
+    },
+    "penalty": {
+     "home": null,
+     "away": null
+    }
+   }
+  }
+ ]
+}

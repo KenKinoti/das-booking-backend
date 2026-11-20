@@ -1,0 +1,410 @@
+{
+ "get": "fixtures/lineups",
+ "parameters": {
+  "fixture": "1200141"
+ },
+ "errors": [],
+ "results": 2,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "logo": "https://media.api-sports.io/football/teams/9008.png",
+    "colors": null
+   },
+   "formation": "4-4-2",
+   "startXI": [
+    {
+     "player": {
+      "id": 900801,
+      "name": "Umar Gathoni",
+      "number": 1,
+      "pos": "G",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900803,
+      "name": "Tobias Tembo",
+      "number": 3,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900804,
+      "name": "Moses Holloway",
+      "number": 4,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900805,
+      "name": "Felix Quist",
+      "number": 5,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900806,
+      "name": "Victor Kamau",
+      "number": 6,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900810,
+      "name": "Hassan Gathoni",
+      "number": 10,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900811,
+      "name": "Samuel Zielinski",
+      "number": 11,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900812,
+      "name": "Hassan Dlamini",
+      "number": 12,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900813,
+      "name": "Hassan Achterberg",
+      "number": 13,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900817,
+      "name": "Victor Xu",
+      "number": 17,
+      "pos": "F",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900818,
+      "name": "Zane Tembo",
+      "number": 18,
+      "pos": "F",
+      "grid": null
+     }
+    }
+   ],
+   "substitutes": [
+    {
+     "player": {
+      "id": 900802,
+      "name": "Brian Dlamini",
+      "number": 2,
+      "pos": "G",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900807,
+      "name": "Oscar Holloway",
+      "number": 7,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900808,
+      "name": "Liam Kamau",
+      "number": 8,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900809,
+      "name": "Liam Xu",
+      "number": 9,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900814,
+      "name": "Yusuf Lindqvist",
+      "number": 14,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900815,
+      "name": "Tobias Ekwueme",
+      "number": 15,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900816,
+      "name": "Moses Dlamini",
+      "number": 16,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900819,
+      "name": "Samuel Yilmaz",
+      "number": 19,
+      "pos": "F",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 900820,
+      "name": "Ivan Fairley",
+      "number": 20,
+      "pos": "F",
+      "grid": null
+     }
+    }
+   ],
+   "coach": {
+    "id": 90080,
+    "name": "Coach Eastmoor",
+    "photo": ""
+   }
+  },
+  {
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png",
+    "colors": null
+   },
+   "formation": "4-4-2",
+   "startXI": [
+    {
+     "player": {
+      "id": 901701,
+      "name": "Liam Juma",
+      "number": 1,
+      "pos": "G",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901703,
+      "name": "Umar Petrov",
+      "number": 3,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901704,
+      "name": "Dennis Sato",
+      "number": 4,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901705,
+      "name": "George Yilmaz",
+      "number": 5,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901706,
+      "name": "Caleb Gathoni",
+      "number": 6,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901710,
+      "name": "Victor Fairley",
+      "number": 10,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901711,
+      "name": "Noah Ibsen",
+      "number": 11,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901712,
+      "name": "Umar Dlamini",
+      "number": 12,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901713,
+      "name": "Caleb Nordin",
+      "number": 13,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901718,
+      "name": "Peter Sato",
+      "number": 18,
+      "pos": "F",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901719,
+      "name": "Noah Petrov",
+      "number": 19,
+      "pos": "F",
+      "grid": null
+     }
+    }
+   ],
+   "substitutes": [
+    {
+     "player": {
+      "id": 901702,
+      "name": "Samuel Ibsen",
+      "number": 2,
+      "pos": "G",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901707,
+      "name": "Ivan Achterberg",
+      "number": 7,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901708,
+      "name": "Samuel Castell",
+      "number": 8,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901709,
+      "name": "Felix Gathoni",
+      "number": 9,
+      "pos": "D",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901714,
+      "name": "Quinn Fairley",
+      "number": 14,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901715,
+      "name": "Eli Xu",
+      "number": 15,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901716,
+      "name": "Zane Ekwueme",
+      "number": 16,
+      "pos": "M",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901720,
+      "name": "Xavier Gathoni",
+      "number": 20,
+      "pos": "F",
+      "grid": null
+     }
+    },
+    {
+     "player": {
+      "id": 901721,
+      "name": "Oscar Mwangi",
+      "number": 21,
+      "pos": "F",
+      "grid": null
+     }
+    }
+   ],
+   "coach": {
+    "id": 90170,
+    "name": "Coach Oakvale",
+    "photo": ""
+   }
+  }
+ ]
+}

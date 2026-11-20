@@ -87,6 +87,30 @@ func Seed(db *gorm.DB) error {
 			return err
 		}
 	}
+	for _, a := range BundleAdditions {
+		key := "added:" + a.Industry + ":" + a.Module
+		var done int64
+		db.Model(&Meta{}).Where("key = ?", key).Count(&done)
+		if done > 0 {
+			continue
+		}
+		var ind Industry
+		if err := db.Where("key = ?", a.Industry).First(&ind).Error; err == nil {
+			has := false
+			for _, m := range ind.Modules {
+				has = has || m == a.Module
+			}
+			if !has {
+				ind.Modules = append(ind.Modules, a.Module)
+				if err := db.Model(&Industry{}).Where("key = ?", a.Industry).Select("modules").Updates(&Industry{Modules: ind.Modules}).Error; err != nil {
+					return err
+				}
+			}
+		}
+		if err := ins.Create(&Meta{Key: key, Value: time.Now().UTC().Format(time.RFC3339)}).Error; err != nil {
+			return err
+		}
+	}
 	meta := Meta{Key: "installed_at", Value: time.Now().UTC().Format(time.RFC3339)}
 	return ins.Create(&meta).Error
 }

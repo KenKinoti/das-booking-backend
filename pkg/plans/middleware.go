@@ -47,6 +47,9 @@ var Rules = []Rule{
 	{Prefix: "/ecommerce", Modules: []string{"ecommerce"}},
 	{Prefix: "/smallbiz", Modules: []string{"smallbiz"}},
 	{Prefix: "/documents", Modules: []string{"documents"}},
+	// Football analysis & bet tracker (pkg/football). /super-admin/football
+	// (platform settings) is not a module route.
+	{Prefix: "/football", Modules: []string{"football"}},
 }
 
 // MatchRule finds the rule for an API path (with or without /api/v1).

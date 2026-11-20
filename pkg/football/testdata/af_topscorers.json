@@ -1,0 +1,1915 @@
+{
+ "get": "players/topscorers",
+ "parameters": {
+  "league": "39",
+  "season": "2026"
+ },
+ "errors": [],
+ "results": 20,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "player": {
+    "id": 900517,
+    "name": "Brian Mwangi",
+    "firstname": "Brian",
+    "lastname": "Mwangi",
+    "age": 26,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900517.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.492857",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 19,
+      "on": 20
+     },
+     "goals": {
+      "total": 13,
+      "conceded": 0,
+      "assists": 3,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 10,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 1,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 1,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900617,
+    "name": "Jonah Petrov",
+    "firstname": "Jonah",
+    "lastname": "Petrov",
+    "age": 19,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900617.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9006,
+      "name": "Saint Albury",
+      "logo": "https://media.api-sports.io/football/teams/9006.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.121429",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 27,
+      "on": 19
+     },
+     "goals": {
+      "total": 12,
+      "conceded": 0,
+      "assists": 1,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 3,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 2,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900417,
+    "name": "Xavier Achterberg",
+    "firstname": "Xavier",
+    "lastname": "Achterberg",
+    "age": 20,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": true,
+    "photo": "https://media.api-sports.io/football/players/900417.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9004,
+      "name": "Riverside City",
+      "logo": "https://media.api-sports.io/football/teams/9004.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "6.964286",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 25,
+      "on": 19
+     },
+     "goals": {
+      "total": 11,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 3,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 901518,
+    "name": "Xavier Zielinski",
+    "firstname": "Xavier",
+    "lastname": "Zielinski",
+    "age": 28,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/901518.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9015,
+      "name": "Larkspur Villa",
+      "logo": "https://media.api-sports.io/football/teams/9015.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1000,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.335714",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 25,
+      "on": 18
+     },
+     "goals": {
+      "total": 11,
+      "conceded": 0,
+      "assists": 2,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 9,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 4,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 902017,
+    "name": "Tobias Achterberg",
+    "firstname": "Tobias",
+    "lastname": "Achterberg",
+    "age": 29,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/902017.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9020,
+      "name": "Thornbury City",
+      "logo": "https://media.api-sports.io/football/teams/9020.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 13,
+      "lineups": 13,
+      "minutes": 1170,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.038462",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 18,
+      "on": 18
+     },
+     "goals": {
+      "total": 10,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 2,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 1,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900518,
+    "name": "Amos Varga",
+    "firstname": "Amos",
+    "lastname": "Varga",
+    "age": 21,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900518.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 980,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.271429",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 23,
+      "on": 16
+     },
+     "goals": {
+      "total": 9,
+      "conceded": 0,
+      "assists": 3,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 10,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 3,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 2,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 901317,
+    "name": "Ryan Ekwueme",
+    "firstname": "Ryan",
+    "lastname": "Ekwueme",
+    "age": 19,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/901317.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9013,
+      "name": "Harrowgate Park",
+      "logo": "https://media.api-sports.io/football/teams/9013.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.078571",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 33,
+      "on": 17
+     },
+     "goals": {
+      "total": 9,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 1,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 1,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 901418,
+    "name": "Oscar Petrov",
+    "firstname": "Oscar",
+    "lastname": "Petrov",
+    "age": 23,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/901418.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9014,
+      "name": "Ironbridge Forest",
+      "logo": "https://media.api-sports.io/football/teams/9014.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 13,
+      "lineups": 13,
+      "minutes": 910,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.153846",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 32,
+      "on": 16
+     },
+     "goals": {
+      "total": 9,
+      "conceded": 0,
+      "assists": 1,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 4,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 1,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 901717,
+    "name": "Victor Zielinski",
+    "firstname": "Victor",
+    "lastname": "Zielinski",
+    "age": 30,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": true,
+    "photo": "https://media.api-sports.io/football/players/901717.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9017,
+      "name": "Oakvale United",
+      "logo": "https://media.api-sports.io/football/teams/9017.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "6.842857",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 22,
+      "on": 17
+     },
+     "goals": {
+      "total": 9,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 1,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900218,
+    "name": "Victor Petrov",
+    "firstname": "Victor",
+    "lastname": "Petrov",
+    "age": 28,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": true,
+    "photo": "https://media.api-sports.io/football/players/900218.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9002,
+      "name": "Kingsport United",
+      "logo": "https://media.api-sports.io/football/teams/9002.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 13,
+      "lineups": 13,
+      "minutes": 910,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.107692",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 27,
+      "on": 14
+     },
+     "goals": {
+      "total": 8,
+      "conceded": 0,
+      "assists": 2,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 2,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 2,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900917,
+    "name": "Kevin Rasmussen",
+    "firstname": "Kevin",
+    "lastname": "Rasmussen",
+    "age": 27,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900917.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9009,
+      "name": "Brackenfield",
+      "logo": "https://media.api-sports.io/football/teams/9009.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "6.707143",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 21,
+      "on": 15
+     },
+     "goals": {
+      "total": 8,
+      "conceded": 0,
+      "assists": 2,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 9,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 3,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 901517,
+    "name": "Wesley Mwangi",
+    "firstname": "Wesley",
+    "lastname": "Mwangi",
+    "age": 24,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/901517.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9015,
+      "name": "Larkspur Villa",
+      "logo": "https://media.api-sports.io/football/teams/9015.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 13,
+      "lineups": 13,
+      "minutes": 1170,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.038462",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 14,
+      "on": 14
+     },
+     "goals": {
+      "total": 8,
+      "conceded": 0,
+      "assists": 1,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 7,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 1,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900717,
+    "name": "Dennis Nordin",
+    "firstname": "Dennis",
+    "lastname": "Nordin",
+    "age": 24,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900717.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9007,
+      "name": "Westholm Wanderers",
+      "logo": "https://media.api-sports.io/football/teams/9007.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "6.728571",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 20,
+      "on": 14
+     },
+     "goals": {
+      "total": 7,
+      "conceded": 0,
+      "assists": 1,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 2,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 1,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 901017,
+    "name": "Noah Xu",
+    "firstname": "Noah",
+    "lastname": "Xu",
+    "age": 31,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/901017.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9010,
+      "name": "Coldwater Rangers",
+      "logo": "https://media.api-sports.io/football/teams/9010.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "6.935714",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 20,
+      "on": 14
+     },
+     "goals": {
+      "total": 7,
+      "conceded": 0,
+      "assists": 2,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 9,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 901217,
+    "name": "Wesley Underhill",
+    "firstname": "Wesley",
+    "lastname": "Underhill",
+    "age": 29,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/901217.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9012,
+      "name": "Greywick County",
+      "logo": "https://media.api-sports.io/football/teams/9012.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 13,
+      "lineups": 13,
+      "minutes": 1170,
+      "number": null,
+      "position": "Attacker",
+      "rating": "6.946154",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 16,
+      "on": 15
+     },
+     "goals": {
+      "total": 7,
+      "conceded": 0,
+      "assists": 2,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 10,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 2,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 1,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 901417,
+    "name": "Felix Xu",
+    "firstname": "Felix",
+    "lastname": "Xu",
+    "age": 30,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/901417.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9014,
+      "name": "Ironbridge Forest",
+      "logo": "https://media.api-sports.io/football/teams/9014.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "6.828571",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 20,
+      "on": 14
+     },
+     "goals": {
+      "total": 7,
+      "conceded": 0,
+      "assists": 1,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 8,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900110,
+    "name": "Kevin Underhill",
+    "firstname": "Kevin",
+    "lastname": "Underhill",
+    "age": 22,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900110.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9001,
+      "name": "Northbridge Athletic",
+      "logo": "https://media.api-sports.io/football/teams/9001.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Midfielder",
+      "rating": "6.757143",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 23,
+      "on": 12
+     },
+     "goals": {
+      "total": 6,
+      "conceded": 0,
+      "assists": 4,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 10,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 1,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900118,
+    "name": "Peter Okafor",
+    "firstname": "Peter",
+    "lastname": "Okafor",
+    "age": 30,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900118.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9001,
+      "name": "Northbridge Athletic",
+      "logo": "https://media.api-sports.io/football/teams/9001.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1000,
+      "number": null,
+      "position": "Attacker",
+      "rating": "7.035714",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 18,
+      "on": 12
+     },
+     "goals": {
+      "total": 6,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 6,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 1,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900210,
+    "name": "Victor Kamau",
+    "firstname": "Victor",
+    "lastname": "Kamau",
+    "age": 33,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900210.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9002,
+      "name": "Kingsport United",
+      "logo": "https://media.api-sports.io/football/teams/9002.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 13,
+      "lineups": 13,
+      "minutes": 1170,
+      "number": null,
+      "position": "Midfielder",
+      "rating": "6.600000",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 15,
+      "on": 12
+     },
+     "goals": {
+      "total": 6,
+      "conceded": 0,
+      "assists": 1,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 7,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 2,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900217,
+    "name": "Hassan Rasmussen",
+    "firstname": "Hassan",
+    "lastname": "Rasmussen",
+    "age": 26,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900217.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9002,
+      "name": "Kingsport United",
+      "logo": "https://media.api-sports.io/football/teams/9002.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 14,
+      "lineups": 14,
+      "minutes": 1260,
+      "number": null,
+      "position": "Attacker",
+      "rating": "6.814286",
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": 20,
+      "on": 13
+     },
+     "goals": {
+      "total": 6,
+      "conceded": 0,
+      "assists": 2,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": 9,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 5,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  }
+ ]
+}

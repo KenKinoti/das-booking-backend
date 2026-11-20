@@ -1,0 +1,2591 @@
+{
+ "get": "injuries",
+ "parameters": {
+  "league": "39",
+  "season": "2026"
+ },
+ "errors": [],
+ "results": 92,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "player": {
+    "id": 901911,
+    "name": "Peter Tembo",
+    "photo": "https://media.api-sports.io/football/players/901911.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9019,
+    "name": "Redcliffe Athletic",
+    "logo": "https://media.api-sports.io/football/teams/9019.png"
+   },
+   "fixture": {
+    "id": 1200112,
+    "timezone": "UTC",
+    "date": "2026-10-31T15:00:00+00:00",
+    "timestamp": 1793458800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901117,
+    "name": "Felix Ibsen",
+    "photo": "https://media.api-sports.io/football/players/901117.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9011,
+    "name": "Fairhaven Town",
+    "logo": "https://media.api-sports.io/football/teams/9011.png"
+   },
+   "fixture": {
+    "id": 1200113,
+    "timezone": "UTC",
+    "date": "2026-10-31T15:00:00+00:00",
+    "timestamp": 1793458800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901018,
+    "name": "Eli Achterberg",
+    "photo": "https://media.api-sports.io/football/players/901018.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9010,
+    "name": "Coldwater Rangers",
+    "logo": "https://media.api-sports.io/football/teams/9010.png"
+   },
+   "fixture": {
+    "id": 1200113,
+    "timezone": "UTC",
+    "date": "2026-10-31T15:00:00+00:00",
+    "timestamp": 1793458800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901710,
+    "name": "Victor Fairley",
+    "photo": "https://media.api-sports.io/football/players/901710.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "fixture": {
+    "id": 1200114,
+    "timezone": "UTC",
+    "date": "2026-10-31T15:00:00+00:00",
+    "timestamp": 1793458800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901712,
+    "name": "Umar Dlamini",
+    "photo": "https://media.api-sports.io/football/players/901712.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "fixture": {
+    "id": 1200114,
+    "timezone": "UTC",
+    "date": "2026-10-31T15:00:00+00:00",
+    "timestamp": 1793458800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901610,
+    "name": "Peter Tembo",
+    "photo": "https://media.api-sports.io/football/players/901610.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9016,
+    "name": "Marlow Heath",
+    "logo": "https://media.api-sports.io/football/teams/9016.png"
+   },
+   "fixture": {
+    "id": 1200114,
+    "timezone": "UTC",
+    "date": "2026-10-31T15:00:00+00:00",
+    "timestamp": 1793458800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901508,
+    "name": "Quinn Holloway",
+    "photo": "https://media.api-sports.io/football/players/901508.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9015,
+    "name": "Larkspur Villa",
+    "logo": "https://media.api-sports.io/football/teams/9015.png"
+   },
+   "fixture": {
+    "id": 1200115,
+    "timezone": "UTC",
+    "date": "2026-10-31T15:00:00+00:00",
+    "timestamp": 1793458800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900510,
+    "name": "Ivan Castell",
+    "photo": "https://media.api-sports.io/football/players/900510.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9005,
+    "name": "Hollowmere Town",
+    "logo": "https://media.api-sports.io/football/teams/9005.png"
+   },
+   "fixture": {
+    "id": 1200115,
+    "timezone": "UTC",
+    "date": "2026-10-31T15:00:00+00:00",
+    "timestamp": 1793458800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900507,
+    "name": "Kevin Gathoni",
+    "photo": "https://media.api-sports.io/football/players/900507.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9005,
+    "name": "Hollowmere Town",
+    "logo": "https://media.api-sports.io/football/teams/9005.png"
+   },
+   "fixture": {
+    "id": 1200115,
+    "timezone": "UTC",
+    "date": "2026-10-31T15:00:00+00:00",
+    "timestamp": 1793458800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900704,
+    "name": "Dennis Juma",
+    "photo": "https://media.api-sports.io/football/players/900704.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9007,
+    "name": "Westholm Wanderers",
+    "logo": "https://media.api-sports.io/football/teams/9007.png"
+   },
+   "fixture": {
+    "id": 1200116,
+    "timezone": "UTC",
+    "date": "2026-10-31T17:30:00+00:00",
+    "timestamp": 1793467800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900210,
+    "name": "Victor Kamau",
+    "photo": "https://media.api-sports.io/football/players/900210.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9002,
+    "name": "Kingsport United",
+    "logo": "https://media.api-sports.io/football/teams/9002.png"
+   },
+   "fixture": {
+    "id": 1200117,
+    "timezone": "UTC",
+    "date": "2026-10-31T17:30:00+00:00",
+    "timestamp": 1793467800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900404,
+    "name": "George Fairley",
+    "photo": "https://media.api-sports.io/football/players/900404.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9004,
+    "name": "Riverside City",
+    "logo": "https://media.api-sports.io/football/teams/9004.png"
+   },
+   "fixture": {
+    "id": 1200118,
+    "timezone": "UTC",
+    "date": "2026-11-01T14:00:00+00:00",
+    "timestamp": 1793541600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901217,
+    "name": "Wesley Underhill",
+    "photo": "https://media.api-sports.io/football/players/901217.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9012,
+    "name": "Greywick County",
+    "logo": "https://media.api-sports.io/football/teams/9012.png"
+   },
+   "fixture": {
+    "id": 1200119,
+    "timezone": "UTC",
+    "date": "2026-11-01T16:30:00+00:00",
+    "timestamp": 1793550600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900117,
+    "name": "Tobias Quist",
+    "photo": "https://media.api-sports.io/football/players/900117.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9001,
+    "name": "Northbridge Athletic",
+    "logo": "https://media.api-sports.io/football/teams/9001.png"
+   },
+   "fixture": {
+    "id": 1200120,
+    "timezone": "UTC",
+    "date": "2026-11-02T20:00:00+00:00",
+    "timestamp": 1793649600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900107,
+    "name": "Kevin Varga",
+    "photo": "https://media.api-sports.io/football/players/900107.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9001,
+    "name": "Northbridge Athletic",
+    "logo": "https://media.api-sports.io/football/teams/9001.png"
+   },
+   "fixture": {
+    "id": 1200120,
+    "timezone": "UTC",
+    "date": "2026-11-02T20:00:00+00:00",
+    "timestamp": 1793649600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900817,
+    "name": "Victor Xu",
+    "photo": "https://media.api-sports.io/football/players/900817.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "logo": "https://media.api-sports.io/football/teams/9008.png"
+   },
+   "fixture": {
+    "id": 1200121,
+    "timezone": "UTC",
+    "date": "2026-11-07T15:00:00+00:00",
+    "timestamp": 1794063600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901914,
+    "name": "Amos Quist",
+    "photo": "https://media.api-sports.io/football/players/901914.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9019,
+    "name": "Redcliffe Athletic",
+    "logo": "https://media.api-sports.io/football/teams/9019.png"
+   },
+   "fixture": {
+    "id": 1200121,
+    "timezone": "UTC",
+    "date": "2026-11-07T15:00:00+00:00",
+    "timestamp": 1794063600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901418,
+    "name": "Oscar Petrov",
+    "photo": "https://media.api-sports.io/football/players/901418.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9014,
+    "name": "Ironbridge Forest",
+    "logo": "https://media.api-sports.io/football/teams/9014.png"
+   },
+   "fixture": {
+    "id": 1200122,
+    "timezone": "UTC",
+    "date": "2026-11-07T15:00:00+00:00",
+    "timestamp": 1794063600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901110,
+    "name": "Peter Ekwueme",
+    "photo": "https://media.api-sports.io/football/players/901110.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9011,
+    "name": "Fairhaven Town",
+    "logo": "https://media.api-sports.io/football/teams/9011.png"
+   },
+   "fixture": {
+    "id": 1200122,
+    "timezone": "UTC",
+    "date": "2026-11-07T15:00:00+00:00",
+    "timestamp": 1794063600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901107,
+    "name": "Eli Castell",
+    "photo": "https://media.api-sports.io/football/players/901107.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9011,
+    "name": "Fairhaven Town",
+    "logo": "https://media.api-sports.io/football/teams/9011.png"
+   },
+   "fixture": {
+    "id": 1200122,
+    "timezone": "UTC",
+    "date": "2026-11-07T15:00:00+00:00",
+    "timestamp": 1794063600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901011,
+    "name": "Moses Petrov",
+    "photo": "https://media.api-sports.io/football/players/901011.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9010,
+    "name": "Coldwater Rangers",
+    "logo": "https://media.api-sports.io/football/teams/9010.png"
+   },
+   "fixture": {
+    "id": 1200124,
+    "timezone": "UTC",
+    "date": "2026-11-07T15:00:00+00:00",
+    "timestamp": 1794063600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901517,
+    "name": "Wesley Mwangi",
+    "photo": "https://media.api-sports.io/football/players/901517.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9015,
+    "name": "Larkspur Villa",
+    "logo": "https://media.api-sports.io/football/teams/9015.png"
+   },
+   "fixture": {
+    "id": 1200124,
+    "timezone": "UTC",
+    "date": "2026-11-07T15:00:00+00:00",
+    "timestamp": 1794063600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901508,
+    "name": "Quinn Holloway",
+    "photo": "https://media.api-sports.io/football/players/901508.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9015,
+    "name": "Larkspur Villa",
+    "logo": "https://media.api-sports.io/football/teams/9015.png"
+   },
+   "fixture": {
+    "id": 1200124,
+    "timezone": "UTC",
+    "date": "2026-11-07T15:00:00+00:00",
+    "timestamp": 1794063600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901514,
+    "name": "Zane Varga",
+    "photo": "https://media.api-sports.io/football/players/901514.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9015,
+    "name": "Larkspur Villa",
+    "logo": "https://media.api-sports.io/football/teams/9015.png"
+   },
+   "fixture": {
+    "id": 1200124,
+    "timezone": "UTC",
+    "date": "2026-11-07T15:00:00+00:00",
+    "timestamp": 1794063600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 902017,
+    "name": "Tobias Achterberg",
+    "photo": "https://media.api-sports.io/football/players/902017.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9020,
+    "name": "Thornbury City",
+    "logo": "https://media.api-sports.io/football/teams/9020.png"
+   },
+   "fixture": {
+    "id": 1200125,
+    "timezone": "UTC",
+    "date": "2026-11-07T15:00:00+00:00",
+    "timestamp": 1794063600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900512,
+    "name": "Yusuf Gathoni",
+    "photo": "https://media.api-sports.io/football/players/900512.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9005,
+    "name": "Hollowmere Town",
+    "logo": "https://media.api-sports.io/football/teams/9005.png"
+   },
+   "fixture": {
+    "id": 1200126,
+    "timezone": "UTC",
+    "date": "2026-11-07T17:30:00+00:00",
+    "timestamp": 1794072600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900711,
+    "name": "Caleb Tembo",
+    "photo": "https://media.api-sports.io/football/players/900711.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9007,
+    "name": "Westholm Wanderers",
+    "logo": "https://media.api-sports.io/football/teams/9007.png"
+   },
+   "fixture": {
+    "id": 1200127,
+    "timezone": "UTC",
+    "date": "2026-11-07T17:30:00+00:00",
+    "timestamp": 1794072600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900411,
+    "name": "Ryan Lindqvist",
+    "photo": "https://media.api-sports.io/football/players/900411.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9004,
+    "name": "Riverside City",
+    "logo": "https://media.api-sports.io/football/teams/9004.png"
+   },
+   "fixture": {
+    "id": 1200127,
+    "timezone": "UTC",
+    "date": "2026-11-07T17:30:00+00:00",
+    "timestamp": 1794072600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900406,
+    "name": "Felix Varga",
+    "photo": "https://media.api-sports.io/football/players/900406.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9004,
+    "name": "Riverside City",
+    "logo": "https://media.api-sports.io/football/teams/9004.png"
+   },
+   "fixture": {
+    "id": 1200127,
+    "timezone": "UTC",
+    "date": "2026-11-07T17:30:00+00:00",
+    "timestamp": 1794072600
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900205,
+    "name": "Caleb Nordin",
+    "photo": "https://media.api-sports.io/football/players/900205.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9002,
+    "name": "Kingsport United",
+    "logo": "https://media.api-sports.io/football/teams/9002.png"
+   },
+   "fixture": {
+    "id": 1200128,
+    "timezone": "UTC",
+    "date": "2026-11-08T14:00:00+00:00",
+    "timestamp": 1794146400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900918,
+    "name": "Yusuf Holloway",
+    "photo": "https://media.api-sports.io/football/players/900918.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9009,
+    "name": "Brackenfield",
+    "logo": "https://media.api-sports.io/football/teams/9009.png"
+   },
+   "fixture": {
+    "id": 1200128,
+    "timezone": "UTC",
+    "date": "2026-11-08T14:00:00+00:00",
+    "timestamp": 1794146400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900905,
+    "name": "Wesley Wekesa",
+    "photo": "https://media.api-sports.io/football/players/900905.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9009,
+    "name": "Brackenfield",
+    "logo": "https://media.api-sports.io/football/teams/9009.png"
+   },
+   "fixture": {
+    "id": 1200128,
+    "timezone": "UTC",
+    "date": "2026-11-08T14:00:00+00:00",
+    "timestamp": 1794146400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901811,
+    "name": "George Lindqvist",
+    "photo": "https://media.api-sports.io/football/players/901811.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9018,
+    "name": "Pendleton Borough",
+    "logo": "https://media.api-sports.io/football/teams/9018.png"
+   },
+   "fixture": {
+    "id": 1200129,
+    "timezone": "UTC",
+    "date": "2026-11-08T16:30:00+00:00",
+    "timestamp": 1794155400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901211,
+    "name": "Ryan Zielinski",
+    "photo": "https://media.api-sports.io/football/players/901211.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9012,
+    "name": "Greywick County",
+    "logo": "https://media.api-sports.io/football/teams/9012.png"
+   },
+   "fixture": {
+    "id": 1200130,
+    "timezone": "UTC",
+    "date": "2026-11-09T20:00:00+00:00",
+    "timestamp": 1794254400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900611,
+    "name": "Umar Okafor",
+    "photo": "https://media.api-sports.io/football/players/900611.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9006,
+    "name": "Saint Albury",
+    "logo": "https://media.api-sports.io/football/teams/9006.png"
+   },
+   "fixture": {
+    "id": 1200130,
+    "timezone": "UTC",
+    "date": "2026-11-09T20:00:00+00:00",
+    "timestamp": 1794254400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901104,
+    "name": "Xavier Quist",
+    "photo": "https://media.api-sports.io/football/players/901104.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9011,
+    "name": "Fairhaven Town",
+    "logo": "https://media.api-sports.io/football/teams/9011.png"
+   },
+   "fixture": {
+    "id": 1200131,
+    "timezone": "UTC",
+    "date": "2026-11-14T15:00:00+00:00",
+    "timestamp": 1794668400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900806,
+    "name": "Victor Kamau",
+    "photo": "https://media.api-sports.io/football/players/900806.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "logo": "https://media.api-sports.io/football/teams/9008.png"
+   },
+   "fixture": {
+    "id": 1200131,
+    "timezone": "UTC",
+    "date": "2026-11-14T15:00:00+00:00",
+    "timestamp": 1794668400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901710,
+    "name": "Victor Fairley",
+    "photo": "https://media.api-sports.io/football/players/901710.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "fixture": {
+    "id": 1200132,
+    "timezone": "UTC",
+    "date": "2026-11-14T15:00:00+00:00",
+    "timestamp": 1794668400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901908,
+    "name": "Ryan Mwangi",
+    "photo": "https://media.api-sports.io/football/players/901908.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9019,
+    "name": "Redcliffe Athletic",
+    "logo": "https://media.api-sports.io/football/teams/9019.png"
+   },
+   "fixture": {
+    "id": 1200132,
+    "timezone": "UTC",
+    "date": "2026-11-14T15:00:00+00:00",
+    "timestamp": 1794668400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901507,
+    "name": "Quinn Kamau",
+    "photo": "https://media.api-sports.io/football/players/901507.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9015,
+    "name": "Larkspur Villa",
+    "logo": "https://media.api-sports.io/football/teams/9015.png"
+   },
+   "fixture": {
+    "id": 1200133,
+    "timezone": "UTC",
+    "date": "2026-11-14T15:00:00+00:00",
+    "timestamp": 1794668400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901014,
+    "name": "Oscar Lindqvist",
+    "photo": "https://media.api-sports.io/football/players/901014.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9010,
+    "name": "Coldwater Rangers",
+    "logo": "https://media.api-sports.io/football/teams/9010.png"
+   },
+   "fixture": {
+    "id": 1200135,
+    "timezone": "UTC",
+    "date": "2026-11-14T15:00:00+00:00",
+    "timestamp": 1794668400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900418,
+    "name": "Yusuf Mwangi",
+    "photo": "https://media.api-sports.io/football/players/900418.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9004,
+    "name": "Riverside City",
+    "logo": "https://media.api-sports.io/football/teams/9004.png"
+   },
+   "fixture": {
+    "id": 1200136,
+    "timezone": "UTC",
+    "date": "2026-11-14T17:30:00+00:00",
+    "timestamp": 1794677400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900414,
+    "name": "Dennis Quist",
+    "photo": "https://media.api-sports.io/football/players/900414.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9004,
+    "name": "Riverside City",
+    "logo": "https://media.api-sports.io/football/teams/9004.png"
+   },
+   "fixture": {
+    "id": 1200136,
+    "timezone": "UTC",
+    "date": "2026-11-14T17:30:00+00:00",
+    "timestamp": 1794677400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901618,
+    "name": "Eli Dlamini",
+    "photo": "https://media.api-sports.io/football/players/901618.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9016,
+    "name": "Marlow Heath",
+    "logo": "https://media.api-sports.io/football/teams/9016.png"
+   },
+   "fixture": {
+    "id": 1200136,
+    "timezone": "UTC",
+    "date": "2026-11-14T17:30:00+00:00",
+    "timestamp": 1794677400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901614,
+    "name": "Liam Kamau",
+    "photo": "https://media.api-sports.io/football/players/901614.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9016,
+    "name": "Marlow Heath",
+    "logo": "https://media.api-sports.io/football/teams/9016.png"
+   },
+   "fixture": {
+    "id": 1200136,
+    "timezone": "UTC",
+    "date": "2026-11-14T17:30:00+00:00",
+    "timestamp": 1794677400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900918,
+    "name": "Yusuf Holloway",
+    "photo": "https://media.api-sports.io/football/players/900918.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9009,
+    "name": "Brackenfield",
+    "logo": "https://media.api-sports.io/football/teams/9009.png"
+   },
+   "fixture": {
+    "id": 1200137,
+    "timezone": "UTC",
+    "date": "2026-11-14T17:30:00+00:00",
+    "timestamp": 1794677400
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900111,
+    "name": "Caleb Gathoni",
+    "photo": "https://media.api-sports.io/football/players/900111.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9001,
+    "name": "Northbridge Athletic",
+    "logo": "https://media.api-sports.io/football/teams/9001.png"
+   },
+   "fixture": {
+    "id": 1200138,
+    "timezone": "UTC",
+    "date": "2026-11-15T14:00:00+00:00",
+    "timestamp": 1794751200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900107,
+    "name": "Kevin Varga",
+    "photo": "https://media.api-sports.io/football/players/900107.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9001,
+    "name": "Northbridge Athletic",
+    "logo": "https://media.api-sports.io/football/teams/9001.png"
+   },
+   "fixture": {
+    "id": 1200138,
+    "timezone": "UTC",
+    "date": "2026-11-15T14:00:00+00:00",
+    "timestamp": 1794751200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900115,
+    "name": "Wesley Sato",
+    "photo": "https://media.api-sports.io/football/players/900115.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9001,
+    "name": "Northbridge Athletic",
+    "logo": "https://media.api-sports.io/football/teams/9001.png"
+   },
+   "fixture": {
+    "id": 1200138,
+    "timezone": "UTC",
+    "date": "2026-11-15T14:00:00+00:00",
+    "timestamp": 1794751200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900618,
+    "name": "Kevin Okafor",
+    "photo": "https://media.api-sports.io/football/players/900618.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9006,
+    "name": "Saint Albury",
+    "logo": "https://media.api-sports.io/football/teams/9006.png"
+   },
+   "fixture": {
+    "id": 1200139,
+    "timezone": "UTC",
+    "date": "2026-11-15T16:30:00+00:00",
+    "timestamp": 1794760200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900218,
+    "name": "Victor Petrov",
+    "photo": "https://media.api-sports.io/football/players/900218.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9002,
+    "name": "Kingsport United",
+    "logo": "https://media.api-sports.io/football/teams/9002.png"
+   },
+   "fixture": {
+    "id": 1200139,
+    "timezone": "UTC",
+    "date": "2026-11-15T16:30:00+00:00",
+    "timestamp": 1794760200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901204,
+    "name": "Noah Fairley",
+    "photo": "https://media.api-sports.io/football/players/901204.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9012,
+    "name": "Greywick County",
+    "logo": "https://media.api-sports.io/football/teams/9012.png"
+   },
+   "fixture": {
+    "id": 1200140,
+    "timezone": "UTC",
+    "date": "2026-11-16T20:00:00+00:00",
+    "timestamp": 1794859200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901811,
+    "name": "George Lindqvist",
+    "photo": "https://media.api-sports.io/football/players/901811.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9018,
+    "name": "Pendleton Borough",
+    "logo": "https://media.api-sports.io/football/teams/9018.png"
+   },
+   "fixture": {
+    "id": 1200140,
+    "timezone": "UTC",
+    "date": "2026-11-16T20:00:00+00:00",
+    "timestamp": 1794859200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901717,
+    "name": "Victor Zielinski",
+    "photo": "https://media.api-sports.io/football/players/901717.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "fixture": {
+    "id": 1200141,
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901114,
+    "name": "Umar Ekwueme",
+    "photo": "https://media.api-sports.io/football/players/901114.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9011,
+    "name": "Fairhaven Town",
+    "logo": "https://media.api-sports.io/football/teams/9011.png"
+   },
+   "fixture": {
+    "id": 1200142,
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 902006,
+    "name": "Tobias Quist",
+    "photo": "https://media.api-sports.io/football/players/902006.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9020,
+    "name": "Thornbury City",
+    "logo": "https://media.api-sports.io/football/teams/9020.png"
+   },
+   "fixture": {
+    "id": 1200143,
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 902012,
+    "name": "Hassan Holloway",
+    "photo": "https://media.api-sports.io/football/players/902012.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9020,
+    "name": "Thornbury City",
+    "logo": "https://media.api-sports.io/football/teams/9020.png"
+   },
+   "fixture": {
+    "id": 1200143,
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900314,
+    "name": "Caleb Dlamini",
+    "photo": "https://media.api-sports.io/football/players/900314.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9003,
+    "name": "Ashford Rovers",
+    "logo": "https://media.api-sports.io/football/teams/9003.png"
+   },
+   "fixture": {
+    "id": 1200144,
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900417,
+    "name": "Xavier Achterberg",
+    "photo": "https://media.api-sports.io/football/players/900417.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9004,
+    "name": "Riverside City",
+    "logo": "https://media.api-sports.io/football/teams/9004.png"
+   },
+   "fixture": {
+    "id": 1200145,
+    "timezone": "UTC",
+    "date": "2026-11-21T15:00:00+00:00",
+    "timestamp": 1795273200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901005,
+    "name": "Hassan Mwangi",
+    "photo": "https://media.api-sports.io/football/players/901005.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9010,
+    "name": "Coldwater Rangers",
+    "logo": "https://media.api-sports.io/football/teams/9010.png"
+   },
+   "fixture": {
+    "id": 1200146,
+    "timezone": "UTC",
+    "date": "2026-11-21T17:30:00+00:00",
+    "timestamp": 1795282200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901014,
+    "name": "Oscar Lindqvist",
+    "photo": "https://media.api-sports.io/football/players/901014.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9010,
+    "name": "Coldwater Rangers",
+    "logo": "https://media.api-sports.io/football/teams/9010.png"
+   },
+   "fixture": {
+    "id": 1200146,
+    "timezone": "UTC",
+    "date": "2026-11-21T17:30:00+00:00",
+    "timestamp": 1795282200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900911,
+    "name": "Samuel Okafor",
+    "photo": "https://media.api-sports.io/football/players/900911.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9009,
+    "name": "Brackenfield",
+    "logo": "https://media.api-sports.io/football/teams/9009.png"
+   },
+   "fixture": {
+    "id": 1200146,
+    "timezone": "UTC",
+    "date": "2026-11-21T17:30:00+00:00",
+    "timestamp": 1795282200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901618,
+    "name": "Eli Dlamini",
+    "photo": "https://media.api-sports.io/football/players/901618.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9016,
+    "name": "Marlow Heath",
+    "logo": "https://media.api-sports.io/football/teams/9016.png"
+   },
+   "fixture": {
+    "id": 1200147,
+    "timezone": "UTC",
+    "date": "2026-11-21T17:30:00+00:00",
+    "timestamp": 1795282200
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900506,
+    "name": "Peter Okafor",
+    "photo": "https://media.api-sports.io/football/players/900506.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9005,
+    "name": "Hollowmere Town",
+    "logo": "https://media.api-sports.io/football/teams/9005.png"
+   },
+   "fixture": {
+    "id": 1200148,
+    "timezone": "UTC",
+    "date": "2026-11-22T14:00:00+00:00",
+    "timestamp": 1795356000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900515,
+    "name": "Dennis Fairley",
+    "photo": "https://media.api-sports.io/football/players/900515.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9005,
+    "name": "Hollowmere Town",
+    "logo": "https://media.api-sports.io/football/teams/9005.png"
+   },
+   "fixture": {
+    "id": 1200148,
+    "timezone": "UTC",
+    "date": "2026-11-22T14:00:00+00:00",
+    "timestamp": 1795356000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900618,
+    "name": "Kevin Okafor",
+    "photo": "https://media.api-sports.io/football/players/900618.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9006,
+    "name": "Saint Albury",
+    "logo": "https://media.api-sports.io/football/teams/9006.png"
+   },
+   "fixture": {
+    "id": 1200148,
+    "timezone": "UTC",
+    "date": "2026-11-22T14:00:00+00:00",
+    "timestamp": 1795356000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900606,
+    "name": "Umar Nordin",
+    "photo": "https://media.api-sports.io/football/players/900606.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9006,
+    "name": "Saint Albury",
+    "logo": "https://media.api-sports.io/football/teams/9006.png"
+   },
+   "fixture": {
+    "id": 1200148,
+    "timezone": "UTC",
+    "date": "2026-11-22T14:00:00+00:00",
+    "timestamp": 1795356000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900711,
+    "name": "Caleb Tembo",
+    "photo": "https://media.api-sports.io/football/players/900711.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9007,
+    "name": "Westholm Wanderers",
+    "logo": "https://media.api-sports.io/football/teams/9007.png"
+   },
+   "fixture": {
+    "id": 1200149,
+    "timezone": "UTC",
+    "date": "2026-11-22T16:30:00+00:00",
+    "timestamp": 1795365000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900708,
+    "name": "Brian Mwangi",
+    "photo": "https://media.api-sports.io/football/players/900708.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9007,
+    "name": "Westholm Wanderers",
+    "logo": "https://media.api-sports.io/football/teams/9007.png"
+   },
+   "fixture": {
+    "id": 1200149,
+    "timezone": "UTC",
+    "date": "2026-11-22T16:30:00+00:00",
+    "timestamp": 1795365000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900714,
+    "name": "Jonah Achterberg",
+    "photo": "https://media.api-sports.io/football/players/900714.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9007,
+    "name": "Westholm Wanderers",
+    "logo": "https://media.api-sports.io/football/teams/9007.png"
+   },
+   "fixture": {
+    "id": 1200149,
+    "timezone": "UTC",
+    "date": "2026-11-22T16:30:00+00:00",
+    "timestamp": 1795365000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901218,
+    "name": "George Baraka",
+    "photo": "https://media.api-sports.io/football/players/901218.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9012,
+    "name": "Greywick County",
+    "logo": "https://media.api-sports.io/football/teams/9012.png"
+   },
+   "fixture": {
+    "id": 1200149,
+    "timezone": "UTC",
+    "date": "2026-11-22T16:30:00+00:00",
+    "timestamp": 1795365000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900218,
+    "name": "Victor Petrov",
+    "photo": "https://media.api-sports.io/football/players/900218.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9002,
+    "name": "Kingsport United",
+    "logo": "https://media.api-sports.io/football/teams/9002.png"
+   },
+   "fixture": {
+    "id": 1200150,
+    "timezone": "UTC",
+    "date": "2026-11-23T20:00:00+00:00",
+    "timestamp": 1795464000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900212,
+    "name": "Jonah Castell",
+    "photo": "https://media.api-sports.io/football/players/900212.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9002,
+    "name": "Kingsport United",
+    "logo": "https://media.api-sports.io/football/teams/9002.png"
+   },
+   "fixture": {
+    "id": 1200150,
+    "timezone": "UTC",
+    "date": "2026-11-23T20:00:00+00:00",
+    "timestamp": 1795464000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901514,
+    "name": "Zane Varga",
+    "photo": "https://media.api-sports.io/football/players/901514.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9015,
+    "name": "Larkspur Villa",
+    "logo": "https://media.api-sports.io/football/teams/9015.png"
+   },
+   "fixture": {
+    "id": 1200151,
+    "timezone": "UTC",
+    "date": "2026-11-28T15:00:00+00:00",
+    "timestamp": 1795878000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900810,
+    "name": "Hassan Gathoni",
+    "photo": "https://media.api-sports.io/football/players/900810.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "logo": "https://media.api-sports.io/football/teams/9008.png"
+   },
+   "fixture": {
+    "id": 1200151,
+    "timezone": "UTC",
+    "date": "2026-11-28T15:00:00+00:00",
+    "timestamp": 1795878000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900807,
+    "name": "Oscar Holloway",
+    "photo": "https://media.api-sports.io/football/players/900807.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9008,
+    "name": "Eastmoor Albion",
+    "logo": "https://media.api-sports.io/football/teams/9008.png"
+   },
+   "fixture": {
+    "id": 1200151,
+    "timezone": "UTC",
+    "date": "2026-11-28T15:00:00+00:00",
+    "timestamp": 1795878000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901718,
+    "name": "Peter Sato",
+    "photo": "https://media.api-sports.io/football/players/901718.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9017,
+    "name": "Oakvale United",
+    "logo": "https://media.api-sports.io/football/teams/9017.png"
+   },
+   "fixture": {
+    "id": 1200152,
+    "timezone": "UTC",
+    "date": "2026-11-28T15:00:00+00:00",
+    "timestamp": 1795878000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900310,
+    "name": "Liam Sato",
+    "photo": "https://media.api-sports.io/football/players/900310.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9003,
+    "name": "Ashford Rovers",
+    "logo": "https://media.api-sports.io/football/teams/9003.png"
+   },
+   "fixture": {
+    "id": 1200153,
+    "timezone": "UTC",
+    "date": "2026-11-28T15:00:00+00:00",
+    "timestamp": 1795878000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901117,
+    "name": "Felix Ibsen",
+    "photo": "https://media.api-sports.io/football/players/901117.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9011,
+    "name": "Fairhaven Town",
+    "logo": "https://media.api-sports.io/football/teams/9011.png"
+   },
+   "fixture": {
+    "id": 1200153,
+    "timezone": "UTC",
+    "date": "2026-11-28T15:00:00+00:00",
+    "timestamp": 1795878000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901411,
+    "name": "Eli Fairley",
+    "photo": "https://media.api-sports.io/football/players/901411.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9014,
+    "name": "Ironbridge Forest",
+    "logo": "https://media.api-sports.io/football/teams/9014.png"
+   },
+   "fixture": {
+    "id": 1200155,
+    "timezone": "UTC",
+    "date": "2026-11-28T15:00:00+00:00",
+    "timestamp": 1795878000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900110,
+    "name": "Kevin Underhill",
+    "photo": "https://media.api-sports.io/football/players/900110.png",
+    "type": "Missing Fixture",
+    "reason": "Ankle Injury"
+   },
+   "team": {
+    "id": 9001,
+    "name": "Northbridge Athletic",
+    "logo": "https://media.api-sports.io/football/teams/9001.png"
+   },
+   "fixture": {
+    "id": 1200156,
+    "timezone": "UTC",
+    "date": "2026-11-28T17:30:00+00:00",
+    "timestamp": 1795887000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900112,
+    "name": "Zane Rasmussen",
+    "photo": "https://media.api-sports.io/football/players/900112.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9001,
+    "name": "Northbridge Athletic",
+    "logo": "https://media.api-sports.io/football/teams/9001.png"
+   },
+   "fixture": {
+    "id": 1200156,
+    "timezone": "UTC",
+    "date": "2026-11-28T17:30:00+00:00",
+    "timestamp": 1795887000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901311,
+    "name": "Yusuf Holloway",
+    "photo": "https://media.api-sports.io/football/players/901311.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9013,
+    "name": "Harrowgate Park",
+    "logo": "https://media.api-sports.io/football/teams/9013.png"
+   },
+   "fixture": {
+    "id": 1200156,
+    "timezone": "UTC",
+    "date": "2026-11-28T17:30:00+00:00",
+    "timestamp": 1795887000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900613,
+    "name": "Noah Nordin",
+    "photo": "https://media.api-sports.io/football/players/900613.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9006,
+    "name": "Saint Albury",
+    "logo": "https://media.api-sports.io/football/teams/9006.png"
+   },
+   "fixture": {
+    "id": 1200157,
+    "timezone": "UTC",
+    "date": "2026-11-28T17:30:00+00:00",
+    "timestamp": 1795887000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901018,
+    "name": "Eli Achterberg",
+    "photo": "https://media.api-sports.io/football/players/901018.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9010,
+    "name": "Coldwater Rangers",
+    "logo": "https://media.api-sports.io/football/teams/9010.png"
+   },
+   "fixture": {
+    "id": 1200157,
+    "timezone": "UTC",
+    "date": "2026-11-28T17:30:00+00:00",
+    "timestamp": 1795887000
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901204,
+    "name": "Noah Fairley",
+    "photo": "https://media.api-sports.io/football/players/901204.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9012,
+    "name": "Greywick County",
+    "logo": "https://media.api-sports.io/football/teams/9012.png"
+   },
+   "fixture": {
+    "id": 1200158,
+    "timezone": "UTC",
+    "date": "2026-11-29T14:00:00+00:00",
+    "timestamp": 1795960800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901214,
+    "name": "Peter Tembo",
+    "photo": "https://media.api-sports.io/football/players/901214.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9012,
+    "name": "Greywick County",
+    "logo": "https://media.api-sports.io/football/teams/9012.png"
+   },
+   "fixture": {
+    "id": 1200158,
+    "timezone": "UTC",
+    "date": "2026-11-29T14:00:00+00:00",
+    "timestamp": 1795960800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901610,
+    "name": "Peter Tembo",
+    "photo": "https://media.api-sports.io/football/players/901610.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9016,
+    "name": "Marlow Heath",
+    "logo": "https://media.api-sports.io/football/teams/9016.png"
+   },
+   "fixture": {
+    "id": 1200158,
+    "timezone": "UTC",
+    "date": "2026-11-29T14:00:00+00:00",
+    "timestamp": 1795960800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901811,
+    "name": "George Lindqvist",
+    "photo": "https://media.api-sports.io/football/players/901811.png",
+    "type": "Missing Fixture",
+    "reason": "Knee Injury"
+   },
+   "team": {
+    "id": 9018,
+    "name": "Pendleton Borough",
+    "logo": "https://media.api-sports.io/football/teams/9018.png"
+   },
+   "fixture": {
+    "id": 1200159,
+    "timezone": "UTC",
+    "date": "2026-11-29T16:30:00+00:00",
+    "timestamp": 1795969800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 901812,
+    "name": "Samuel Sato",
+    "photo": "https://media.api-sports.io/football/players/901812.png",
+    "type": "Questionable",
+    "reason": "Muscle Injury"
+   },
+   "team": {
+    "id": 9018,
+    "name": "Pendleton Borough",
+    "logo": "https://media.api-sports.io/football/teams/9018.png"
+   },
+   "fixture": {
+    "id": 1200159,
+    "timezone": "UTC",
+    "date": "2026-11-29T16:30:00+00:00",
+    "timestamp": 1795969800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900518,
+    "name": "Amos Varga",
+    "photo": "https://media.api-sports.io/football/players/900518.png",
+    "type": "Missing Fixture",
+    "reason": "Hamstring Injury"
+   },
+   "team": {
+    "id": 9005,
+    "name": "Hollowmere Town",
+    "logo": "https://media.api-sports.io/football/teams/9005.png"
+   },
+   "fixture": {
+    "id": 1200159,
+    "timezone": "UTC",
+    "date": "2026-11-29T16:30:00+00:00",
+    "timestamp": 1795969800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  },
+  {
+   "player": {
+    "id": 900505,
+    "name": "Moses Varga",
+    "photo": "https://media.api-sports.io/football/players/900505.png",
+    "type": "Missing Fixture",
+    "reason": "Suspended"
+   },
+   "team": {
+    "id": 9005,
+    "name": "Hollowmere Town",
+    "logo": "https://media.api-sports.io/football/teams/9005.png"
+   },
+   "fixture": {
+    "id": 1200159,
+    "timezone": "UTC",
+    "date": "2026-11-29T16:30:00+00:00",
+    "timestamp": 1795969800
+   },
+   "league": {
+    "id": 39,
+    "season": 2026,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null
+   }
+  }
+ ]
+}

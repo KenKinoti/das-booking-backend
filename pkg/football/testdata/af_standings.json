@@ -1,0 +1,929 @@
+{
+ "get": "standings",
+ "parameters": {
+  "league": "39",
+  "season": "2026"
+ },
+ "errors": [],
+ "results": 1,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": null,
+    "season": 2026,
+    "standings": [
+     [
+      {
+       "rank": 1,
+       "team": {
+        "id": 9005,
+        "name": "Hollowmere Town",
+        "logo": "https://media.api-sports.io/football/teams/9005.png"
+       },
+       "points": 28,
+       "goalsDiff": 19,
+       "group": "Premier League",
+       "form": "LLWWW",
+       "status": "same",
+       "description": "Promotion - Champions League (League phase: )",
+       "all": {
+        "played": 14,
+        "win": 9,
+        "draw": 1,
+        "lose": 4,
+        "goals": {
+         "for": 33,
+         "against": 14
+        }
+       },
+       "home": {
+        "played": 7,
+        "win": 6,
+        "draw": 0,
+        "lose": 1,
+        "goals": {
+         "for": 22,
+         "against": 6
+        }
+       },
+       "away": {
+        "played": 7,
+        "win": 3,
+        "draw": 1,
+        "lose": 3,
+        "goals": {
+         "for": 11,
+         "against": 8
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 2,
+       "team": {
+        "id": 9018,
+        "name": "Pendleton Borough",
+        "logo": "https://media.api-sports.io/football/teams/9018.png"
+       },
+       "points": 26,
+       "goalsDiff": 9,
+       "group": "Premier League",
+       "form": "DDDWL",
+       "status": "same",
+       "description": "Promotion - Champions League (League phase: )",
+       "all": {
+        "played": 14,
+        "win": 7,
+        "draw": 5,
+        "lose": 2,
+        "goals": {
+         "for": 23,
+         "against": 14
+        }
+       },
+       "home": {
+        "played": 6,
+        "win": 4,
+        "draw": 1,
+        "lose": 1,
+        "goals": {
+         "for": 10,
+         "against": 3
+        }
+       },
+       "away": {
+        "played": 8,
+        "win": 3,
+        "draw": 4,
+        "lose": 1,
+        "goals": {
+         "for": 13,
+         "against": 11
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 3,
+       "team": {
+        "id": 9007,
+        "name": "Westholm Wanderers",
+        "logo": "https://media.api-sports.io/football/teams/9007.png"
+       },
+       "points": 24,
+       "goalsDiff": 7,
+       "group": "Premier League",
+       "form": "WDWWW",
+       "status": "same",
+       "description": "Promotion - Champions League (League phase: )",
+       "all": {
+        "played": 14,
+        "win": 6,
+        "draw": 6,
+        "lose": 2,
+        "goals": {
+         "for": 21,
+         "against": 14
+        }
+       },
+       "home": {
+        "played": 6,
+        "win": 2,
+        "draw": 4,
+        "lose": 0,
+        "goals": {
+         "for": 9,
+         "against": 4
+        }
+       },
+       "away": {
+        "played": 8,
+        "win": 4,
+        "draw": 2,
+        "lose": 2,
+        "goals": {
+         "for": 12,
+         "against": 10
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 4,
+       "team": {
+        "id": 9014,
+        "name": "Ironbridge Forest",
+        "logo": "https://media.api-sports.io/football/teams/9014.png"
+       },
+       "points": 24,
+       "goalsDiff": 6,
+       "group": "Premier League",
+       "form": "WWWDL",
+       "status": "same",
+       "description": "Promotion - Champions League (League phase: )",
+       "all": {
+        "played": 14,
+        "win": 6,
+        "draw": 6,
+        "lose": 2,
+        "goals": {
+         "for": 20,
+         "against": 14
+        }
+       },
+       "home": {
+        "played": 7,
+        "win": 5,
+        "draw": 1,
+        "lose": 1,
+        "goals": {
+         "for": 10,
+         "against": 5
+        }
+       },
+       "away": {
+        "played": 7,
+        "win": 1,
+        "draw": 5,
+        "lose": 1,
+        "goals": {
+         "for": 10,
+         "against": 9
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 5,
+       "team": {
+        "id": 9002,
+        "name": "Kingsport United",
+        "logo": "https://media.api-sports.io/football/teams/9002.png"
+       },
+       "points": 24,
+       "goalsDiff": 2,
+       "group": "Premier League",
+       "form": "LWDDW",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 7,
+        "draw": 3,
+        "lose": 4,
+        "goals": {
+         "for": 26,
+         "against": 24
+        }
+       },
+       "home": {
+        "played": 7,
+        "win": 5,
+        "draw": 1,
+        "lose": 1,
+        "goals": {
+         "for": 14,
+         "against": 8
+        }
+       },
+       "away": {
+        "played": 7,
+        "win": 2,
+        "draw": 2,
+        "lose": 3,
+        "goals": {
+         "for": 12,
+         "against": 16
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 6,
+       "team": {
+        "id": 9006,
+        "name": "Saint Albury",
+        "logo": "https://media.api-sports.io/football/teams/9006.png"
+       },
+       "points": 23,
+       "goalsDiff": 9,
+       "group": "Premier League",
+       "form": "WLLDL",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 7,
+        "draw": 2,
+        "lose": 5,
+        "goals": {
+         "for": 33,
+         "against": 24
+        }
+       },
+       "home": {
+        "played": 6,
+        "win": 4,
+        "draw": 2,
+        "lose": 0,
+        "goals": {
+         "for": 16,
+         "against": 6
+        }
+       },
+       "away": {
+        "played": 8,
+        "win": 3,
+        "draw": 0,
+        "lose": 5,
+        "goals": {
+         "for": 17,
+         "against": 18
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 7,
+       "team": {
+        "id": 9004,
+        "name": "Riverside City",
+        "logo": "https://media.api-sports.io/football/teams/9004.png"
+       },
+       "points": 23,
+       "goalsDiff": 7,
+       "group": "Premier League",
+       "form": "LDDDW",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 6,
+        "draw": 5,
+        "lose": 3,
+        "goals": {
+         "for": 21,
+         "against": 14
+        }
+       },
+       "home": {
+        "played": 8,
+        "win": 5,
+        "draw": 2,
+        "lose": 1,
+        "goals": {
+         "for": 15,
+         "against": 6
+        }
+       },
+       "away": {
+        "played": 6,
+        "win": 1,
+        "draw": 3,
+        "lose": 2,
+        "goals": {
+         "for": 6,
+         "against": 8
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 8,
+       "team": {
+        "id": 9001,
+        "name": "Northbridge Athletic",
+        "logo": "https://media.api-sports.io/football/teams/9001.png"
+       },
+       "points": 21,
+       "goalsDiff": 8,
+       "group": "Premier League",
+       "form": "LDWWD",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 5,
+        "draw": 6,
+        "lose": 3,
+        "goals": {
+         "for": 21,
+         "against": 13
+        }
+       },
+       "home": {
+        "played": 8,
+        "win": 4,
+        "draw": 3,
+        "lose": 1,
+        "goals": {
+         "for": 13,
+         "against": 5
+        }
+       },
+       "away": {
+        "played": 6,
+        "win": 1,
+        "draw": 3,
+        "lose": 2,
+        "goals": {
+         "for": 8,
+         "against": 8
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 9,
+       "team": {
+        "id": 9017,
+        "name": "Oakvale United",
+        "logo": "https://media.api-sports.io/football/teams/9017.png"
+       },
+       "points": 20,
+       "goalsDiff": 5,
+       "group": "Premier League",
+       "form": "DWDLW",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 5,
+        "draw": 5,
+        "lose": 4,
+        "goals": {
+         "for": 19,
+         "against": 14
+        }
+       },
+       "home": {
+        "played": 8,
+        "win": 3,
+        "draw": 4,
+        "lose": 1,
+        "goals": {
+         "for": 12,
+         "against": 8
+        }
+       },
+       "away": {
+        "played": 6,
+        "win": 2,
+        "draw": 1,
+        "lose": 3,
+        "goals": {
+         "for": 7,
+         "against": 6
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 10,
+       "team": {
+        "id": 9012,
+        "name": "Greywick County",
+        "logo": "https://media.api-sports.io/football/teams/9012.png"
+       },
+       "points": 20,
+       "goalsDiff": -1,
+       "group": "Premier League",
+       "form": "DWWLW",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 5,
+        "draw": 5,
+        "lose": 4,
+        "goals": {
+         "for": 21,
+         "against": 22
+        }
+       },
+       "home": {
+        "played": 8,
+        "win": 3,
+        "draw": 3,
+        "lose": 2,
+        "goals": {
+         "for": 10,
+         "against": 9
+        }
+       },
+       "away": {
+        "played": 6,
+        "win": 2,
+        "draw": 2,
+        "lose": 2,
+        "goals": {
+         "for": 11,
+         "against": 13
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 11,
+       "team": {
+        "id": 9019,
+        "name": "Redcliffe Athletic",
+        "logo": "https://media.api-sports.io/football/teams/9019.png"
+       },
+       "points": 18,
+       "goalsDiff": -5,
+       "group": "Premier League",
+       "form": "DWWWL",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 5,
+        "draw": 3,
+        "lose": 6,
+        "goals": {
+         "for": 17,
+         "against": 22
+        }
+       },
+       "home": {
+        "played": 7,
+        "win": 2,
+        "draw": 2,
+        "lose": 3,
+        "goals": {
+         "for": 10,
+         "against": 13
+        }
+       },
+       "away": {
+        "played": 7,
+        "win": 3,
+        "draw": 1,
+        "lose": 3,
+        "goals": {
+         "for": 7,
+         "against": 9
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 12,
+       "team": {
+        "id": 9016,
+        "name": "Marlow Heath",
+        "logo": "https://media.api-sports.io/football/teams/9016.png"
+       },
+       "points": 17,
+       "goalsDiff": -3,
+       "group": "Premier League",
+       "form": "WLDLL",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 5,
+        "draw": 2,
+        "lose": 7,
+        "goals": {
+         "for": 16,
+         "against": 19
+        }
+       },
+       "home": {
+        "played": 6,
+        "win": 3,
+        "draw": 1,
+        "lose": 2,
+        "goals": {
+         "for": 7,
+         "against": 6
+        }
+       },
+       "away": {
+        "played": 8,
+        "win": 2,
+        "draw": 1,
+        "lose": 5,
+        "goals": {
+         "for": 9,
+         "against": 13
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 13,
+       "team": {
+        "id": 9015,
+        "name": "Larkspur Villa",
+        "logo": "https://media.api-sports.io/football/teams/9015.png"
+       },
+       "points": 16,
+       "goalsDiff": -3,
+       "group": "Premier League",
+       "form": "LDLDL",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 4,
+        "draw": 4,
+        "lose": 6,
+        "goals": {
+         "for": 25,
+         "against": 28
+        }
+       },
+       "home": {
+        "played": 7,
+        "win": 3,
+        "draw": 0,
+        "lose": 4,
+        "goals": {
+         "for": 12,
+         "against": 15
+        }
+       },
+       "away": {
+        "played": 7,
+        "win": 1,
+        "draw": 4,
+        "lose": 2,
+        "goals": {
+         "for": 13,
+         "against": 13
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 14,
+       "team": {
+        "id": 9013,
+        "name": "Harrowgate Park",
+        "logo": "https://media.api-sports.io/football/teams/9013.png"
+       },
+       "points": 15,
+       "goalsDiff": -2,
+       "group": "Premier League",
+       "form": "WLLLW",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 4,
+        "draw": 3,
+        "lose": 7,
+        "goals": {
+         "for": 18,
+         "against": 20
+        }
+       },
+       "home": {
+        "played": 7,
+        "win": 3,
+        "draw": 1,
+        "lose": 3,
+        "goals": {
+         "for": 9,
+         "against": 6
+        }
+       },
+       "away": {
+        "played": 7,
+        "win": 1,
+        "draw": 2,
+        "lose": 4,
+        "goals": {
+         "for": 9,
+         "against": 14
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 15,
+       "team": {
+        "id": 9009,
+        "name": "Brackenfield",
+        "logo": "https://media.api-sports.io/football/teams/9009.png"
+       },
+       "points": 15,
+       "goalsDiff": -7,
+       "group": "Premier League",
+       "form": "WLLLL",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 4,
+        "draw": 3,
+        "lose": 7,
+        "goals": {
+         "for": 16,
+         "against": 23
+        }
+       },
+       "home": {
+        "played": 6,
+        "win": 3,
+        "draw": 1,
+        "lose": 2,
+        "goals": {
+         "for": 10,
+         "against": 8
+        }
+       },
+       "away": {
+        "played": 8,
+        "win": 1,
+        "draw": 2,
+        "lose": 5,
+        "goals": {
+         "for": 6,
+         "against": 15
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 16,
+       "team": {
+        "id": 9020,
+        "name": "Thornbury City",
+        "logo": "https://media.api-sports.io/football/teams/9020.png"
+       },
+       "points": 15,
+       "goalsDiff": -10,
+       "group": "Premier League",
+       "form": "LWLLW",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 4,
+        "draw": 3,
+        "lose": 7,
+        "goals": {
+         "for": 19,
+         "against": 29
+        }
+       },
+       "home": {
+        "played": 8,
+        "win": 1,
+        "draw": 2,
+        "lose": 5,
+        "goals": {
+         "for": 12,
+         "against": 22
+        }
+       },
+       "away": {
+        "played": 6,
+        "win": 3,
+        "draw": 1,
+        "lose": 2,
+        "goals": {
+         "for": 7,
+         "against": 7
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 17,
+       "team": {
+        "id": 9003,
+        "name": "Ashford Rovers",
+        "logo": "https://media.api-sports.io/football/teams/9003.png"
+       },
+       "points": 15,
+       "goalsDiff": -11,
+       "group": "Premier League",
+       "form": "LWDWD",
+       "status": "same",
+       "description": null,
+       "all": {
+        "played": 14,
+        "win": 4,
+        "draw": 3,
+        "lose": 7,
+        "goals": {
+         "for": 20,
+         "against": 31
+        }
+       },
+       "home": {
+        "played": 7,
+        "win": 1,
+        "draw": 3,
+        "lose": 3,
+        "goals": {
+         "for": 11,
+         "against": 18
+        }
+       },
+       "away": {
+        "played": 7,
+        "win": 3,
+        "draw": 0,
+        "lose": 4,
+        "goals": {
+         "for": 9,
+         "against": 13
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 18,
+       "team": {
+        "id": 9010,
+        "name": "Coldwater Rangers",
+        "logo": "https://media.api-sports.io/football/teams/9010.png"
+       },
+       "points": 14,
+       "goalsDiff": -10,
+       "group": "Premier League",
+       "form": "WDLDD",
+       "status": "same",
+       "description": "Relegation - Championship",
+       "all": {
+        "played": 14,
+        "win": 3,
+        "draw": 5,
+        "lose": 6,
+        "goals": {
+         "for": 20,
+         "against": 30
+        }
+       },
+       "home": {
+        "played": 7,
+        "win": 2,
+        "draw": 4,
+        "lose": 1,
+        "goals": {
+         "for": 15,
+         "against": 13
+        }
+       },
+       "away": {
+        "played": 7,
+        "win": 1,
+        "draw": 1,
+        "lose": 5,
+        "goals": {
+         "for": 5,
+         "against": 17
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 19,
+       "team": {
+        "id": 9011,
+        "name": "Fairhaven Town",
+        "logo": "https://media.api-sports.io/football/teams/9011.png"
+       },
+       "points": 13,
+       "goalsDiff": -8,
+       "group": "Premier League",
+       "form": "LLWLL",
+       "status": "same",
+       "description": "Relegation - Championship",
+       "all": {
+        "played": 14,
+        "win": 4,
+        "draw": 1,
+        "lose": 9,
+        "goals": {
+         "for": 10,
+         "against": 18
+        }
+       },
+       "home": {
+        "played": 7,
+        "win": 3,
+        "draw": 0,
+        "lose": 4,
+        "goals": {
+         "for": 6,
+         "against": 8
+        }
+       },
+       "away": {
+        "played": 7,
+        "win": 1,
+        "draw": 1,
+        "lose": 5,
+        "goals": {
+         "for": 4,
+         "against": 10
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      },
+      {
+       "rank": 20,
+       "team": {
+        "id": 9008,
+        "name": "Eastmoor Albion",
+        "logo": "https://media.api-sports.io/football/teams/9008.png"
+       },
+       "points": 12,
+       "goalsDiff": -12,
+       "group": "Premier League",
+       "form": "WLLWD",
+       "status": "same",
+       "description": "Relegation - Championship",
+       "all": {
+        "played": 14,
+        "win": 3,
+        "draw": 3,
+        "lose": 8,
+        "goals": {
+         "for": 19,
+         "against": 31
+        }
+       },
+       "home": {
+        "played": 7,
+        "win": 2,
+        "draw": 2,
+        "lose": 3,
+        "goals": {
+         "for": 12,
+         "against": 14
+        }
+       },
+       "away": {
+        "played": 7,
+        "win": 1,
+        "draw": 1,
+        "lose": 5,
+        "goals": {
+         "for": 7,
+         "against": 17
+        }
+       },
+       "update": "2026-11-20T09:00:00.174Z"
+      }
+     ]
+    ]
+   }
+  }
+ ]
+}

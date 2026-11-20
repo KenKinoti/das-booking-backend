@@ -1,0 +1,56 @@
+{
+ "get": "predictions",
+ "parameters": {
+  "fixture": "1200141"
+ },
+ "errors": [],
+ "results": 1,
+ "paging": {
+  "current": 1,
+  "total": 1
+ },
+ "response": [
+  {
+   "predictions": {
+    "winner": {
+     "id": 9008,
+     "name": "Eastmoor Albion",
+     "comment": "Win or draw"
+    },
+    "win_or_draw": true,
+    "under_over": "+1.5",
+    "goals": {
+     "home": "-2.5",
+     "away": "-1.5"
+    },
+    "advice": "Double chance : Eastmoor Albion or draw",
+    "percent": {
+     "home": "40%",
+     "draw": "30%",
+     "away": "30%"
+    }
+   },
+   "league": {
+    "id": 39,
+    "name": "Premier League",
+    "country": "England",
+    "logo": "https://media.api-sports.io/football/leagues/39.png",
+    "flag": "https://media.api-sports.io/flags/gb.svg",
+    "season": 2026,
+    "round": "Regular Season - 15"
+   },
+   "teams": {
+    "home": {
+     "id": 9008,
+     "name": "Eastmoor Albion"
+    },
+    "away": {
+     "id": 9017,
+     "name": "Oakvale United"
+    }
+   },
+   "comparison": {},
+   "h2h": []
+  }
+ ]
+}

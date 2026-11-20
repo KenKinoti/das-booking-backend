@@ -1,0 +1,206 @@
+{
+ "get": "players",
+ "parameters": {
+  "team": "9005",
+  "season": "2026",
+  "page": "2"
+ },
+ "errors": [],
+ "results": 2,
+ "paging": {
+  "current": 2,
+  "total": 2
+ },
+ "response": [
+  {
+   "player": {
+    "id": 900521,
+    "name": "Victor Sato",
+    "firstname": "Victor",
+    "lastname": "Sato",
+    "age": 26,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900521.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 0,
+      "lineups": 0,
+      "minutes": 0,
+      "number": null,
+      "position": "Attacker",
+      "rating": null,
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": null,
+      "on": null
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": null,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  },
+  {
+   "player": {
+    "id": 900522,
+    "name": "Dennis Lindqvist",
+    "firstname": "Dennis",
+    "lastname": "Lindqvist",
+    "age": 32,
+    "birth": {
+     "date": null,
+     "place": null,
+     "country": "Testland"
+    },
+    "nationality": "Testland",
+    "height": null,
+    "weight": null,
+    "injured": false,
+    "photo": "https://media.api-sports.io/football/players/900522.png"
+   },
+   "statistics": [
+    {
+     "team": {
+      "id": 9005,
+      "name": "Hollowmere Town",
+      "logo": "https://media.api-sports.io/football/teams/9005.png"
+     },
+     "league": {
+      "id": 39,
+      "name": "Premier League",
+      "country": "England",
+      "logo": "https://media.api-sports.io/football/leagues/39.png",
+      "flag": null,
+      "season": 2026
+     },
+     "games": {
+      "appearences": 0,
+      "lineups": 0,
+      "minutes": 0,
+      "number": null,
+      "position": "Attacker",
+      "rating": null,
+      "captain": false
+     },
+     "substitutes": {
+      "in": 0,
+      "out": 0,
+      "bench": 0
+     },
+     "shots": {
+      "total": null,
+      "on": null
+     },
+     "goals": {
+      "total": 0,
+      "conceded": 0,
+      "assists": null,
+      "saves": null
+     },
+     "passes": {
+      "total": null,
+      "key": null,
+      "accuracy": null
+     },
+     "tackles": {
+      "total": null,
+      "blocks": null,
+      "interceptions": null
+     },
+     "duels": {
+      "total": null,
+      "won": null
+     },
+     "dribbles": {
+      "attempts": null,
+      "success": null,
+      "past": null
+     },
+     "fouls": {
+      "drawn": null,
+      "committed": null
+     },
+     "cards": {
+      "yellow": 0,
+      "yellowred": 0,
+      "red": 0
+     },
+     "penalty": {
+      "won": null,
+      "commited": null,
+      "scored": 0,
+      "missed": 0,
+      "saved": null
+     }
+    }
+   ]
+  }
+ ]
+}
