@@ -512,8 +512,12 @@ func (h *Handler) sourcesView() gin.H {
 	st := h.S.FreeSettingsGet()
 	op, fo := h.S.FreeKeys()
 	out := []SourceView{}
+	af, _ := h.S.Keys()
 	for _, p := range FreeProviders {
 		inf := sourceInfo[p]
+		if x, ok := winSourceInfoFor(p); ok { // v2.18 sources (win_handler.go)
+			inf = x
+		}
 		v := SourceView{Key: p, Name: providerName(p), Enabled: st.Enabled[p], Base: h.S.baseOf(p), Docs: inf[0], FreeTier: inf[1], What: inf[2],
 			Budget: st.Budgets[p], Period: "day", Usage: h.S.FreeUsage(p)}
 		if p == ProviderOddsPapi || p == ProviderFDOrg {
@@ -523,6 +527,9 @@ func (h *Handler) sourcesView() gin.H {
 				k = fo
 			}
 			v.HasKey, v.KeyHint = k != "", mask(k)
+		}
+		if p == ProviderAFPred {
+			v.NeedsKey, v.HasKey, v.KeyHint = true, af != "", mask(af)
 		}
 		if monthlyFree(p) {
 			v.Period = "month"
@@ -555,14 +562,17 @@ func (h *Handler) sourcesView() gin.H {
 	for k := range KenyanOP {
 		kn = append(kn, k)
 	}
-	return gin.H{"sources": out,
+	view := gin.H{"sources": out,
 		"oddspapi": gin.H{"bookmakers": splitList(st.OddsPapiBookmakers, []string{"betika"}), "kenyan_known": kn, "tournaments_mapped": tours},
 		"fdcouk":   gin.H{"main": main, "new_countries": upperList(st.FDCOUKNew), "seasons": st.FDCOUKSeasons, "last_seed_at": st.LastSeedAt, "matches": hm},
 		"fdorg":    gin.H{"competitions": fdo},
 		"news": gin.H{"expiry_days": st.NewsExpiryDays, "confirm_domains": st.NewsConfirmDomains, "confirm_window_days": 7, "max_per_team_day": 2,
 			"google": st.NewsGoogle, "languages": NewsLanguages},
-		"jackpot":     gin.H{"weights": st.JackpotWeights, "sharing": st.JackpotSharing, "top_n": 10},
-		"attribution": "Results and closing odds: football-data.co.uk. Club ratings and probabilities: clubelo.com. Cross-check: football-data.org. Prices: OddsPapi. News: Google News, GDELT and the publishers' feeds (links only)."}
+		"jackpot": gin.H{"weights": st.JackpotWeights, "sharing": st.JackpotSharing, "top_n": 10},
+		"attribution": "Results and closing odds: football-data.co.uk. Club ratings and probabilities: clubelo.com. Cross-check: football-data.org. Prices: OddsPapi. News: Google News, GDELT and the publishers' feeds (links only). " +
+			"Crowd prices: Polymarket. Fixtures and results: openfootball (public domain). Hit-rate history: Club Football Match Data (xgabora, MIT)."}
+	h.winSourcesView(view) // v2.18
+	return view
 }
 
 func (h *Handler) sources(c *gin.Context) { ok(c, h.sourcesView()) }
@@ -589,6 +599,7 @@ type SourcesPatch struct {
 	NewsGoogle         map[string]string  `json:"news_google"`
 	JackpotWeights     map[string]float64 `json:"jackpot_weights"`
 	JackpotSharing     *SharingOpts       `json:"jackpot_sharing"`
+	WinPatch                              // v2.18: Polymarket limits / leagues, openfootball files (win_handler.go)
 }
 
 // SaveSources applies a patch.
@@ -599,10 +610,10 @@ func (s *Service) SaveSources(p SourcesPatch, by string) error {
 		if v == nil {
 			return nil
 		}
-		k := strings.TrimSpace(*v)
-		if strings.HasPrefix(k, "••••") {
+		if strings.HasPrefix(strings.TrimSpace(*v), "••••") {
 			return nil
 		}
+		k := NormalizeKey(*v)
 		if k != "" && (len(k) < 8 || len(k) > 200 || strings.ContainsAny(k, " \t\r\n")) {
 			return inputErr("That doesn't look like an API key. Paste the key exactly as the provider's dashboard shows it.")
 		}
@@ -722,6 +733,9 @@ func (s *Service) SaveSources(p SourcesPatch, by string) error {
 		}
 		up["jackpot_sharing"] = mustJSON(sh)
 	}
+	if err := s.SaveWinSources(p.WinPatch); err != nil {
+		return err
+	}
 	return s.DB.Model(&FreeSettings{}).Where("id = 1").Updates(up).Error
 }
 
@@ -756,6 +770,9 @@ func (s *Service) TestFreeSource(ctx context.Context, provider string) TestResul
 		return res
 	}
 	s.ClearBackoff(provider)
+	if r, ok := s.testWinSource(ctx, provider, done); ok { // v2.18 sources
+		return r
+	}
 	var err error
 	var out *callOut
 	switch provider {
@@ -824,7 +841,7 @@ func (h *Handler) testSource(c *gin.Context) {
 	}
 	_ = c.ShouldBindJSON(&in)
 	if !isFreeProvider(in.Provider) || in.Provider == ProviderFeeds {
-		fail(c, http.StatusBadRequest, "VALIDATION", "Provider must be oddspapi, clubelo, fdcouk, fdorg, google_news or gdelt.")
+		fail(c, http.StatusBadRequest, "VALIDATION", "Provider must be oddspapi, clubelo, fdcouk, fdorg, google_news, gdelt, apifootball_pred, polymarket or openfootball.")
 		return
 	}
 	ok(c, h.S.TestFreeSource(c.Request.Context(), in.Provider))

@@ -20,7 +20,8 @@ func init() {
 		Title: "Football fixtures",
 		Description: "Lists football matches (enabled competitions: top European leagues, UEFA, Kenyan and African football, AFCON / World Cup qualifiers) " +
 			"with kickoff, status and score, the model's win/draw/win probabilities, the best odds per outcome with the bookmaker, the de-margined market " +
-			"probabilities and value flags (selections where the model's estimate is clearly above the market). Use for 'what games are on today?', " +
+			"probabilities and value flags (selections where the model's estimate is clearly above the market), DASYIN's one-line verdict (pick · chance · " +
+			"tier, safer pick, draw alert) and, after full time, whether the pick frozen before kickoff was correct or wrong. Use for 'what games are on today?', " +
 			"'Arsenal's next match', 'any value this weekend?'. Probabilities are estimates, never certainties. Then use football_match_analysis for one match.",
 		InputSchema: tObj(map[string]any{
 			"date":        tDate("Matches on this day (business time zone), YYYY-MM-DD; default the next days"),
@@ -155,6 +156,13 @@ func fbFixtureCard(f map[string]any) map[string]any {
 			edges = append(edges, tPick(e, "label", "model_p", "market_p", "edge", "best_price", "bookmaker", "ev"))
 		}
 		m["value"] = edges
+	}
+	// v2.18: the one-line verdict and the ✓/✗ (tools_football_win.go).
+	if v := tObjOf(f["verdict"]); v != nil {
+		m["verdict"] = fbVerdictLine(v)
+	}
+	if rc := tObjOf(f["result_check"]); rc != nil {
+		m["result_check"] = fbCheckLine(rc)
 	}
 	return m
 }

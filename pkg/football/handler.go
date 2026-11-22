@@ -106,6 +106,8 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
 	}
 	// v2.17: free sources, news, team news, source check, jackpots (freehandler.go).
 	h.registerFree(g, sa)
+	// v2.18: scorecard, picks, consensus weights, history, jackpot plan (win_handler.go).
+	h.registerWin(g, sa)
 }
 
 func ok(c *gin.Context, v any) { c.JSON(http.StatusOK, gin.H{"success": true, "data": v}) }
@@ -227,15 +229,21 @@ func (h *Handler) fixtures(c *gin.Context) {
 		return
 	}
 	lim, _ := strconv.Atoi(c.Query("limit"))
+	minTier := strings.ToLower(strings.TrimSpace(c.Query("min_tier")))
+	if minTier != "" && tierRank(minTier) < 0 {
+		fail(c, http.StatusBadRequest, "VALIDATION", "min_tier must be strong, good, close or coinflip.")
+		return
+	}
 	rows, err := h.S.Fixtures(FixtureQuery{Date: c.Query("date"), From: from, To: to, Competition: qInt(c, "competition"), Status: c.Query("status"),
-		Q: c.Query("q"), Limit: lim, Org: org, User: user, TZ: loc})
+		Q: c.Query("q"), Limit: lim, Org: org, User: user, TZ: loc, MinTier: minTier})
 	if err != nil {
 		h.err(c, err)
 		return
 	}
 	h.S.addTeamNewsCounts(rows, org)
 	st, _ := h.S.Settings()
-	ok(c, gin.H{"fixtures": rows, "count": len(rows), "now": h.S.Now(), "last_run_at": st.LastRunAt, "timezone": loc.String(), "disclaimer": Disclaimer})
+	ok(c, gin.H{"fixtures": rows, "count": len(rows), "now": h.S.Now(), "last_run_at": st.LastRunAt, "timezone": loc.String(), "disclaimer": Disclaimer,
+		"last_weekend": h.S.LastWeekendBanner(loc)})
 }
 
 func (h *Handler) analysis(c *gin.Context) {

@@ -105,6 +105,12 @@ func footballJackpotAnalyse(c *Ctx, a map[string]any) (any, error) {
 			}
 		}
 		x := tPick(g, "n", "home", "away", "kickoff", "odds", "probs", "pick", "pick_p", "second", "certainty", "draw_lean")
+		if v := tObjOf(g["verdict"]); v != nil { // v2.18: tier and draw alert
+			x["tier"] = tS(tObjOf(v["tier"]), "label")
+			if da := tObjOf(v["draw_alert"]); da != nil && da["on"] == true {
+				x["draw_alert"] = tS(da, "why")
+			}
+		}
 		x["sources_used"] = strings.Join(srcs, ", ")
 		ev := []string{}
 		for _, e := range tList(g["evidence"]) {
@@ -154,6 +160,20 @@ func footballJackpotAnalyse(c *Ctx, a map[string]any) (any, error) {
 		res["url"] = tURL("/football/jackpots/" + tS(j, "id"))
 		if gr := tObjOf(d["grading"]); gr != nil {
 			res["grading"] = gr
+		}
+		// v2.18: the review after grading and the per-game marks.
+		if rv := tObjOf(d["review"]); rv != nil {
+			res["review"] = tPick(rv, "complete", "correct", "of", "expected", "low", "high", "favourites_correct", "draws_actual", "draws_expected",
+				"safer_hits", "safer_of", "headline", "text")
+		}
+		marks := []map[string]any{}
+		for _, g := range tList(d["games"]) {
+			if rc := tObjOf(g["result_check"]); rc != nil {
+				marks = append(marks, map[string]any{"n": g["n"], "label": rc["label"], "result": rc["result"], "score": rc["score"], "summary": rc["summary"]})
+			}
+		}
+		if len(marks) > 0 {
+			res["marks"] = marks
 		}
 	} else {
 		res["url"] = tURL("/football/jackpots")

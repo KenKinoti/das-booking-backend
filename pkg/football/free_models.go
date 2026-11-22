@@ -42,8 +42,10 @@ const (
 	ProviderFeeds    = "feeds"
 )
 
-// FreeProviders in settings order.
-var FreeProviders = []string{ProviderOddsPapi, ProviderClubElo, ProviderFDCOUK, ProviderFDOrg, ProviderGNews, ProviderGDELT, ProviderFeeds}
+// FreeProviders in settings order (v2.18 adds API-Football predictions,
+// Polymarket and openfootball: win_models.go).
+var FreeProviders = []string{ProviderOddsPapi, ProviderClubElo, ProviderFDCOUK, ProviderFDOrg, ProviderGNews, ProviderGDELT, ProviderFeeds,
+	ProviderAFPred, ProviderPolymarket, ProviderOpenFootball}
 
 // FreeSettings is the platform's settings row for the free sources (id 1).
 type FreeSettings struct {
@@ -78,7 +80,7 @@ type SharingOpts struct {
 
 // Default budgets: requests per period (OddsPapi per month, the rest per day).
 var defaultFreeBudgets = map[string]int{ProviderOddsPapi: 230, ProviderClubElo: 40, ProviderFDCOUK: 60, ProviderFDOrg: 300,
-	ProviderGNews: 150, ProviderGDELT: 150, ProviderFeeds: 300}
+	ProviderGNews: 150, ProviderGDELT: 150, ProviderFeeds: 300, ProviderAFPred: 60, ProviderPolymarket: 30, ProviderOpenFootball: 15}
 
 // DefaultJackpotWeights blend the per-game probabilities.
 var DefaultJackpotWeights = map[string]float64{"jackpot": 0.25, "market": 0.45, "clubelo": 0.15, "model": 0.15}
@@ -484,9 +486,11 @@ type Jackpot struct {
 	LastML         []string   `json:"-" gorm:"column:last_ml;type:text;serializer:json"`
 	LastMLP        float64    `json:"-" gorm:"column:last_ml_p"`
 	LastAnalysedAt *time.Time `json:"last_analysed_at"`
-	GradedAt       *time.Time `json:"graded_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	// v2.18: the per-game chances and picks frozen at close (jackpot_win.go).
+	Frozen    *JackpotFrozen `json:"-" gorm:"type:text;serializer:json"`
+	GradedAt  *time.Time     `json:"graded_at"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 func (Jackpot) TableName() string { return "fb_jackpots" }

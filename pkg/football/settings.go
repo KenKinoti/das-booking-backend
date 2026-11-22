@@ -355,10 +355,10 @@ func (s *Service) SaveSettings(p SettingsPatch, by string) error {
 		if v == nil {
 			return nil
 		}
-		k := strings.TrimSpace(*v)
-		if strings.HasPrefix(k, "••••") {
+		if strings.HasPrefix(strings.TrimSpace(*v), "••••") {
 			return nil // the masked value came back unchanged
 		}
+		k := NormalizeKey(*v)
 		if k != "" && (len(k) < 10 || len(k) > 200 || strings.ContainsAny(k, " \t\r\n")) {
 			return inputErr("That doesn't look like an API key. Paste the key exactly as the provider's dashboard shows it.")
 		}

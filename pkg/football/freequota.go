@@ -18,6 +18,8 @@ import (
 // overrides for tests).
 type FreeBases struct {
 	OddsPapi, ClubElo, FDCOUK, FDOrg, GNews, GDELT string
+	// v2.18: Polymarket Gamma API and openfootball raw files (win_models.go).
+	Polymarket, OpenFootball string
 
 	mu       sync.Mutex
 	lastCall map[string]time.Time // per provider, for minimum spacing
@@ -51,6 +53,7 @@ func freeBasesFromEnv() *FreeBases {
 	return &FreeBases{OddsPapi: tr("FOOTBALL_ODDSPAPI_BASE", DefaultOddsPapiBase), ClubElo: tr("FOOTBALL_CLUBELO_BASE", DefaultClubEloBase),
 		FDCOUK: tr("FOOTBALL_FDCOUK_BASE", DefaultFDCOUKBase), FDOrg: tr("FOOTBALL_FDORG_BASE", DefaultFDOrgBase),
 		GNews: tr("FOOTBALL_GNEWS_BASE", DefaultGNewsBase), GDELT: tr("FOOTBALL_GDELT_BASE", DefaultGDELTBase), lastCall: map[string]time.Time{},
+		Polymarket: tr("FOOTBALL_POLYMARKET_BASE", DefaultPolymarketBase), OpenFootball: tr("FOOTBALL_OPENFOOTBALL_BASE", DefaultOpenFootballBase),
 		NoSpacing: strings.TrimSpace(envOr("FOOTBALL_FREE_NOSPACING", "")) == "1"}
 }
 
@@ -62,7 +65,8 @@ func (s *Service) bases() *FreeBases {
 }
 
 var freeProviderNames = map[string]string{ProviderOddsPapi: "OddsPapi", ProviderClubElo: "ClubElo", ProviderFDCOUK: "football-data.co.uk",
-	ProviderFDOrg: "football-data.org", ProviderGNews: "Google News", ProviderGDELT: "GDELT", ProviderFeeds: "RSS / Atom feeds"}
+	ProviderFDOrg: "football-data.org", ProviderGNews: "Google News", ProviderGDELT: "GDELT", ProviderFeeds: "RSS / Atom feeds",
+	ProviderAFPred: "API-Football predictions", ProviderPolymarket: "Polymarket", ProviderOpenFootball: "openfootball"}
 
 func isFreeProvider(p string) bool { _, ok := freeProviderNames[p]; return ok }
 
@@ -73,7 +77,8 @@ func monthlyFree(p string) bool { return p == ProviderOddsPapi }
 // calls a minute on the free tier; GDELT asks for one request every few
 // seconds; ClubElo / football-data.co.uk are small sites.
 var minSpacing = map[string]time.Duration{ProviderFDOrg: 6500 * time.Millisecond, ProviderGDELT: 5 * time.Second,
-	ProviderClubElo: 2 * time.Second, ProviderFDCOUK: 2 * time.Second, ProviderOddsPapi: 2 * time.Second, ProviderGNews: 2 * time.Second}
+	ProviderClubElo: 2 * time.Second, ProviderFDCOUK: 2 * time.Second, ProviderOddsPapi: 2 * time.Second, ProviderGNews: 2 * time.Second,
+	ProviderPolymarket: 1 * time.Second, ProviderOpenFootball: 2 * time.Second}
 
 // allowFree applies a free provider's budget: per day, except OddsPapi
 // (per month, paced over the rest of the month for low priorities).
@@ -131,6 +136,12 @@ func (s *Service) baseOf(p string) string {
 		return b.GNews
 	case ProviderGDELT:
 		return b.GDELT
+	case ProviderPolymarket:
+		return b.Polymarket
+	case ProviderOpenFootball:
+		return b.OpenFootball
+	case ProviderAFPred:
+		return s.AFBase
 	}
 	return ""
 }

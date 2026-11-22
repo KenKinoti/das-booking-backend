@@ -1,0 +1,16 @@
+[
+ {"id": 700001, "slug": "three-way", "title": "Alpha City vs Beta Town", "startTime": "2026-11-21T15:00:00Z",
+  "markets": [{"id": "1", "question": "Alpha City vs Beta Town — result", "outcomes": "[\"Alpha City\", \"Draw\", \"Beta Town\"]",
+   "outcomePrices": "[\"0.52\", \"0.27\", \"0.23\"]", "spread": 0.01, "liquidityNum": 90000, "sportsMarketType": "moneyline"}]},
+ {"id": "700002", "slug": "no-book", "title": "Gamma Rovers vs. Delta United", "eventDate": "2026-11-21",
+  "markets": [
+   {"id": "21", "groupItemTitle": "Gamma Rovers", "outcomes": "[\"Yes\", \"No\"]", "outcomePrices": "[\"0.40\", \"0.60\"]", "liquidity": "60000"},
+   {"id": "22", "groupItemTitle": "Draw (Gamma Rovers vs. Delta United)", "outcomes": "[\"Yes\", \"No\"]", "outcomePrices": "[\"0.28\", \"0.72\"]", "liquidity": "60000"},
+   {"id": "23", "groupItemTitle": "Delta United", "outcomes": "[\"Yes\", \"No\"]", "outcomePrices": "[\"0.34\", \"0.66\"]", "liquidity": "60000"}]},
+ {"id": "700003", "slug": "spreads-only", "title": "Epsilon FC vs. Zeta SC", "startTime": "2026-11-21T18:00:00Z",
+  "markets": [
+   {"id": "31", "question": "Epsilon FC -1.5", "groupItemTitle": "Epsilon FC", "sportsMarketType": "spreads", "outcomes": "[\"Yes\", \"No\"]", "outcomePrices": "[\"0.3\", \"0.7\"]", "bestBid": 0.29, "bestAsk": 0.31, "liquidityNum": 9000}]},
+ {"id": "700004", "slug": "closed", "title": "Eta Athletic vs. Theta Wanderers", "startTime": "2026-11-21T18:00:00Z", "closed": true,
+  "markets": [
+   {"id": "41", "groupItemTitle": "Eta Athletic", "closed": true, "outcomes": "[\"Yes\", \"No\"]", "outcomePrices": "[\"0.5\", \"0.5\"]", "bestBid": 0.49, "bestAsk": 0.51, "liquidityNum": 9000}]}
+]

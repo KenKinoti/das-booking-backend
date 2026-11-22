@@ -373,12 +373,17 @@ type Analysis struct {
 	SourceCheck *SourceCheck     `json:"source_check"`
 	ClubElo     *ClubEloOut      `json:"clubelo"`
 	KenyanOdds  *KenyanOddsOut   `json:"kenyan_odds"`
-	Sources     []SourceOut      `json:"sources"`
-	Stale       bool             `json:"stale"`
-	StaleItems  []string         `json:"stale_items"`
-	AsOf        *time.Time       `json:"as_of"`
-	GeneratedAt time.Time        `json:"generated_at"`
-	Disclaimer  string           `json:"disclaimer"`
+	// v2.18: the one-line verdict, the ✓/✗ after full time and the external
+	// probabilities (Polymarket, API-Football's prediction) — win_handler.go.
+	Verdict     *Verdict        `json:"verdict"`
+	ResultCheck *ResultCheck    `json:"result_check"`
+	SourceProbs []SourceProbOut `json:"source_probs"`
+	Sources     []SourceOut     `json:"sources"`
+	Stale       bool            `json:"stale"`
+	StaleItems  []string        `json:"stale_items"`
+	AsOf        *time.Time      `json:"as_of"`
+	GeneratedAt time.Time       `json:"generated_at"`
+	Disclaimer  string          `json:"disclaimer"`
 }
 
 // Disclaimer is shown with every analysis.
@@ -670,6 +675,12 @@ func (s *Service) Analysis(id int64, org, user string) (*Analysis, error) {
 	}
 	// v2.17: team news, news, source check, ClubElo, Kenyan bookmakers.
 	s.freeSections(a, f, org, user, upcoming, addSrc)
+	// v2.18: the verdict, the ✓/✗ and the new sources' probabilities (win_handler.go).
+	var pp *Prediction
+	if havePred {
+		pp = &pred
+	}
+	s.winSections(a, f, pp, addSrc)
 	return a, nil
 }
 
@@ -1258,6 +1269,9 @@ type FixtureRow struct {
 	Stale        bool                 `json:"stale"`
 	Watched      bool                 `json:"watched"`
 	TeamNews     *TeamNewsCount       `json:"team_news,omitempty"` // v2.17: confirmed injured/suspended facts per side (freeanalysis.go)
+	// v2.18 (win_freeze.go): the one-line verdict and the ✓/✗ after the game.
+	Verdict     *Verdict     `json:"verdict"`
+	ResultCheck *ResultCheck `json:"result_check"`
 }
 
 // FixtureQuery filters the list.
@@ -1270,6 +1284,7 @@ type FixtureQuery struct {
 	Limit       int
 	Org, User   string
 	TZ          *time.Location
+	MinTier     string // v2.18: keep rows whose verdict tier is at least this
 }
 
 // Fixtures lists fixtures with the model's probabilities, best odds and
@@ -1335,6 +1350,11 @@ func (s *Service) Fixtures(q FixtureQuery) ([]FixtureRow, error) {
 			watched[id] = true
 		}
 	}
+	ids := make([]int64, len(fx))
+	for i, f := range fx {
+		ids[i] = f.ID
+	}
+	vrows := s.verdictRows(ids) // v2.18 frozen verdicts
 	out := []FixtureRow{}
 	for _, f := range fx {
 		var c Competition
@@ -1344,11 +1364,13 @@ func (s *Service) Fixtures(q FixtureQuery) ([]FixtureRow, error) {
 			OddsAt: latestTime(f.OddsAFAt, f.OddsOAAt), Watched: watched[f.ID]}
 		r.Stale = f.Kickoff.After(now) && f.Kickoff.Sub(now) < 24*time.Hour && now.Sub(f.FetchedAt) > 12*time.Hour
 		var p Prediction
+		var pp *Prediction
 		kind := "current"
 		if !f.Kickoff.After(now) {
 			kind = "frozen"
 		}
 		if s.DB.Where("fixture_id = ? AND kind = ?", f.ID, kind).Limit(1).Find(&p).RowsAffected > 0 {
+			pp = &p
 			r.Model = &struct {
 				Home float64 `json:"home"`
 				Draw float64 `json:"draw"`
@@ -1379,6 +1401,14 @@ func (s *Service) Fixtures(q FixtureQuery) ([]FixtureRow, error) {
 			if len(r.Edges) > 3 {
 				r.Edges = r.Edges[:3]
 			}
+		}
+		var vr *VerdictRow
+		if x, ok := vrows[f.ID]; ok {
+			vr = &x
+		}
+		r.Verdict, r.ResultCheck = s.fixtureWin(f, c, mv, pp, vr)
+		if q.MinTier != "" && (r.Verdict == nil || tierRank(r.Verdict.Tier.Key) > tierRank(q.MinTier)) {
+			continue
 		}
 		out = append(out, r)
 	}

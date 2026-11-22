@@ -1,0 +1,8 @@
+{"name": "Test League 2026/27", "matches": [
+ {"round": "Matchday 1", "date": "2026-08-15", "time": "15:00", "team1": "Alpha City FC", "team2": "Beta Town FC", "score": {"ht": [1, 0], "ft": [2, 1]}},
+ {"round": "Matchday 1", "date": "2026-08-16", "time": "19:00 UTC+0", "team1": "Gamma Rovers", "team2": "Delta United", "score": [0, 0]},
+ {"round": "Matchday 1", "date": "2026-08-16", "time": "9:30 UTC+2", "team1": "Epsilon FC", "team2": "Zeta SC"},
+ {"round": "Matchday 2", "date": "2026-11-21", "time": "15:00", "team1": "Alpha City FC", "team2": "Gamma Rovers"},
+ {"round": "Matchday 2", "date": "2026-11-22", "team1": "Beta Town FC", "team2": "Delta United", "score": {"ft": [3, 3], "et": [4, 3]}},
+ {"round": "Matchday 2", "date": "bad", "team1": "X", "team2": "Y"}
+]}

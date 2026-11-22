@@ -122,6 +122,7 @@ type GameView struct {
 	ResultSource *string             `json:"result_source"`
 	Void         bool                `json:"void"`
 	Score        *string             `json:"score"`
+	ResultCheck  *JackpotCheck       `json:"result_check"` // v2.18: ✓/✗ against the frozen "Most likely" ticket
 }
 
 // TicketView is a saved ticket.
@@ -148,6 +149,8 @@ type JackpotView struct {
 	Tickets  []TicketView     `json:"tickets"`
 	Analysis *JackpotAnalysis `json:"analysis"`
 	Grading  *Grading         `json:"grading"`
+	Frozen   *JackpotFrozen   `json:"frozen"` // v2.18 (jackpot_win.go): chances stored at close
+	Review   *JackpotReview   `json:"review"` // v2.18: plain-English review after grading
 }
 
 // SourceP is one source of a game's probabilities.
@@ -196,6 +199,7 @@ type GameAnalysis struct {
 	DrawLean    bool                `json:"draw_lean"`
 	Public      map[string]float64  `json:"public"`
 	Evidence    []Evidence          `json:"evidence"`
+	Verdict     *Verdict            `json:"verdict,omitempty"` // v2.18: tier, draw alert, pick or draw
 	p           P3
 }
 
@@ -296,6 +300,9 @@ type SummaryGrade struct {
 	ExpectedCorrect   *float64 `json:"expected_correct"`
 	BestTicketCorrect *int     `json:"best_ticket_correct"`
 	Complete          bool     `json:"complete"`
+	ReviewCorrect     *int     `json:"review_correct"`  // v2.18: the frozen "Most likely" ticket
+	ReviewExpected    *float64 `json:"review_expected"` // v2.18
+	SaferHits         *int     `json:"safer_hits"`      // v2.18: pick or draw on every game
 }
 
 // JackpotSummary is a list row.
@@ -838,6 +845,7 @@ func (s *Service) DuplicateJackpot(org, user, id, name string) (*JackpotView, er
 	now := s.Now()
 	c := j
 	c.ID, c.CreatedAt, c.UpdatedAt, c.Grading, c.GradedAt, c.Status = uuid.NewString(), now, now, nil, nil, "draft"
+	c.Frozen = nil
 	c.Name = clip(strings.TrimSpace(name), 160)
 	if c.Name == "" {
 		c.Name = clip(j.Name+" (copy)", 160)
@@ -1079,6 +1087,7 @@ func (s *Service) JackpotViewOf(org, user, id string, topN int) (*JackpotView, e
 	for _, t := range ts {
 		v.Tickets = append(v.Tickets, s.ticketView(j, t, ps))
 	}
+	s.jackpotWin(v, &j, gs) // v2.18: frozen chances, review, per-game ✓/✗ (jackpot_win.go)
 	return v, nil
 }
 
@@ -1217,6 +1226,7 @@ func (s *Service) summaryOf(j Jackpot) JackpotSummary {
 	if sm.MostLikely.Picks == nil {
 		sm.MostLikely.Picks = []string{}
 	}
+	s.reviewSummary(&sm, j, gs) // v2.18
 	return sm
 }
 
@@ -1616,6 +1626,7 @@ func (s *Service) analyseJackpot(j Jackpot, gs []JackpotGame, org string) *Jackp
 	if pml > 0 {
 		a.Notes = append(a.Notes, fmt.Sprintf("Even the most likely ticket loses about %s times out of %s.", fmtThousands(math.Round(1/pml)-1), fmtThousands(math.Round(1/pml))))
 	}
+	s.jackpotVerdicts(a) // v2.18 (jackpot_win.go)
 	return a
 }
 

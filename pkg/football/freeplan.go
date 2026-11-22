@@ -444,6 +444,10 @@ func (s *Service) runFree(ctx context.Context, o RunOpts, sum *RunSummary) {
 			}
 		}
 	}
+	// v2.18 sources: API-Football predictions, Polymarket, openfootball (win_sources.go).
+	if ctx.Err() == nil {
+		s.runWinSources(ctx, o, sum)
+	}
 	if n := s.dedupeSeeded(); n > 0 {
 		sum.Notes = append(sum.Notes, fmt.Sprintf("%d seeded football-data.co.uk fixture(s) merged into API-Football's", n))
 	}
@@ -643,7 +647,7 @@ func (s *Service) RunFreeNow(ctx context.Context, providers []string, force bool
 		switch p {
 		case ProviderGNews, ProviderGDELT, ProviderFeeds, "news":
 			only["news"] = true
-		case ProviderOddsPapi, ProviderClubElo, ProviderFDCOUK, ProviderFDOrg, "jackpot":
+		case ProviderOddsPapi, ProviderClubElo, ProviderFDCOUK, ProviderFDOrg, "jackpot", ProviderAFPred, ProviderPolymarket, ProviderOpenFootball:
 			only[p] = true
 		}
 	}

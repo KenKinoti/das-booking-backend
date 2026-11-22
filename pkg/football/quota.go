@@ -37,6 +37,8 @@ type ProviderError struct {
 	Kind     string // no_key | bad_key | quota | rate_limited | plan | network | server | bad_request | backoff | budget
 	Status   int
 	Msg      string
+	Code     string // the provider's own error code when it sent one (e.g. INVALID_KEY)
+	Detail   string // the provider's own message, clipped
 }
 
 func (e *ProviderError) Error() string {
@@ -386,6 +388,9 @@ func (s *Service) call(ctx context.Context, sp callSpec) (*callOut, error) {
 			perr = &ProviderError{Provider: sp.Provider, Kind: "rate_limited", Status: resp.StatusCode, Msg: "too many requests"}
 		case resp.StatusCode == 401 || resp.StatusCode == 403 || e.ErrorCode == "INVALID_KEY" || e.ErrorCode == "MISSING_KEY" || e.ErrorCode == "DEACTIVATED_KEY":
 			perr = &ProviderError{Provider: sp.Provider, Kind: "bad_key", Status: resp.StatusCode, Msg: "the API key was refused"}
+			if e.ErrorCode == "DEACTIVATED_KEY" {
+				perr.Kind = "deactivated"
+			}
 		case resp.StatusCode >= 500:
 			perr = &ProviderError{Provider: sp.Provider, Kind: "server", Status: resp.StatusCode, Msg: "provider error"}
 		case resp.StatusCode >= 400:
@@ -402,6 +407,18 @@ func (s *Service) call(ctx context.Context, sp callSpec) (*callOut, error) {
 		}
 	}
 	lg.Remaining, lg.Results, lg.Cost = out.Remaining, out.Results, out.Cost
+	if perr != nil && sp.Provider == ProviderOddsAPI && resp.StatusCode >= 400 {
+		var e struct {
+			Message   string `json:"message"`
+			ErrorCode string `json:"error_code"`
+		}
+		if json.Unmarshal(body, &e) == nil {
+			perr.Code, perr.Detail = clip(e.ErrorCode, 60), clip(strings.ReplaceAll(e.Message, key, "***"), 200)
+		}
+	}
+	if perr != nil && sp.Provider == ProviderAPIFootball && perr.Detail == "" && perr.Kind == "bad_key" {
+		perr.Detail = clip(strings.ReplaceAll(perr.Msg, key, "***"), 200)
+	}
 	if perr != nil {
 		lg.Error = perr.Kind + ": " + clip(perr.Msg, 300)
 		// The provider still counts failed API-Football calls against the
@@ -488,7 +505,7 @@ func (s *Service) backoff(provider string, e *ProviderError) {
 		q := s.quotaRow(provider, period)
 		mins := math.Min(60, math.Pow(2, float64(q.Failures)))
 		until = now.Add(time.Duration(mins) * time.Minute)
-	case "bad_key":
+	case "bad_key", "deactivated":
 		until = now.Add(30 * time.Minute)
 	default:
 		s.DB.Model(&Quota{}).Where("provider = ? AND period = ?", provider, period).Updates(map[string]any{"last_error": clip(e.Error(), 300)})
@@ -529,6 +546,13 @@ type TestResult struct {
 	Used       *int   `json:"used,omitempty"`
 	Sports     int    `json:"soccer_competitions,omitempty"`
 	DurationMS int64  `json:"duration_ms"`
+	// Diagnostics shown under a failed test (never the key itself).
+	KeyHint         string `json:"key_hint,omitempty"`         // "…1a2b (32 characters)"
+	KeyShape        string `json:"key_shape,omitempty"`        // warning when the key doesn't look like this provider's
+	HTTPStatus      int    `json:"http_status,omitempty"`      // the provider's HTTP status
+	ProviderCode    string `json:"provider_code,omitempty"`    // e.g. INVALID_KEY
+	ProviderMessage string `json:"provider_message,omitempty"` // the provider's own words
+	Host            string `json:"host,omitempty"`             // the address we called
 }
 
 // TestConnection checks a provider key with a free call (API-Football
@@ -542,11 +566,32 @@ func (s *Service) TestConnection(ctx context.Context, provider string) TestResul
 		return res
 	}
 	s.ClearBackoff(provider)
+	if provider == ProviderAPIFootball || provider == ProviderOddsAPI {
+		key, unreadable := s.savedKey(provider)
+		if unreadable {
+			return done("unreadable_key", "The saved "+providerName(provider)+" key couldn't be read — the server's encryption key has probably changed since it was saved. Paste the key again and save.")
+		}
+		res.KeyHint, res.KeyShape = KeyHint(key), KeyShapeHint(provider, key)
+		res.Host = s.AFBase
+		if provider == ProviderOddsAPI {
+			res.Host = s.OABase
+		}
+		if u, err := url.Parse(res.Host); err == nil && u.Host != "" {
+			res.Host = u.Host
+		}
+	}
+	failed := func(err error) TestResult {
+		var pe *ProviderError
+		if errors.As(err, &pe) {
+			res.HTTPStatus, res.ProviderCode, res.ProviderMessage = pe.Status, pe.Code, pe.Detail
+		}
+		return done(testCode(err), testMessage(provider, err))
+	}
 	switch provider {
 	case ProviderAPIFootball:
 		out, err := s.call(ctx, callSpec{Provider: provider, Endpoint: "status", Free: true, Task: "test connection"})
 		if err != nil {
-			return done(testCode(err), testMessage(provider, err))
+			return failed(err)
 		}
 		var st afStatus
 		// /status returns an object (some accounts return [] when the key is unknown).
@@ -561,7 +606,7 @@ func (s *Service) TestConnection(ctx context.Context, provider string) TestResul
 	case ProviderOddsAPI:
 		out, err := s.call(ctx, callSpec{Provider: provider, Endpoint: "/v4/sports", Free: true, Task: "test connection"})
 		if err != nil {
-			return done(testCode(err), testMessage(provider, err))
+			return failed(err)
 		}
 		var sports []OASport
 		_ = json.Unmarshal(out.Body, &sports)
@@ -598,7 +643,13 @@ func testMessage(provider string, err error) string {
 	case "no_key":
 		return "No " + n + " key saved yet. Paste the key and save first."
 	case "bad_key":
-		return n + " refused the key. Check it in the provider's dashboard and paste it again."
+		msg := n + " refused the key"
+		if pe.Code != "" || pe.Detail != "" {
+			msg += " (" + strings.Trim(pe.Code+" — "+pe.Detail, " —") + ")"
+		}
+		return msg + ". Copy the key again from " + n + "'s dashboard or sign-up email and paste it in its own box here."
+	case "deactivated":
+		return n + " says this key is deactivated (usually a cancelled subscription). Get a new key from " + n + " and paste it here."
 	case "quota":
 		return n + " says the quota is used up. It resets at the start of the next day (API-Football) or month (The Odds API)."
 	case "rate_limited":

@@ -443,11 +443,15 @@ func (s *Service) SourceCheckFor(f Fixture) SourceCheck {
 	if s.DB.Where("fixture_id = ?", f.ID).Limit(1).Find(&cf).RowsAffected > 0 {
 		ko.Values = append(ko.Values, SCValue{Source: ProviderClubElo, Value: cf.Date.Format("2006-01-02")})
 	}
+	ko.Values = append(ko.Values, s.ofKickoffValues(f)...) // v2.18: openfootball (openfootball.go)
 	// News mentioning a postponement in the last 3 days.
 	var pn []NewsItem
 	s.DB.Where("postponed AND published_at > ? AND id IN (SELECT news_id FROM fb_news_teams WHERE team_id IN ?)", now.AddDate(0, 0, -3), []int64{f.HomeID, f.AwayID}).
 		Order("published_at DESC").Limit(3).Find(&pn)
 	add(ko, scTime)
+	for _, it := range s.ofResultItems(f) { // v2.18: full-time score at API-Football v openfootball / football-data.org
+		add(it, scText)
+	}
 	if len(pn) > 0 {
 		it := SCItem{Key: "kickoff.news", Section: "kickoff", Label: "News about the date or venue", Status: "conflict", SourcesAgreeing: []string{},
 			Values: []SCValue{}, Disagreeing: []SCValue{}}

@@ -648,8 +648,9 @@ func AllModels() []any {
 	out := []any{&Settings{}, &Competition{}, &Team{}, &Fixture{}, &FixtureStat{}, &FixtureEvent{}, &Lineup{}, &FixturePlayer{},
 		&Player{}, &PlayerSeason{}, &Injury{}, &Standing{}, &H2H{}, &Odd{}, &Rating{}, &Prediction{}, &FetchLog{}, &Quota{},
 		&TaskState{}, &TeamAlias{}, &UnmatchedEvent{}, &Bet{}, &BankrollEntry{}, &Limits{}, &WatchItem{}, &ManualOdd{}}
-	// v2.17 (free sources, news, jackpots): free_models.go.
-	return append(out, FreeModels()...)
+	// v2.17 (free sources, news, jackpots): free_models.go; v2.18: win_models.go.
+	out = append(out, FreeModels()...)
+	return append(out, WinModels()...)
 }
 
 // Migrate creates the tables and seeds the settings row and the default
@@ -663,5 +664,8 @@ func Migrate(db *gorm.DB) error {
 	if err := seed(db); err != nil {
 		return err
 	}
-	return seedFree(db)
+	if err := seedFree(db); err != nil {
+		return err
+	}
+	return seedWin(db)
 }
