@@ -39,9 +39,35 @@ type customerRow struct {
 	AddressCountry  string
 	CountryCode     string
 	Currency        string
+	CompanyName     string
+	TaxNumber       string
 }
 
 func (c customerRow) name() string { return strings.TrimSpace(c.FirstName + " " + c.LastName) }
+
+// isCompany: the customer record has a company name.
+func (c customerRow) isCompany() bool { return strings.TrimSpace(c.CompanyName) != "" }
+
+// billName is the name a document is billed to: the company when there is one.
+func (c customerRow) billName() string {
+	if c.isCompany() {
+		return strings.TrimSpace(c.CompanyName)
+	}
+	return c.name()
+}
+
+// contact is the person at a company customer ("" when the person's name is
+// just the company name again, or for individuals).
+func (c customerRow) contact() string {
+	if !c.isCompany() {
+		return ""
+	}
+	n := c.name()
+	if strings.EqualFold(n, strings.TrimSpace(c.CompanyName)) {
+		return ""
+	}
+	return n
+}
 
 func (c customerRow) address() string {
 	lines := nonEmpty(c.AddressStreet, strings.TrimSpace(strings.Join(nonEmpty(c.AddressSuburb, c.AddressState, c.AddressPostcode), " ")))
@@ -66,12 +92,54 @@ func (h *Handler) hasTable(name string) bool { return h.DB.Migrator().HasTable(n
 
 const customerCols = "id, first_name, last_name, email, phone, address_street, address_suburb, address_state, address_postcode, address_country, country_code, currency"
 
+// customerSelect adds the business columns when the customers table has them
+// (it always does in production; some test schemas are minimal).
+func (h *Handler) customerSelect() string {
+	cols := customerCols
+	m := h.DB.Migrator()
+	if m.HasColumn("customers", "company_name") {
+		cols += ", COALESCE(company_name, '') AS company_name"
+	}
+	if m.HasColumn("customers", "tax_number") {
+		cols += ", COALESCE(tax_number, '') AS tax_number"
+	}
+	return cols
+}
+
+// companyFromCustomer fills in company billing for a document linked to a
+// customer whose record has a company name, unless the request says itself
+// whether it bills a company. The person on the record becomes the contact.
+func (h *Handler) companyFromCustomer(tx *gorm.DB, org string, in *invoiceInput) {
+	if in.ClientIsCompany != nil || in.CustomerID == nil || strings.TrimSpace(*in.CustomerID) == "" || !h.hasTable("customers") {
+		return
+	}
+	var cu customerRow
+	if err := tx.Table("customers").Select(h.customerSelect()).
+		Where("id = ? AND organization_id = ? AND deleted_at IS NULL", *in.CustomerID, org).Limit(1).Scan(&cu).Error; err != nil || cu.ID == "" || !cu.isCompany() {
+		return
+	}
+	name := strings.TrimSpace(in.ClientName)
+	if name != "" && !strings.EqualFold(name, cu.billName()) && !strings.EqualFold(name, cu.name()) {
+		return // a different name was typed on purpose
+	}
+	yes := true
+	in.ClientIsCompany = &yes
+	in.ClientName = cu.billName()
+	if in.ClientContact == nil {
+		contact := cu.contact()
+		in.ClientContact = &contact
+	}
+	if strings.TrimSpace(in.ClientTaxNumber) == "" {
+		in.ClientTaxNumber = cu.TaxNumber
+	}
+}
+
 func (h *Handler) loadCustomers(org string, ids []string, limit int) []customerRow {
 	out := []customerRow{}
 	if !h.hasTable("customers") {
 		return out
 	}
-	q := h.DB.Table("customers").Select(customerCols).Where("organization_id = ? AND deleted_at IS NULL", org)
+	q := h.DB.Table("customers").Select(h.customerSelect()).Where("organization_id = ? AND deleted_at IS NULL", org)
 	if ids != nil {
 		if len(ids) == 0 {
 			return out
@@ -122,6 +190,9 @@ type customerBilling struct {
 	Email          string      `json:"email"`
 	Phone          string      `json:"phone"`
 	Address        string      `json:"address"`
+	IsCompany      bool        `json:"is_company"`
+	Contact        string      `json:"contact"`    // the person at a company customer
+	TaxNumber      string      `json:"tax_number"` // from the customer record
 	Currency       string      `json:"currency"`
 	CurrencySource string      `json:"currency_source"` // customer | country | default
 	CountryCode    string      `json:"country_code"`
@@ -141,7 +212,8 @@ func (h *Handler) billingFor(cu customerRow, orgDefault, kind, org string) custo
 	if name == "" {
 		name = cu.AddressCountry
 	}
-	b := customerBilling{CustomerID: cu.ID, Name: cu.name(), Email: cu.Email, Phone: cu.Phone, Address: cu.address(),
+	b := customerBilling{CustomerID: cu.ID, Name: cu.billName(), Email: cu.Email, Phone: cu.Phone, Address: cu.address(),
+		IsCompany: cu.isCompany(), Contact: cu.contact(), TaxNumber: cu.TaxNumber,
 		Currency: cur, CurrencySource: src, CountryCode: code, CountryName: name, CC: []Recipient{}, CCEmails: []string{}}
 	to, cc := suggest(cu.Email, h.loadContacts(org, cu.ID), nil, kind)
 	b.To, b.CC = to, cc

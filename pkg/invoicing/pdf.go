@@ -454,6 +454,13 @@ func RenderPDF(inv *Invoice, b PDFBusiness, opt PDFOptions) ([]byte, error) {
 		d.SetX(d.left)
 		d.CellFormat(colW, 5.5, l, "", 2, "L", false, 0, "")
 	}
+	if attn := inv.AttentionLine(); attn != "" {
+		d.font("", 9.5, cInk)
+		for _, l := range d.lines(attn, colW-4) {
+			d.SetX(d.left)
+			d.CellFormat(colW, 4.8, l, "", 2, "L", false, 0, "")
+		}
+	}
 	d.font("", 9, cMuted)
 	var client []string
 	if inv.ClientAddress != "" {
@@ -857,6 +864,11 @@ func RenderReceipt(inv *Invoice, p Payment, b PDFBusiness, o ReceiptOptions) ([]
 	d.font("B", 11, cInk)
 	d.SetX(d.left)
 	d.CellFormat(colW, 6, inv.ClientName, "", 2, "L", false, 0, "")
+	if attn := inv.AttentionLine(); attn != "" {
+		d.font("", 9.5, cInk)
+		d.SetX(d.left)
+		d.CellFormat(colW, 4.8, attn, "", 2, "L", false, 0, "")
+	}
 	d.font("", 9, cMuted)
 	for _, l := range append(nonEmpty(inv.ClientEmail, inv.ClientPhone), d.lines(inv.ClientAddress, colW-4)...) {
 		if strings.TrimSpace(l) == "" {

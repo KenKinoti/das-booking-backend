@@ -5,6 +5,7 @@
 package invoicing
 
 import (
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -100,6 +101,11 @@ type Invoice struct {
 	ClientPhone     string    `json:"client_phone" gorm:"type:varchar(50)"`
 	ClientAddress   string    `json:"client_address" gorm:"type:text"`
 	ClientTaxNumber string    `json:"client_tax_number" gorm:"type:varchar(100)"`
+	// ClientIsCompany: billed to a company. ClientName is then the company's
+	// name (what lists, PDFs and statements show) and ClientContact the person
+	// it is for, printed as "Attn:" and used to greet them in emails.
+	ClientIsCompany bool      `json:"client_is_company" gorm:"not null;default:false"`
+	ClientContact   string    `json:"client_contact" gorm:"type:varchar(255)"`
 	Reference       string    `json:"reference" gorm:"type:varchar(255)"`
 	Title           string    `json:"title" gorm:"type:varchar(255)"`
 	IssueDate       time.Time `json:"issue_date" gorm:"type:date;index"`
@@ -328,4 +334,21 @@ func Migrate(db *gorm.DB) error {
 	}
 	BackfillBase(db)
 	return nil
+}
+
+// GreetingName is who an email about the document greets: the contact person
+// when a company is billed and one is named, otherwise the client's name.
+func (inv *Invoice) GreetingName() string {
+	if inv.ClientIsCompany && strings.TrimSpace(inv.ClientContact) != "" {
+		return strings.TrimSpace(inv.ClientContact)
+	}
+	return inv.ClientName
+}
+
+// AttentionLine is the "Attn: …" line under a company's name ("" when none).
+func (inv *Invoice) AttentionLine() string {
+	if inv.ClientIsCompany && strings.TrimSpace(inv.ClientContact) != "" {
+		return "Attn: " + strings.TrimSpace(inv.ClientContact)
+	}
+	return ""
 }

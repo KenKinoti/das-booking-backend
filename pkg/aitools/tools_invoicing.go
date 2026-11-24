@@ -27,6 +27,8 @@ func init() {
 			"customer":     tStr("Customer name or email to look up when you don't have the id"),
 			"client_name":  tStr("Client name for a one-off client with no customer record"),
 			"client_email": tStr("Client email (one-off client, or to override the customer's)"),
+			"client_is_company": tBool("Bill a company: client_name is then the company's name. Filled automatically for customers whose record has a company name."),
+			"client_contact":    tStr("When billing a company: the person it is for (printed as \"Attn:\" and greeted in the email). Optional."),
 			"items":        map[string]any{"type": "array", "description": "Line items (at least one)", "items": itemSchema, "minItems": 1},
 			"currency":     tStr("ISO 4217 currency (default: the customer's billing currency, else the organisation's)"),
 			"issue_date":   tDate("Issue date (default today)"),
@@ -256,7 +258,7 @@ func docPath(inv map[string]any) string {
 }
 
 func invoiceBrief(inv map[string]any) map[string]any {
-	m := tPick(inv, "id", "doc_type", "number", "client_name", "client_email", "customer_id", "currency", "total", "amount_paid", "balance_due", "days_overdue", "reference", "title")
+	m := tPick(inv, "id", "doc_type", "number", "client_name", "client_is_company", "client_contact", "client_email", "customer_id", "currency", "total", "amount_paid", "balance_due", "days_overdue", "reference", "title")
 	st := tS(inv, "display_status")
 	if st == "" {
 		st = tS(inv, "status")
@@ -520,6 +522,13 @@ func docCreate(c *Ctx, a map[string]any, docType string) (any, error) {
 		}
 		body["client_phone"] = tS(d, "phone")
 		body["client_address"] = tS(d, "address")
+		if b, ok := d["is_company"].(bool); ok && b {
+			body["client_is_company"] = true
+			body["client_contact"] = tS(d, "contact")
+			if t := tS(d, "tax_number"); t != "" {
+				body["client_tax_number"] = t
+			}
+		}
 		body["currency"] = tS(d, "currency")
 		if cc, ok := d["cc_emails"].([]any); ok {
 			body["cc_emails"] = cc
@@ -527,7 +536,7 @@ func docCreate(c *Ctx, a map[string]any, docType string) (any, error) {
 	} else if argStr(a, "client_name") == "" {
 		return nil, tErr("Pass customer_id, customer (name/email) or client_name")
 	}
-	copyArgs(body, a, "client_name", "client_email", "currency", "issue_date", "due_date", "reference", "title", "notes", "terms")
+	copyArgs(body, a, "client_name", "client_email", "client_is_company", "client_contact", "currency", "issue_date", "due_date", "reference", "title", "notes", "terms")
 	if cur, ok := body["currency"].(string); ok {
 		body["currency"] = strings.ToUpper(cur)
 	}
@@ -559,7 +568,7 @@ func invoicesUpdate(c *Ctx, a map[string]any) (any, error) {
 		return nil, err
 	}
 	body := map[string]any{"doc_type": tS(inv, "doc_type")}
-	for _, k := range []string{"customer_id", "client_name", "client_email", "client_phone", "client_address", "client_tax_number", "reference", "title", "currency", "prices_include_tax", "discount_type", "discount_value", "shipping_amount", "notes", "terms", "is_recurring", "recurrence_interval", "cc_emails"} {
+	for _, k := range []string{"customer_id", "client_name", "client_email", "client_phone", "client_address", "client_tax_number", "client_is_company", "client_contact", "reference", "title", "currency", "prices_include_tax", "discount_type", "discount_value", "shipping_amount", "notes", "terms", "is_recurring", "recurrence_interval", "cc_emails"} {
 		if v, ok := inv[k]; ok && v != nil {
 			body[k] = v
 		}
@@ -569,7 +578,7 @@ func invoicesUpdate(c *Ctx, a map[string]any) (any, error) {
 			body[k] = s
 		}
 	}
-	copyArgs(body, a, "customer_id", "client_name", "client_email", "currency", "issue_date", "due_date", "reference", "title", "notes", "terms")
+	copyArgs(body, a, "customer_id", "client_name", "client_email", "client_is_company", "client_contact", "currency", "issue_date", "due_date", "reference", "title", "notes", "terms")
 	if argHas(a, "items") {
 		items, err := c.buildItems(argList(a, "items"))
 		if err != nil {

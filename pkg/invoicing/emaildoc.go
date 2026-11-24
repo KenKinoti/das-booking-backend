@@ -82,19 +82,29 @@ func depositTotal(inv *Invoice) float64 {
 	return roundCur(d, inv.Currency)
 }
 
+// companyName is the billed company's name ("" when an individual is billed).
+func companyName(doc *Invoice) string {
+	if doc.ClientIsCompany {
+		return doc.ClientName
+	}
+	return ""
+}
+
 // emailVars are the placeholder values for doc (the client-facing copy).
 func emailVars(doc *Invoice, business, viewURL, payURL string, pay *Payment) map[string]string {
 	m := func(v float64) string { return FormatMoney(v, doc.Currency) }
 	typ := docLabel(doc.DocType)
 	v := map[string]string{
 		"type": typ, "type_lower": strings.ToLower(typ), "number": doc.Number, "business": business,
-		"client": doc.ClientName, "reference": doc.Reference, "title": doc.Title,
+		// client / client_name greet a person: the contact at a company when one is named.
+		"client": doc.GreetingName(), "bill_to": doc.ClientName, "company": companyName(doc), "contact": doc.ClientContact,
+		"reference": doc.Reference, "title": doc.Title,
 		"total": m(doc.Total), "amount_due": m(doc.BalanceDue), "balance_due": m(doc.BalanceDue),
 		"amount_paid": m(doc.AmountPaid), "deposit": m(depositTotal(doc)), "subtotal": m(doc.Subtotal),
 		"tax": m(doc.TaxTotal), "discount": m(doc.DiscountTotal), "shipping": m(doc.ShippingAmount),
 		"currency": doc.Currency, "issue_date": pdfDate(doc.IssueDate), "due_date": pdfDate(doc.DueDate),
 		"days_overdue": strconv.Itoa(doc.DaysOverdue), "link": viewURL, "pay_link": payURL,
-		"invoice_number": doc.Number, "client_name": doc.ClientName, "business_name": business,
+		"invoice_number": doc.Number, "client_name": doc.GreetingName(), "business_name": business,
 	}
 	if payURL == "" {
 		v["pay_link"] = viewURL

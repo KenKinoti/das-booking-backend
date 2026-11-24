@@ -333,6 +333,12 @@ type invoiceInput struct {
 	ClientPhone        string      `json:"client_phone"`
 	ClientAddress      string      `json:"client_address"`
 	ClientTaxNumber    string      `json:"client_tax_number"`
+	// ClientIsCompany / ClientContact: billing a company (client_name is the
+	// company) and the person it's for. Left out (nil) on an update, the saved
+	// values stay; left out on a new document linked to a customer whose record
+	// has a company name, they come from that customer.
+	ClientIsCompany *bool   `json:"client_is_company"`
+	ClientContact   *string `json:"client_contact"`
 	Reference          string      `json:"reference"`
 	Title              string      `json:"title"`
 	IssueDate          string      `json:"issue_date"`
@@ -365,6 +371,9 @@ type depositInput struct {
 
 func (in *invoiceInput) apply(inv *Invoice, s *Settings, now time.Time) error {
 	if strings.TrimSpace(in.ClientName) == "" {
+		if (in.ClientIsCompany != nil && *in.ClientIsCompany) || (in.ClientIsCompany == nil && inv.ClientIsCompany) {
+			return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Company name is required"}
+		}
 		return &apiError{http.StatusBadRequest, "VALIDATION_ERROR", "Client name is required"}
 	}
 	if len(in.Items) == 0 {
@@ -403,6 +412,15 @@ func (in *invoiceInput) apply(inv *Invoice, s *Settings, now time.Time) error {
 	inv.ClientPhone = in.ClientPhone
 	inv.ClientAddress = in.ClientAddress
 	inv.ClientTaxNumber = in.ClientTaxNumber
+	if in.ClientIsCompany != nil {
+		inv.ClientIsCompany = *in.ClientIsCompany
+	}
+	if in.ClientContact != nil {
+		inv.ClientContact = clipText(strings.TrimSpace(*in.ClientContact), 255)
+	}
+	if !inv.ClientIsCompany {
+		inv.ClientContact = ""
+	}
 	inv.Reference = in.Reference
 	inv.Title = in.Title
 	inv.IssueDate = issue
@@ -652,6 +670,7 @@ func (h *Handler) Create(c *gin.Context) {
 		if strings.TrimSpace(in.Currency) == "" && in.CustomerID != nil {
 			in.Currency = h.customerCurrency(tx, org, *in.CustomerID, s.Currency)
 		}
+		h.companyFromCustomer(tx, org, &in)
 		if err := in.apply(inv, s, h.now()); err != nil {
 			return err
 		}
@@ -727,6 +746,9 @@ func (h *Handler) Update(c *gin.Context) {
 			return err
 		}
 		prevCur, prevBase := inv.Currency, inv.BaseCurrency
+		if in.CustomerID != nil && (inv.CustomerID == nil || *inv.CustomerID != *in.CustomerID) {
+			h.companyFromCustomer(tx, org, &in)
+		}
 		if err := in.apply(inv, s, h.now()); err != nil {
 			return err
 		}
@@ -1262,6 +1284,7 @@ func (h *Handler) copyInvoice(tx *gorm.DB, src *Invoice, docType, user string, i
 	n := &Invoice{
 		ID: uuid.NewString(), OrganizationID: src.OrganizationID, DocType: docType, Status: StatusDraft,
 		CustomerID: src.CustomerID, ClientName: src.ClientName, ClientEmail: src.ClientEmail, ClientPhone: src.ClientPhone,
+		ClientIsCompany: src.ClientIsCompany, ClientContact: src.ClientContact,
 		ClientAddress: src.ClientAddress, ClientTaxNumber: src.ClientTaxNumber, Reference: src.Reference, Title: src.Title,
 		IssueDate: dateOnly(issue), DueDate: dateOnly(issue).AddDate(0, 0, days), Currency: src.Currency,
 		PricesIncludeTax: src.PricesIncludeTax, DiscountType: src.DiscountType, DiscountValue: src.DiscountValue,
@@ -2029,6 +2052,8 @@ func (h *Handler) Clients(c *gin.Context) {
 		Phone          string   `json:"phone"`
 		Address        string   `json:"address"`
 		TaxNumber      string   `json:"tax_number"`
+		IsCompany      bool     `json:"is_company"`
+		Contact        string   `json:"contact"`
 		Source         string   `json:"source"`
 		Currency       string   `json:"currency"`
 		CurrencySource string   `json:"currency_source"` // customer | country | default | last_used
@@ -2079,7 +2104,7 @@ func (h *Handler) Clients(c *gin.Context) {
 	out := []client{}
 	seen := map[string]bool{}
 	var rows []Invoice
-	h.DB.Select("customer_id, client_name, client_email, client_phone, client_address, client_tax_number, currency, created_at").
+	h.DB.Select("customer_id, client_name, client_email, client_phone, client_address, client_tax_number, client_is_company, client_contact, currency, created_at").
 		Where("organization_id = ?", org).Order("created_at DESC").Limit(1000).Find(&rows)
 	for _, r := range rows {
 		key := strings.ToLower(r.ClientName + "|" + r.ClientEmail)
@@ -2092,7 +2117,8 @@ func (h *Handler) Clients(c *gin.Context) {
 			last = strings.ToUpper(s.Currency)
 		}
 		cl := client{CustomerID: r.CustomerID, Name: r.ClientName, Email: r.ClientEmail, Phone: r.ClientPhone, Address: r.ClientAddress,
-			TaxNumber: r.ClientTaxNumber, Source: "invoices", Currency: last, CurrencySource: "last_used", LastCurrency: last, CCEmails: []string{}}
+			TaxNumber: r.ClientTaxNumber, IsCompany: r.ClientIsCompany, Contact: r.ClientContact,
+			Source: "invoices", Currency: last, CurrencySource: "last_used", LastCurrency: last, CCEmails: []string{}}
 		if r.CustomerID != nil {
 			if cu, found := byID[*r.CustomerID]; found {
 				withCustomer(&cl, cu)
@@ -2101,14 +2127,15 @@ func (h *Handler) Clients(c *gin.Context) {
 		out = append(out, cl)
 	}
 	for _, cu := range customers {
-		name := cu.name()
+		name := cu.billName()
 		key := strings.ToLower(name + "|" + cu.Email)
 		if seen[key] || name == "" {
 			continue
 		}
 		seen[key] = true
 		id := cu.ID
-		cl := client{CustomerID: &id, Name: name, Email: cu.Email, Phone: cu.Phone, Address: cu.address(), Source: "customers", CCEmails: []string{}}
+		cl := client{CustomerID: &id, Name: name, Email: cu.Email, Phone: cu.Phone, Address: cu.address(), TaxNumber: cu.TaxNumber,
+			IsCompany: cu.isCompany(), Contact: cu.contact(), Source: "customers", CCEmails: []string{}}
 		withCustomer(&cl, cu)
 		out = append(out, cl)
 	}
