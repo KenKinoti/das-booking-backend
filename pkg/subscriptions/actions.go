@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/outbox"
 	"sort"
 	"strings"
 	"time"
@@ -279,28 +280,52 @@ func (s *Service) Cancel(ctx context.Context, org, id, user string, in CancelInp
 
 // SendReminder emails the client a reminder for the oldest unpaid invoice now.
 func (s *Service) SendReminder(ctx context.Context, org, id, user, role string) (string, error) {
+	to, _, err := s.SendReminderReview(ctx, org, id, user, role, false)
+	return to, err
+}
+
+// SendReminderReview is SendReminder with the "Send now — I've reviewed it"
+// tick; reviewID is set when it waits in Pending review.
+func (s *Service) SendReminderReview(ctx context.Context, org, id, user, role string, sendNow bool) (string, string, error) {
 	sub, err := s.load(org, id)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	per, err := s.oldestUnpaid(id, "")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	today := s.Today(org)
 	st := s.SettingsFor(org)
 	d := s.datesFor(sub, per, st, s.warnedFor(per.ID), today)
 	subject, msg := s.reminderMessage(org, sub, d, today)
-	if err := s.clientReminder(ctx, s.userActor(org, user, role), sub, per, subject, msg); err != nil {
-		return "", err
+	key := fmt.Sprintf("%s|manual_reminder|%d", per.ID, s.now().UnixNano())
+	ev := Event{Key: key, SubscriptionID: id, PeriodID: per.ID, Stage: "manual_reminder", Audience: ToClient, Day: today, CreatedBy: user}
+	var meta map[string]any
+	if outbox.Active() {
+		ev.ID = uuidNew()
+		meta = map[string]any{"origin": "subscriptions", "origin_ref": ev.ID, "dated": true,
+			"context": []outbox.ContextLine{{Label: "Subscription", Value: strings.TrimSpace(sub.Number + " · " + sub.Name)}}}
 	}
-	if !per.Sent {
+	who := s.userActor(org, user, role)
+	body := map[string]any{"kind": "reminder", "subject": subject, "message": msg, "app_url": s.AppURL}
+	if sendNow {
+		body["send_now"] = true
+	}
+	reviewID, err := s.clientSend(ctx, who, per.InvoiceID, body, meta)
+	if err != nil {
+		return "", "", err
+	}
+	if !per.Sent && reviewID == "" {
 		s.DB.Model(&BillingPeriod{}).Where("id = ?", per.ID).Update("sent", true)
 	}
 	cu, _ := s.customer(org, sub.CustomerID)
-	s.record(org, Event{Key: fmt.Sprintf("%s|manual_reminder|%d", per.ID, s.now().UnixNano()), SubscriptionID: id, PeriodID: per.ID, Stage: "manual_reminder",
-		Audience: ToClient, Day: today, CreatedBy: user, Subject: s.sentSubject(org, subject, per.InvoiceNumber), Recipients: cu.Email, Status: "sent"})
-	return cu.Email, nil
+	ev.Subject, ev.Recipients, ev.Status, ev.ReviewID = s.sentSubject(org, subject, per.InvoiceNumber), cu.Email, "sent", reviewID
+	if reviewID != "" {
+		ev.Status = "waiting"
+	}
+	s.recordWithID(org, ev)
+	return cu.Email, reviewID, nil
 }
 
 // ---------------------------------------------------------------- digest

@@ -16,6 +16,8 @@ import (
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
+
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/outbox"
 )
 
 // ---------------------------------------------------------------- origin
@@ -255,6 +257,8 @@ type paymentEditInput struct {
 	AppURL       string `json:"app_url"`
 	// Hold holds the receipt email for the undo window (hold.go).
 	Hold bool `json:"hold"`
+	// SendNow: an approver sends it at once (Pending review, review.go).
+	SendNow bool `json:"send_now"`
 }
 
 // normalizeMethod maps loose spellings to a stored method.
@@ -450,7 +454,7 @@ func (h *Handler) UpdatePayment(c *gin.Context) {
 	}
 	resp := gin.H{"invoice": out, "changed": changed}
 	if in.EmailReceipt {
-		resp["receipt_email"] = h.emailReceipt(c, org, out.ID, pid, user, in.AppURL, in.Hold)
+		resp["receipt_email"] = h.emailReceipt(c, org, out.ID, pid, user, in.AppURL, in.Hold, in.SendNow)
 		if o, err := h.load(h.DB, org, out.ID, true); err == nil {
 			resp["invoice"] = o
 		}
@@ -485,14 +489,21 @@ type ReceiptEmailResult struct {
 	Held    bool       `json:"held,omitempty"`
 	SendAt  *time.Time `json:"send_at,omitempty"`
 	Seconds int        `json:"seconds,omitempty"`
+	// Queued: waiting for approval in Pending review (review.go).
+	Queued bool        `json:"queued"`
+	Review *outbox.Ref `json:"review,omitempty"`
 }
 
 // emailReceipt emails the receipt of payment pid to the client (recipients,
 // subject and message as the send dialog would suggest). Errors found by the
 // pre-send checks stop it; warnings don't. c may be nil (background sends).
 // hold holds it for the undo window first.
-func (h *Handler) emailReceipt(c *gin.Context, org, invID, pid, user, appURL string, hold bool) ReceiptEmailResult {
-	res, err := h.sendEmail(c, org, invID, sendInput{Kind: KindReceipt, PaymentID: pid, Mode: "email", AppURL: appURL, Hold: hold}, user)
+func (h *Handler) emailReceipt(c *gin.Context, org, invID, pid, user, appURL string, hold bool, sendNow ...bool) ReceiptEmailResult {
+	in := sendInput{Kind: KindReceipt, PaymentID: pid, Mode: "email", AppURL: appURL, Hold: hold}
+	if len(sendNow) > 0 {
+		in.SendNow = sendNow[0]
+	}
+	res, err := h.sendEmail(c, org, invID, in, user)
 	if err != nil {
 		out := ReceiptEmailResult{Reason: err.Error()}
 		var ce *checkError
@@ -505,6 +516,9 @@ func (h *Handler) emailReceipt(c *gin.Context, org, invID, pid, user, appURL str
 	if res.Hold != nil {
 		at := res.Hold.SendAt
 		out.Held, out.SendAt, out.Seconds = true, &at, res.Hold.Seconds
+	}
+	if q, rv := reviewJSON(res); rv != nil {
+		out.Queued, out.Review = q, rv.(*outbox.Ref)
 	}
 	return out
 }

@@ -302,8 +302,8 @@ func (s *Service) suspend(ctx context.Context, org string, sub *Subscription, pe
 		subject, msg := s.suspendedMessage(org, sub, per.DueDate)
 		if crow, ok := s.claim(org, Event{Key: key + "|client", SubscriptionID: sub.ID, PeriodID: per.ID, Stage: "suspend", Audience: ToClient, Day: today}); ok {
 			crow.Subject, crow.Recipients = s.sentSubject(org, subject, per.InvoiceNumber), cu.Email
-			err := s.clientReminder(ctx, who, sub, per, subject, msg)
-			s.finish(crow, "sent", err)
+			reviewID, err := s.clientReminder(ctx, who, sub, per, subject, msg, s.meta(sub, crow, "Automatic: suspension notice for "+serviceName(sub), true))
+			s.finishSend(crow, reviewID, err)
 			if err != nil && res != nil {
 				res.Errors = append(res.Errors, fmt.Sprintf("%s: suspension notice: %v", sub.Number, err))
 			}
@@ -432,9 +432,9 @@ func (s *Service) unsuspend(ctx context.Context, org string, sub *Subscription, 
 		msg := fmt.Sprintf("Hi %s,\n\nThank you — we've received your payment, and your %s is active again.", first, serviceName(sub)) +
 			" If anything still doesn't work in the next hour, just reply to this email.\n\n" + s.orgInfo(org).Name
 		if crow, ok := s.claim(org, Event{Key: evKey + "|client", SubscriptionID: sub.ID, Stage: "unsuspend", Audience: ToClient, Day: today}); ok {
-			to, err := s.clientDirect(ctx, org, sub, subject, msg, "Active", "ok", []invoicing.EmailRow{{Label: "Service", Value: sub.Name}})
+			to, reviewID, err := s.clientDirectReview(ctx, org, sub, subject, msg, "Active", "ok", []invoicing.EmailRow{{Label: "Service", Value: sub.Name}}, crow.ID)
 			crow.Subject, crow.Recipients = subject, to
-			s.finish(crow, "sent", err)
+			s.finishSend(crow, reviewID, err)
 		}
 	}
 	a := Alert{Type: "unsuspended", Severity: notify.Success, Link: subLink(sub.ID, ""), Entity: sub.ID, Tone: "ok", Status: "Active again", Label: "Client billing"}

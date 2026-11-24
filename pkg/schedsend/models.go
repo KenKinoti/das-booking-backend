@@ -77,6 +77,9 @@ const (
 	RunFailed  = "failed"  // nothing sent, something failed
 	RunSkipped = "skipped" // every recipient skipped
 	RunMissed  = "missed"  // more than CatchUpWindow late (server down)
+	// RunWaiting: nothing failed, some deliveries wait for approval in
+	// Pending review (pkg/outbox, review.go).
+	RunWaiting = "waiting"
 )
 
 // Delivery statuses.
@@ -89,6 +92,8 @@ const (
 	DelRead      = "read" // read (WhatsApp) / opened (email)
 	DelFailed    = "failed"
 	DelSkipped   = "skipped"
+	// DelWaiting: waiting for approval in Pending review (ReviewID).
+	DelWaiting = "waiting"
 )
 
 // Repeat frequencies.
@@ -222,12 +227,20 @@ type Message struct {
 	// ClaimedAt: when an engine claimed it (RUNNING); stale claims are released.
 	ClaimedAt *time.Time `json:"-"`
 
-	CreatedBy     string     `json:"created_by" gorm:"type:varchar(255);index"`
-	CreatedByName string     `json:"created_by_name" gorm:"type:varchar(255)"`
-	UpdatedBy     string     `json:"updated_by" gorm:"type:varchar(255)"`
-	CancelledAt   *time.Time `json:"cancelled_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	CreatedBy     string `json:"created_by" gorm:"type:varchar(255);index"`
+	CreatedByName string `json:"created_by_name" gorm:"type:varchar(255)"`
+	UpdatedBy     string `json:"updated_by" gorm:"type:varchar(255)"`
+	// Reviewed: an approver ticked "I've reviewed it" on this one-off
+	// message — its client deliveries don't wait in Pending review.
+	Reviewed       bool       `json:"reviewed" gorm:"not null;default:false"`
+	ReviewedBy     string     `json:"-" gorm:"type:varchar(255)"`
+	ReviewedByName string     `json:"reviewed_by_name" gorm:"type:varchar(255)"`
+	ReviewedAt     *time.Time `json:"reviewed_at"`
+	// ReviewNote says why an "I've reviewed it" tick was not kept (answer only).
+	ReviewNote  string     `json:"review_note,omitempty" gorm:"-"`
+	CancelledAt *time.Time `json:"cancelled_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // TableName is fixed.
@@ -262,18 +275,20 @@ type Delivery struct {
 	OrganizationID string    `json:"-" gorm:"type:varchar(255);not null;index"`
 	OccurrenceAt   time.Time `json:"occurrence_at" gorm:"not null;uniqueIndex:idx_ss_delivery,priority:2"`
 	// RecipientKey: customer:<id> | user:<id> | invoice:<id>.
-	RecipientKey  string     `json:"recipient_key" gorm:"type:varchar(300);not null;uniqueIndex:idx_ss_delivery,priority:3"`
-	Channel       string     `json:"channel" gorm:"type:varchar(12);not null;uniqueIndex:idx_ss_delivery,priority:4"`
-	RecipientType string     `json:"recipient_type" gorm:"type:varchar(12)"` // customer | user | invoice
-	RecipientID   string     `json:"recipient_id" gorm:"type:varchar(255);index"`
-	Name          string     `json:"name" gorm:"type:varchar(255)"`
-	Address       string     `json:"address" gorm:"type:varchar(320)"` // email or phone
-	Status        string     `json:"status" gorm:"type:varchar(12);not null;index"`
-	Reason        string     `json:"reason" gorm:"type:varchar(500)"`
-	Mode          string     `json:"mode" gorm:"type:varchar(16)"` // whatsapp: text | template
-	Template      string     `json:"template,omitempty" gorm:"type:varchar(120)"`
-	Preview       string     `json:"preview" gorm:"type:text"`
-	ProviderID    string     `json:"provider_id" gorm:"type:varchar(200);index"` // wamid, SMS id, invoice email log id, Message-ID
+	RecipientKey  string `json:"recipient_key" gorm:"type:varchar(300);not null;uniqueIndex:idx_ss_delivery,priority:3"`
+	Channel       string `json:"channel" gorm:"type:varchar(12);not null;uniqueIndex:idx_ss_delivery,priority:4"`
+	RecipientType string `json:"recipient_type" gorm:"type:varchar(12)"` // customer | user | invoice
+	RecipientID   string `json:"recipient_id" gorm:"type:varchar(255);index"`
+	Name          string `json:"name" gorm:"type:varchar(255)"`
+	Address       string `json:"address" gorm:"type:varchar(320)"` // email or phone
+	Status        string `json:"status" gorm:"type:varchar(12);not null;index"`
+	Reason        string `json:"reason" gorm:"type:varchar(500)"`
+	Mode          string `json:"mode" gorm:"type:varchar(16)"` // whatsapp: text | template
+	Template      string `json:"template,omitempty" gorm:"type:varchar(120)"`
+	Preview       string `json:"preview" gorm:"type:text"`
+	ProviderID    string `json:"provider_id" gorm:"type:varchar(200);index"` // wamid, SMS id, invoice email log id, Message-ID
+	// ReviewID: its Pending-review item while it waits (and after).
+	ReviewID      string     `json:"review_id" gorm:"type:varchar(64);index"`
 	Attempts      int        `json:"attempts"`
 	NextAttemptAt *time.Time `json:"next_attempt_at" gorm:"index"`
 	ClaimedAt     *time.Time `json:"-"`

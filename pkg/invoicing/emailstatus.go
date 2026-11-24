@@ -15,7 +15,7 @@ import (
 // invoice_email_log and, per person, invoice_email_recipients): shown as a
 // chip on the invoice and an icon in lists. Test sends are left out.
 type EmailStatus struct {
-	State       string         `json:"state"` // sent | failed | none
+	State       string         `json:"state"` // sent | failed | none | awaiting_approval (only waiting in Pending review)
 	Sent        int            `json:"sent"`  // emails delivered to the mail server (all kinds)
 	Failed      int            `json:"failed"`
 	Recorded    int            `json:"recorded"` // opened in the user's own mail app (mailto)
@@ -60,6 +60,13 @@ type EmailStatus struct {
 	Notices    int        `json:"notices"`
 	Recalled   int        `json:"recalled"`
 	RecalledAt *time.Time `json:"recalled_at,omitempty"`
+
+	// Pending review (review.go): emails waiting for approval — the first
+	// one's log id (= its Pending-review item id) and kind.
+	AwaitingApproval int    `json:"awaiting_approval"`
+	AwaitingLogID    string `json:"awaiting_log_id,omitempty"`
+	AwaitingKind     string `json:"awaiting_kind,omitempty"`
+	AwaitingReviewID string `json:"awaiting_review_id,omitempty"`
 }
 
 // RecipientStatus is one person's copy of one email and what happened to it.
@@ -319,8 +326,15 @@ func EmailStatuses(db *gorm.DB, org string, invs []Invoice) map[string]*EmailSta
 				s.HeldLogID, s.HeldKind = r.ID, r.Kind
 			}
 			continue
-		case r.Status == "cancelled":
-			continue // undone: nothing was sent
+		case r.Status == "awaiting_approval":
+			// Waiting in Pending review: not sent yet.
+			s.AwaitingApproval++
+			if s.AwaitingLogID == "" {
+				s.AwaitingLogID, s.AwaitingKind, s.AwaitingReviewID = r.ID, r.Kind, r.ID
+			}
+			continue
+		case r.Status == "cancelled" || r.Status == "rejected" || r.Status == "superseded":
+			continue // undone / not sent after review
 		case r.Kind == KindNotice:
 			if r.Status == "sent" {
 				s.Notices++
@@ -395,6 +409,9 @@ func EmailStatuses(db *gorm.DB, org string, invs []Invoice) map[string]*EmailSta
 		}
 	}
 	for invID, s := range out {
+		if s.State == "none" && s.AwaitingApproval > 0 {
+			s.State = "awaiting_approval" // nothing delivered yet; one waits in Pending review
+		}
 		if s.ViewedAt != nil && s.LastSentAt != nil && !s.ViewedAt.Before(*s.LastSentAt) {
 			s.ViewedAfter = true
 		}

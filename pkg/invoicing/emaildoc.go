@@ -941,6 +941,8 @@ func (h *Handler) runChecks(tx *gorm.DB, inv *Invoice, b *builtEmail, o checkOpt
 			var held EmailLog
 			if err := tx.Where("invoice_id = ? AND kind = ? AND status = ?", inv.ID, b.Kind, "held").Order("created_at DESC").Limit(1).Find(&held).Error; err == nil && held.ID != "" {
 				add(ck("duplicate", "warning", "Already waiting to go", fmt.Sprintf("This %s to %s is waiting in the undo window and goes out in a few seconds — undo it on the Emails tab if this one replaces it.", b.Kind, held.To)))
+			} else if err := tx.Where("invoice_id = ? AND kind = ? AND status = ?", inv.ID, b.Kind, "awaiting_approval").Order("created_at DESC").Limit(1).Find(&held).Error; err == nil && held.ID != "" {
+				add(ck("duplicate", "warning", "Already waiting for approval", fmt.Sprintf("A %s to %s is already waiting in Pending review — reject it there if this one replaces it.", b.Kind, held.To)))
 			}
 		}
 	}
@@ -1226,10 +1228,14 @@ func (h *Handler) EmailLogList(c *gin.Context) {
 	byLog := recipientsByLog(h.DB, org, ids, loc)
 	holdsBy := holdInfo(h.DB, ids)
 	_, recallsBy := recallsByLog(h.DB, org, ids, loc)
+	reviewed := reviewedIDs(h.DB, ids)
 	for i := range list {
 		list[i].Recipients = byLog[list[i].ID]
 		list[i].Hold = holdsBy[list[i].ID]
 		list[i].Recalls = recallsBy[list[i].ID]
+		if reviewed[list[i].ID] {
+			list[i].ReviewID = list[i].ID
+		}
 	}
 	st := EmailStatuses(h.DB, org, []Invoice{*inv})[inv.ID]
 	ok(c, http.StatusOK, gin.H{"log": list, "summary": st, "viewed_at": inv.ViewedAt, "timezone": orgprefs.Get(h.DB, org).Timezone,

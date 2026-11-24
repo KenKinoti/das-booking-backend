@@ -3,6 +3,7 @@ package subscriptions
 import (
 	"context"
 	"errors"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/outbox"
 	"io"
 	"log"
 	"net/http"
@@ -45,6 +46,8 @@ type Handler struct{ S *Service }
 //	GET    /subscriptions/customers/:id/portal-link the customer's signed "Your services" link
 //	GET    /subscriptions/test-clock  POST          {date|days|reset, run}  (SUBSCRIPTIONS_TEST_CLOCK only, admins)
 func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
+	// Pending review sends this package's notices and reports outcomes (review.go).
+	h.S.RegisterReview()
 	g := auth.Group("/subscriptions")
 	g.Use(h.guard)
 	g.GET("", h.list)
@@ -361,12 +364,24 @@ func (h *Handler) cancel(c *gin.Context) {
 
 func (h *Handler) remind(c *gin.Context) {
 	h.locked(c, func() {
-		to, err := h.S.SendReminder(c.Request.Context(), orgOf(c), c.Param("id"), c.GetString("user_id"), roleOf(c))
+		var body struct {
+			SendNow bool `json:"send_now"`
+		}
+		if c.Request.ContentLength != 0 {
+			_ = c.ShouldBindJSON(&body)
+		}
+		to, reviewID, err := h.S.SendReminderReview(c.Request.Context(), orgOf(c), c.Param("id"), c.GetString("user_id"), roleOf(c), body.SendNow)
 		if err != nil {
 			failErr(c, err)
 			return
 		}
-		ok(c, gin.H{"sent_to": to})
+		out := gin.H{"sent_to": to, "queued": reviewID != ""}
+		if reviewID != "" {
+			out["review"] = outbox.QueuedRef(outbox.Get(reviewID))
+		} else if body.SendNow && outbox.Reviewing(orgOf(c)) {
+			out["review"] = outbox.SentNowRef()
+		}
+		ok(c, out)
 	})
 }
 

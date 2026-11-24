@@ -39,6 +39,8 @@ type Handler struct {
 //	GET    /schedsend/sms-settings             PUT (admins), POST /schedsend/sms-settings/test {to}
 //	public GET|POST /schedsend/unsubscribe?t=, GET /schedsend/open/:token, POST /sms/africastalking/delivery, POST /sms/twilio/status
 func (h *Handler) RegisterRoutes(auth, public *gin.RouterGroup) {
+	// Pending review sends waiting deliveries through this service (review.go).
+	h.S.RegisterReview()
 	g := auth.Group("/schedsend")
 	g.GET("/meta", h.meta)
 	g.GET("/messages", h.list)
@@ -320,7 +322,13 @@ func (h *Handler) action(c *gin.Context) {
 			h.audit(c, a, "schedsend.cancel", id, auditValues(m))
 		}
 	case "send-now":
-		m, err = h.S.SendNow(a, id)
+		var body struct {
+			SendNow bool `json:"send_now"`
+		}
+		if c.Request.ContentLength != 0 {
+			_ = c.ShouldBindJSON(&body)
+		}
+		m, err = h.S.SendNowReviewed(a, id, body.SendNow)
 		if err == nil {
 			h.audit(c, a, "schedsend.send_now", id, auditValues(m))
 		}

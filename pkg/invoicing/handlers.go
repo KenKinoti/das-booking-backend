@@ -21,6 +21,7 @@ import (
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/currency"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/orgprefs"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/outbox"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/reqtz"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -106,6 +107,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/invoices/:id/payments/:paymentId/receipt", h.ReceiptPDF)
 	// Undo send, recall and the sending options (hold.go, recall.go, emailopts.go).
 	h.registerRecallRoutes(r)
+	// Pending review sends queued emails through this handler (review.go).
+	h.registerReview()
 }
 
 // RegisterPublicRoutes mounts unauthenticated, token-based client views.
@@ -325,20 +328,20 @@ type itemInput struct {
 
 type invoiceInput struct {
 	rateInput
-	DocType            string      `json:"doc_type"`
-	Status             string      `json:"status"`
-	CustomerID         *string     `json:"customer_id"`
-	ClientName         string      `json:"client_name"`
-	ClientEmail        string      `json:"client_email"`
-	ClientPhone        string      `json:"client_phone"`
-	ClientAddress      string      `json:"client_address"`
-	ClientTaxNumber    string      `json:"client_tax_number"`
+	DocType         string  `json:"doc_type"`
+	Status          string  `json:"status"`
+	CustomerID      *string `json:"customer_id"`
+	ClientName      string  `json:"client_name"`
+	ClientEmail     string  `json:"client_email"`
+	ClientPhone     string  `json:"client_phone"`
+	ClientAddress   string  `json:"client_address"`
+	ClientTaxNumber string  `json:"client_tax_number"`
 	// ClientIsCompany / ClientContact: billing a company (client_name is the
 	// company) and the person it's for. Left out (nil) on an update, the saved
 	// values stay; left out on a new document linked to a customer whose record
 	// has a company name, they come from that customer.
-	ClientIsCompany *bool   `json:"client_is_company"`
-	ClientContact   *string `json:"client_contact"`
+	ClientIsCompany    *bool       `json:"client_is_company"`
+	ClientContact      *string     `json:"client_contact"`
 	Reference          string      `json:"reference"`
 	Title              string      `json:"title"`
 	IssueDate          string      `json:"issue_date"`
@@ -898,10 +901,17 @@ type sendInput struct {
 	// send dialog, the payment dialog's receipt and the AI tools pass it;
 	// scheduled and automatic sends don't and go out at once.
 	Hold bool `json:"hold"`
+	// SendNow: "Send now — I've reviewed it" — an approver's email goes at
+	// once instead of waiting in Pending review (review.go, pkg/outbox).
+	SendNow bool `json:"send_now"`
+	// Review: what an in-process caller tells Pending review about it.
+	Review *ReviewMeta `json:"review"`
 	// Set when a held email goes out (hold.go): the log entry to complete and
 	// the request's origins (links, open image, logo) kept when it was held.
 	logID, apiBase, logoURL string
 	release                 bool
+	// approvedBy: who approved it in Pending review (timeline wording).
+	approvedBy string
 }
 
 // Send emails the document when SMTP is configured; otherwise it marks it sent
@@ -941,6 +951,8 @@ func (h *Handler) Send(c *gin.Context) {
 		resp["held"] = true
 		resp["hold"] = gin.H{"log_id": res.Hold.ID, "seconds": res.Hold.Seconds, "send_at": res.Hold.SendAt, "seconds_left": res.Hold.Seconds}
 	}
+	// Pending review (review.go): waiting for approval, or sent now by an approver.
+	reviewAnswer(resp, res)
 	if s := h.sender(org); s != nil {
 		resp["sender"] = s
 	}
@@ -960,6 +972,10 @@ type sendResult struct {
 	Checks  []Check
 	Emailed bool
 	Hold    *EmailHold // set when the email is held for undo (hold.go)
+	// Queued: waiting in Pending review (review.go); SentNow: an approver
+	// sent it at once.
+	Queued  *outbox.Item
+	SentNow bool
 }
 
 // sendEmail runs the pre-send checks and sends (or records) one email about
@@ -988,6 +1004,12 @@ func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, use
 	var entry *EmailLog
 	var checks []Check
 	var hold *EmailHold
+	var queued *outbox.Item
+	// Pending review (review.go): emails DASYIN itself sends to the client.
+	review := outbox.Decision{}
+	if useEmail && viaMail {
+		review = h.reviewDecision(c, org, user, in)
+	}
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		inv, err := h.load(tx, org, invID, false)
 		if err != nil {
@@ -1018,9 +1040,20 @@ func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, use
 			entry.Status = "blocked"
 			return blocked(checks, true)
 		}
+		// Pending review: checked, then queued — nothing goes out and the
+		// document is not marked sent until an approver releases it.
+		if review.Wait {
+			it, err := h.queueEmail(tx, c, inv, b, in, entry, user)
+			if err != nil {
+				return err
+			}
+			queued = it
+			out, err = h.load(tx, org, inv.ID, true)
+			return err
+		}
 		// Undo send (hold.go): checked, then held — nothing goes out and the
 		// document is not marked sent until the hold ends.
-		if in.Hold && !in.release && useEmail && viaMail {
+		if in.Hold && !in.release && useEmail && viaMail && !review.SentNow {
 			if wait := h.holdWindow(org); wait > 0 {
 				hold = h.newHold(c, inv, b, in, entry, user, wait)
 				if err := tx.Create(hold).Error; err != nil {
@@ -1084,6 +1117,9 @@ func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, use
 			}
 		}
 		msg := recipientsMessage(rec)
+		if in.approvedBy != "" {
+			msg += " · approved in Pending review by " + in.approvedBy
+		}
 		switch kind {
 		case KindReceipt:
 			what := "Receipt"
@@ -1139,7 +1175,10 @@ func (h *Handler) sendEmail(c *gin.Context, org, invID string, in sendInput, use
 	if hold != nil {
 		scheduleHold(hold.ID, hold.SendAt)
 	}
-	return &sendResult{Invoice: out, Built: built, Log: entry, Checks: checks, Emailed: entry.Status == "sent", Hold: hold}, nil
+	if review.SentNow && entry.Status == "sent" {
+		outbox.SentNow(org, user, "invoice", invID, kindTitle(built.Kind)+" email", built.To)
+	}
+	return &sendResult{Invoice: out, Built: built, Log: entry, Checks: checks, Emailed: entry.Status == "sent", Hold: hold, Queued: queued, SentNow: review.SentNow && entry.Status == "sent"}, nil
 }
 
 func (h *Handler) logRecipients(tx *gorm.DB, inv *Invoice, typ, msg, user string, rec *Recipients) {
@@ -1427,6 +1466,8 @@ type addPaymentInput struct {
 	AppURL       string `json:"app_url"`
 	// Hold holds the receipt email for the undo window (hold.go).
 	Hold bool `json:"hold"`
+	// SendNow: an approver sends it at once (Pending review, review.go).
+	SendNow bool `json:"send_now"`
 }
 
 // AddPayment serves POST /invoices/:id/payments. The response is the
@@ -1462,7 +1503,7 @@ func (h *Handler) AddPayment(c *gin.Context) {
 	}
 	var rec *ReceiptEmailResult
 	if in.EmailReceipt {
-		r := h.emailReceipt(c, org, out.ID, pid, user, in.AppURL, in.Hold)
+		r := h.emailReceipt(c, org, out.ID, pid, user, in.AppURL, in.Hold, in.SendNow)
 		rec = &r
 		if o, err := h.load(h.DB, org, out.ID, true); err == nil {
 			out = o

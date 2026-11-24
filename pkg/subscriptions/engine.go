@@ -320,10 +320,12 @@ func (s *Service) emailInvoice(ctx context.Context, org string, sub *Subscriptio
 	row.Subject = s.sentSubject(org, subject, per.InvoiceNumber)
 	cu, _ := s.customer(org, sub.CustomerID)
 	row.Recipients = cu.Email
+	reviewID := ""
 	if err == nil {
-		err = s.Inv.Send(ctx, who, per.InvoiceID, map[string]any{"kind": "invoice", "subject": subject, "message": msg, "app_url": s.AppURL})
+		reviewID, err = s.clientSend(ctx, who, per.InvoiceID, map[string]any{"kind": "invoice", "subject": subject, "message": msg, "app_url": s.AppURL},
+			s.meta(sub, row, "Automatic: subscription "+sub.Number+" invoice for "+periodText(sp), false))
 	}
-	s.finish(row, "sent", err)
+	s.finishSend(row, reviewID, err)
 	if err != nil {
 		res.Errors = append(res.Errors, fmt.Sprintf("%s: invoice %s not emailed: %v", sub.Number, per.InvoiceNumber, err))
 		if row.Attempts == 1 {
@@ -332,6 +334,11 @@ func (s *Service) emailInvoice(ctx context.Context, org string, sub *Subscriptio
 				Link: "/invoices/" + per.InvoiceID, LinkText: "Open the invoice", Entity: sub.ID, Tone: "danger", Status: "Not emailed", Label: "Client billing"}
 			s.alertAdmins(ctx, org, st, a)
 		}
+		return false
+	}
+	if reviewID != "" {
+		// Pending review: the period counts as emailed once it really goes.
+		res.logf("%s: invoice %s to %s is waiting for approval in Pending review", sub.Number, per.InvoiceNumber, cu.Email)
 		return false
 	}
 	s.DB.Model(&BillingPeriod{}).Where("id = ?", per.ID).Updates(map[string]any{"sent": true, "updated_at": s.now()})
@@ -371,10 +378,12 @@ func (s *Service) dun(ctx context.Context, org string, sub *Subscription, st Set
 		if row, ok := s.claim(org, Event{Key: c.EventKey(per.ID, d), SubscriptionID: sub.ID, PeriodID: per.ID, Stage: c.Key, Audience: ToClient, Day: today}); ok {
 			subject, msg := s.reminderMessage(org, sub, d, today)
 			row.Subject, row.Recipients = s.sentSubject(org, subject, per.InvoiceNumber), cu.Email
-			err := s.clientReminder(ctx, who, sub, &per, subject, msg)
-			s.finish(row, "sent", err)
+			reviewID, err := s.clientReminder(ctx, who, sub, &per, subject, msg, s.meta(sub, row, "Automatic: payment reminder for subscription "+sub.Number, true))
+			s.finishSend(row, reviewID, err)
 			if err != nil {
 				res.Errors = append(res.Errors, fmt.Sprintf("%s: reminder %s: %v", sub.Number, c.Key, err))
+			} else if reviewID != "" {
+				res.logf("%s: client reminder %s to %s is waiting for approval", sub.Number, c.Key, cu.Email)
 			} else {
 				res.Reminders++
 				res.logf("%s: client reminder %s sent to %s", sub.Number, c.Key, cu.Email)
@@ -399,10 +408,16 @@ func (s *Service) dun(ctx context.Context, org string, sub *Subscription, st Set
 		if row, ok := s.claim(org, Event{Key: f.EventKey(per.ID, d), SubscriptionID: sub.ID, PeriodID: per.ID, Stage: "final_notice", Audience: ToClient, Day: today}); ok {
 			subject, msg := s.finalNoticeMessage(org, sub, d)
 			row.Subject, row.Recipients = s.sentSubject(org, subject, per.InvoiceNumber), cu.Email
-			err := s.clientReminder(ctx, who, sub, &per, subject, msg)
-			s.finish(row, "sent", err)
+			meta := s.meta(sub, row, "Automatic: final notice before the suspension of "+serviceName(sub), true)
+			if d.Suspend != nil {
+				meta["deadline"], meta["flag"], meta["blocks"] = *d.Suspend, "Blocking a suspension on "+shortDate(*d.Suspend), "suspension"
+			}
+			reviewID, err := s.clientReminder(ctx, who, sub, &per, subject, msg, meta)
+			s.finishSend(row, reviewID, err)
 			if err != nil {
 				res.Errors = append(res.Errors, fmt.Sprintf("%s: final notice: %v", sub.Number, err))
+			} else if reviewID != "" {
+				res.logf("%s: final notice is waiting for approval (suspension %s waits for it)", sub.Number, DayStr(*d.Suspend))
 			} else {
 				res.Notices++
 				res.logf("%s: final notice sent (suspension %s)", sub.Number, DayStr(*d.Suspend))
@@ -410,6 +425,13 @@ func (s *Service) dun(ctx context.Context, org string, sub *Subscription, st Set
 		}
 	}
 	if plan.Suspend != nil {
+		// Pending review: never suspend before the client got the warning.
+		if why := s.suspensionWaits(org, sub, &per, st, d, today); why != "" {
+			s.record(org, Event{Key: per.ID + "|suspend_waiting|" + DayStr(today), SubscriptionID: sub.ID, PeriodID: per.ID, Stage: "suspend_waiting",
+				Audience: ToAdmin, Day: today, Subject: clip(why, 480)})
+			res.logf("%s: %s", sub.Number, why)
+			return
+		}
 		s.suspend(ctx, org, sub, &per, st, today, "unpaid", "", res)
 	}
 }

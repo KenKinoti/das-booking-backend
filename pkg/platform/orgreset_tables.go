@@ -211,6 +211,9 @@ var resetGroups = []resetGroup{
 		{Table: "whatsapp_windows", Label: "WhatsApp conversations (24-hour windows)", Where: byOrg},
 		{Table: "brief_snapshots", Label: "Morning brief history", Where: byOrg},
 		{Table: "web_socket_connections", Label: "Live connections", Where: byOrg},
+		{Table: "outbox_events", Label: "Pending review history", Where: byOrg},
+		{Table: "outbox_items", Label: "Messages in Pending review", Where: byOrg, Note: "Nothing waiting is sent after the reset"},
+		{Table: "outbox_digests", Label: "Pending review update emails", Where: byOrg},
 	}},
 	{Key: "meetings", Label: "Meetings", Description: "Meetings with their invitees and transcripts.", Steps: []resetStep{
 		{Table: "meeting_participants", Label: "Meeting invitees", Where: byOrgID},
@@ -328,6 +331,7 @@ var resetGroups = []resetGroup{
 
 // resetNotTouched are organisation tables a reset never changes, with the reason.
 var resetNotTouched = map[string]string{
+	"outbox_settings":                "Pending review settings (review on / off, update emails)",
 	"organization_settings":          "Organisation preferences",
 	"organization_brandings":         "Branding",
 	"organization_modules":           "Modules",

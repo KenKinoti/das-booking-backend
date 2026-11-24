@@ -16,6 +16,7 @@ import (
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/notify"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/outbox"
 )
 
 // ---------------------------------------------------------------------------
@@ -343,7 +344,7 @@ func (h *Handler) RecallPreview(c *gin.Context) {
 		"log_id": e.ID, "kind": e.Kind, "number": inv.Number, "doc_type": inv.DocType, "status": inv.Status, "sent_at": e.CreatedAt,
 		"recipients": people, "tracked": tracked, "all_links_required": !tracked,
 		"attachment": att, "email_enabled": h.emailEnabled(org),
-		"notice_subject": subject, "notice_message": message,
+		"notice_subject": subject, "notice_message": message, "notice_bcc": nonNilList(noticeBCC(e, nil)),
 		"replacements": h.replacementChoices(inv),
 		"can_edit":     inv.Status != StatusVoid && inv.Status != StatusConverted,
 		"can_void":     inv.Status != StatusVoid && inv.Status != StatusConverted && inv.AmountPaid <= 0,
@@ -393,6 +394,9 @@ type recallInput struct {
 	// start a corrected copy).
 	Correct string `json:"correct"`
 	AppURL  string `json:"app_url"`
+	// SendNow: an approver sends the notice at once ("Send now — I've
+	// reviewed it"); otherwise it waits in Pending review (pkg/outbox).
+	SendNow bool `json:"send_now"`
 }
 
 // RecallEmail serves POST /invoices/:id/emails/:logId/recall.
@@ -601,12 +605,32 @@ func (h *Handler) noticeFor(c *gin.Context, org string, inv *Invoice, e *EmailLo
 	if len(people) == 0 {
 		return gin.H{"sent": false, "error": "Only BCC copies were recalled — no notice is needed."}
 	}
+	// Pending review: the links are already off; only the notice waits.
+	d := h.reviewDecision(c, org, user, sendInput{SendNow: in.SendNow})
+	if d.Wait {
+		it, err := h.queueNotice(c, org, inv, e, people, in.Reason, repl, user, in.AppURL)
+		if err != nil {
+			return gin.H{"sent": false, "error": err.Error()}
+		}
+		return gin.H{"sent": false, "queued": true, "review": outbox.QueuedRef(it), "log_id": "", "to": it.To, "cc": nonNilList(it.CC), "subject": it.Subject, "error": ""}
+	}
 	entry, err := h.sendNotice(c, org, inv, e, people, in.Reason, repl, user, in.AppURL)
 	if err != nil {
 		h.DB.Model(&EmailRecall{}).Where("id IN ?", recallIDs(rows)).Update("notice_error", clipText(err.Error(), 1000))
 		return gin.H{"sent": false, "error": err.Error()}
 	}
-	// Link each recall to the person's notice copy.
+	h.linkNotice(rows, entry)
+	h.audit(c, org, user, "invoice_email.notice", "invoice", inv.ID, nil, map[string]any{"email_log_id": entry.ID, "recalled_log_id": e.ID, "to": people, "status": entry.Status})
+	out := gin.H{"sent": entry.Status == "sent", "log_id": entry.ID, "to": entry.To, "cc": nonNilList(entry.CC), "subject": entry.Subject, "error": entry.Error, "queued": false}
+	if d.SentNow {
+		outbox.SentNow(org, user, "invoice", inv.ID, "Disregard notice", strings.Join(people, ", "))
+		out["review"] = outbox.SentNowRef()
+	}
+	return out
+}
+
+// linkNotice links each recall to the person's copy of the notice.
+func (h *Handler) linkNotice(rows []EmailRecall, entry *EmailLog) {
 	var copies []EmailRecipient
 	h.DB.Where("email_log_id = ?", entry.ID).Find(&copies)
 	byEmail := map[string]EmailRecipient{}
@@ -626,8 +650,30 @@ func (h *Handler) noticeFor(c *gin.Context, org string, inv *Invoice, e *EmailLo
 		}
 		h.DB.Model(&EmailRecall{}).Where("id = ?", r.ID).Updates(upd)
 	}
-	h.audit(c, org, user, "invoice_email.notice", "invoice", inv.ID, nil, map[string]any{"email_log_id": entry.ID, "recalled_log_id": e.ID, "to": people, "status": entry.Status})
-	return gin.H{"sent": entry.Status == "sent", "log_id": entry.ID, "to": entry.To, "cc": nonNilList(entry.CC), "subject": entry.Subject, "error": entry.Error}
+}
+
+// noticeBCC is who gets a blind copy of a disregard notice: the people who
+// were BCC'd on the recalled email (usually the sender's own copy for their
+// records), so they can see the notice went out. People already getting the
+// notice directly are left out.
+func noticeBCC(e *EmailLog, people []string) []string {
+	if e == nil {
+		return nil
+	}
+	skip := map[string]bool{}
+	for _, p := range people {
+		skip[strings.ToLower(strings.TrimSpace(p))] = true
+	}
+	var out []string
+	for _, a := range e.BCC {
+		k := strings.ToLower(strings.TrimSpace(a))
+		if k == "" || skip[k] || !ValidEmail(k) {
+			continue
+		}
+		skip[k] = true
+		out = append(out, k)
+	}
+	return out
 }
 
 func recallIDs(rows []EmailRecall) []string {
@@ -706,10 +752,13 @@ func (h *Handler) receiptNumberOf(inv *Invoice, pid string) string {
 // sendNotice emails "Please disregard …" to people, one tracked copy each
 // (emailtrack.go), and logs it like any other invoice email.
 func (h *Handler) sendNotice(c *gin.Context, org string, inv *Invoice, e *EmailLog, people []string, reason string, repl *Invoice, user, appURL string) (*EmailLog, error) {
-	mcfg, viaMail := h.mailConfig(org)
-	if !viaMail || !mcfg.Ready() {
-		return nil, errors.New("email sending isn't set up — the links are switched off, but no notice was sent")
-	}
+	return h.sendNoticeAs(c, org, inv, e, people, reason, repl, user, appURL, "", "")
+}
+
+// noticeEmail builds the disregard notice (subject / message "" = the
+// standard wording; Pending review passes the reviewed text).
+func (h *Handler) noticeEmail(c *gin.Context, org string, inv *Invoice, e *EmailLog, people []string, reason string, repl *Invoice, appURL, subj, msgText string) *builtEmail {
+	mcfg, _ := h.mailConfig(org)
 	s, err := h.settingsFor(h.DB, org, false)
 	if err != nil || s == nil {
 		s = &Settings{}
@@ -725,7 +774,13 @@ func (h *Handler) sendNotice(c *gin.Context, org string, inv *Invoice, e *EmailL
 		replLabel = "The corrected " + strings.ToLower(docLabel(repl.DocType))
 	}
 	subject, message := h.noticeText(inv, e, reason, replURL, replLabel)
-	b := &builtEmail{Kind: KindNotice, Doc: inv, Subject: subject, Message: message, To: people[0], CC: people[1:], ViewURL: replURL}
+	if strings.TrimSpace(subj) != "" {
+		subject = subj
+	}
+	if strings.TrimSpace(msgText) != "" {
+		message = msgText
+	}
+	b := &builtEmail{Kind: KindNotice, Doc: inv, Subject: subject, Message: message, To: people[0], CC: people[1:], BCC: noticeBCC(e, people), ViewURL: replURL}
 	b.Business = PDFBusinessFor(h.DB, s, org)
 	b.LogoURL = logoFor(c, org)
 	b.From, b.Source, b.ReplyTo = mcfg.Display(), mcfg.Source, mcfg.ReplyTo
@@ -749,9 +804,20 @@ func (h *Handler) sendNotice(c *gin.Context, org string, inv *Invoice, e *EmailL
 	b.View = v
 	b.HTML, b.Text = RenderEmail(v)
 	b.Amounts = map[string]string{}
+	return b
+}
+
+// sendNoticeAs sends the disregard notice (subject / message as noticeEmail).
+func (h *Handler) sendNoticeAs(c *gin.Context, org string, inv *Invoice, e *EmailLog, people []string, reason string, repl *Invoice, user, appURL, subj, msgText string) (*EmailLog, error) {
+	mcfg, viaMail := h.mailConfig(org)
+	if !viaMail || !mcfg.Ready() {
+		return nil, errors.New("email sending isn't set up — the links are switched off, but no notice was sent")
+	}
+	b := h.noticeEmail(c, org, inv, e, people, reason, repl, appURL, subj, msgText)
+	subject := b.Subject
 
 	entry := &EmailLog{ID: uuid.NewString(), OrganizationID: org, InvoiceID: inv.ID, Kind: KindNotice, Mode: "email", UserID: user, UserEmail: h.userEmail(user),
-		FromAddress: b.From, Source: b.Source, To: b.To, CC: nonNilList(b.CC), BCC: []string{}, Subject: subject, Checks: []Check{}, Amounts: b.Amounts,
+		FromAddress: b.From, Source: b.Source, To: b.To, CC: nonNilList(b.CC), BCC: nonNilList(b.BCC), Subject: subject, Checks: []Check{}, Amounts: b.Amounts,
 		Attachments: []string{}, PaymentID: e.PaymentID, CreatedAt: h.now()}
 	ctx := context.Background()
 	if c != nil && c.Request != nil {
@@ -775,7 +841,10 @@ func (h *Handler) sendNotice(c *gin.Context, org string, inv *Invoice, e *EmailL
 		return entry, fmt.Errorf("the disregard notice could not be sent: %w", sendErr)
 	}
 	msg := "Disregard notice emailed to " + strings.Join(people, ", ")
-	h.logRecipients(h.DB, inv, "notice_sent", msg, user, &Recipients{Kind: KindNotice, To: b.To, CC: b.CC, Emailed: true})
+	if len(b.BCC) > 0 {
+		msg += " · BCC " + strings.Join(b.BCC, ", ")
+	}
+	h.logRecipients(h.DB, inv, "notice_sent", msg, user, &Recipients{Kind: KindNotice, To: b.To, CC: b.CC, BCC: b.BCC, Emailed: true})
 	return entry, nil
 }
 

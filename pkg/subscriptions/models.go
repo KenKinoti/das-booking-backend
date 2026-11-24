@@ -343,9 +343,12 @@ type Event struct {
 	Error          string    `json:"error" gorm:"type:text"`
 	Attempts       int       `json:"attempts"`
 	InApp          int       `json:"in_app"`
-	CreatedBy      string    `json:"created_by" gorm:"type:varchar(255)"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	// ReviewID: the Pending-review item of a client email (status waiting
+	// until it is approved, rejected or no longer needed — review.go).
+	ReviewID  string    `json:"review_id" gorm:"type:varchar(64);index"`
+	CreatedBy string    `json:"created_by" gorm:"type:varchar(255)"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // TableName is fixed.

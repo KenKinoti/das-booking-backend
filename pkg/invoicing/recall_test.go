@@ -783,3 +783,43 @@ func TestRecallStatusText(t *testing.T) {
 		t.Fatalf("recallable rules")
 	}
 }
+
+// The sender's BCC copy: whoever was BCC'd on the recalled email also gets a
+// blind copy of the disregard notice, so they can see it went out.
+func TestRecallNoticeCopiesBCC(t *testing.T) {
+	e := setupRecallEnv(t)
+	inv := e.draft(t, TypeInvoice, "amina@client.test", nil)
+	id := inv["id"].(string)
+	res := e.send(t, id, map[string]interface{}{"bcc": []string{"owner@shop.test"}})
+	logID := res["log_id"].(string)
+	*e.sent = nil
+	atomic.StoreInt64(e.count, 0)
+
+	_, rr := call(t, e.r, e.org, "GET", "/api/invoices/"+id+"/emails/"+logID+"/recall", nil)
+	if bcc, _ := data(rr)["notice_bcc"].([]interface{}); len(bcc) != 1 || bcc[0] != "owner@shop.test" {
+		t.Fatalf("preview notice_bcc: %v", data(rr)["notice_bcc"])
+	}
+	code, rr := call(t, e.r, e.org, "POST", "/api/invoices/"+id+"/emails/"+logID+"/recall", map[string]interface{}{
+		"recipients": []string{"amina@client.test"}, "notice": true})
+	if code != 200 || data(rr)["notice"].(map[string]interface{})["sent"] != true {
+		t.Fatalf("recall: %d %v", code, rr)
+	}
+	got := map[string]bool{}
+	for _, m := range e.messages() {
+		if !strings.HasPrefix(m.Subject, "Please disregard") {
+			t.Fatalf("unexpected email %q", m.Subject)
+		}
+		for _, a := range append(append(append([]string{}, m.To...), m.CC...), m.BCC...) {
+			got[strings.ToLower(a)] = true
+		}
+	}
+	if !got["amina@client.test"] || !got["owner@shop.test"] {
+		t.Fatalf("notice copies went to %v — the BCC'd sender must get one too", got)
+	}
+	// The client's copy doesn't show the blind copy.
+	for _, m := range e.messages() {
+		if len(m.To) > 0 && m.To[0] == "amina@client.test" && (strings.Contains(strings.Join(m.CC, ","), "owner@") || strings.Contains(m.Text, "owner@shop.test")) {
+			t.Fatalf("the client's copy reveals the BCC")
+		}
+	}
+}

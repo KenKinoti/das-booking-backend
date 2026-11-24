@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/outbox"
 )
 
 // Handler serves the /meetings API.
@@ -58,6 +59,8 @@ func Migrate(db *gorm.DB) error {
 
 // RegisterRoutes mounts the API on an authenticated group.
 func (h *Handler) RegisterRoutes(g *gin.RouterGroup) {
+	// Pending review sends guests' invitations through this handler (review.go).
+	h.registerReview()
 	g.GET("", h.list)
 	g.POST("", h.create)
 	g.GET("/:id", h.get)
@@ -191,6 +194,9 @@ type meetingInput struct {
 	Status          *string             `json:"status"`
 	Participants    *[]participantInput `json:"participants"`
 	SendInvites     *bool               `json:"send_invites"`
+	// SendNow: an approver sends guests' invitations at once instead of
+	// waiting in Pending review (review.go).
+	SendNow bool `json:"send_now"`
 }
 
 type apiErr struct{ msg string }
@@ -460,6 +466,10 @@ type InviteResult struct {
 	Recipients     []string      `json:"recipients"`
 	Failed         []InviteError `json:"failed"`
 	Message        string        `json:"message"`
+	// Pending review (review.go): invitations to guests waiting for approval.
+	Waiting   int      `json:"waiting"`
+	ReviewIDs []string `json:"review_ids"`
+	Queued    bool     `json:"queued"`
 }
 
 // InviteError is a per-recipient failure.
@@ -537,11 +547,12 @@ func (h *Handler) buildInvite(m *Meeting, p Participant, method string, attendee
 }
 
 // sendInvites emails the calendar to recipients (all participants when nil).
-func (h *Handler) sendInvites(m *Meeting, recipients []Participant, method string, icsAttendees []Participant) InviteResult {
+func (h *Handler) sendInvites(m *Meeting, recipients []Participant, method string, icsAttendees []Participant, o reviewOpts) InviteResult {
+	removed := recipients != nil && icsAttendees != nil && method == MethodCancel
 	if recipients == nil {
 		recipients = m.Participants
 	}
-	res := InviteResult{Method: method, Recipients: []string{}, Failed: []InviteError{}}
+	res := InviteResult{Method: method, Recipients: []string{}, Failed: []InviteError{}, ReviewIDs: []string{}}
 	for _, p := range recipients {
 		res.Recipients = append(res.Recipients, p.Email)
 	}
@@ -556,29 +567,58 @@ func (h *Handler) sendInvites(m *Meeting, recipients []Participant, method strin
 		return res
 	}
 	now := h.now()
+	dec := outbox.Decide(m.OrgID, outbox.Who{UserID: o.User, Role: o.Role}, o.SendNow)
+	waited := 0
 	for _, p := range recipients {
+		if dec.Wait && !h.isMember(m.OrgID, p) {
+			// A guest: the invitation waits in Pending review.
+			it, err := h.queueInvite(m, p, method, removed, o)
+			if err != nil {
+				res.Failed = append(res.Failed, InviteError{Email: p.Email, Error: err.Error()})
+				continue
+			}
+			res.Waiting++
+			res.ReviewIDs = append(res.ReviewIDs, it.ID)
+			waited++
+			continue
+		}
 		if err := mailer.SendInvite(h.buildInvite(m, p, method, icsAttendees)); err != nil {
 			log.Printf("meetings: invite to %s failed: %v", p.Email, err)
 			res.Failed = append(res.Failed, InviteError{Email: p.Email, Error: err.Error()})
 			continue
 		}
 		res.Sent++
+		if dec.SentNow && !h.isMember(m.OrgID, p) {
+			outbox.SentNow(m.OrgID, o.User, "meeting", m.ID, "Meeting invitation", p.Email)
+		}
 		if method != MethodCancel && p.ID != "" {
 			h.DB.Model(&Participant{}).Where("id = ?", p.ID).Update("invited_at", now)
 		}
 	}
+	res.Queued = res.Waiting > 0
 	res.Emailed = res.Sent > 0
 	if res.Sent > 0 && method != MethodCancel {
 		m.InvitesSentAt = &now
 		h.DB.Model(&Meeting{}).Where("id = ?", m.ID).Update("invites_sent_at", now)
 	}
+	total := len(recipients) - waited
 	switch {
-	case res.Sent == len(recipients):
+	case total == 0 && waited > 0:
+		res.Message = ""
+	case res.Sent == total:
 		res.Message = fmt.Sprintf("Emailed %d %s", res.Sent, plural(res.Sent, "person", "people"))
 	case res.Sent > 0:
-		res.Message = fmt.Sprintf("Emailed %d of %d; %d failed", res.Sent, len(recipients), len(res.Failed))
-	default:
+		res.Message = fmt.Sprintf("Emailed %d of %d; %d failed", res.Sent, total, len(res.Failed))
+	case len(res.Failed) > 0:
 		res.Message = "Sending failed: " + res.Failed[0].Error
+	}
+	if waited > 0 {
+		w := fmt.Sprintf("%d waiting for approval in Pending review", waited)
+		if res.Message == "" {
+			res.Message = strings.ToUpper(w[:1]) + w[1:]
+		} else {
+			res.Message += " · " + w
+		}
 	}
 	return res
 }
@@ -706,7 +746,7 @@ func (h *Handler) create(c *gin.Context) {
 	}
 	resp := gin.H{"meeting": m}
 	if in.SendInvites == nil || *in.SendInvites {
-		resp["invite"] = h.sendInvites(m, nil, MethodRequest, nil)
+		resp["invite"] = h.sendInvites(m, nil, MethodRequest, nil, optsOf(c, in.SendNow))
 	}
 	h.notifyMeeting(m, "scheduled")
 	ok(c, http.StatusCreated, resp)
@@ -765,10 +805,10 @@ func (h *Handler) update(c *gin.Context) {
 	resp := gin.H{"meeting": m, "changed": changed}
 	send := in.SendInvites == nil || *in.SendInvites
 	if send && changed && m.Status != StatusCompleted {
-		resp["invite"] = h.sendInvites(m, nil, MethodRequest, nil)
+		resp["invite"] = h.sendInvites(m, nil, MethodRequest, nil, optsOf(c, in.SendNow))
 		if len(removed) > 0 {
 			for _, r := range removed {
-				h.sendInvites(m, []Participant{r}, MethodCancel, []Participant{r})
+				h.sendInvites(m, []Participant{r}, MethodCancel, []Participant{r}, optsOf(c, in.SendNow))
 			}
 		}
 	}
@@ -814,7 +854,8 @@ func (h *Handler) cancel(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Notify *bool `json:"notify"`
+		Notify  *bool `json:"notify"`
+		SendNow bool  `json:"send_now"`
 	}
 	_ = c.ShouldBindJSON(&body)
 	now := h.now()
@@ -827,7 +868,7 @@ func (h *Handler) cancel(c *gin.Context) {
 	}
 	resp := gin.H{"meeting": m}
 	if body.Notify == nil || *body.Notify {
-		resp["invite"] = h.sendInvites(m, nil, MethodCancel, nil)
+		resp["invite"] = h.sendInvites(m, nil, MethodCancel, nil, optsOf(c, body.SendNow))
 	}
 	h.notifyMeeting(m, "cancelled")
 	ok(c, http.StatusOK, resp)
@@ -863,7 +904,8 @@ func (h *Handler) invite(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Emails []string `json:"emails"`
+		Emails  []string `json:"emails"`
+		SendNow bool     `json:"send_now"`
 	}
 	_ = c.ShouldBindJSON(&body)
 	var recipients []Participant
@@ -879,7 +921,7 @@ func (h *Handler) invite(c *gin.Context) {
 			}
 		}
 	}
-	ok(c, http.StatusOK, h.sendInvites(m, recipients, MethodRequest, nil))
+	ok(c, http.StatusOK, h.sendInvites(m, recipients, MethodRequest, nil, optsOf(c, body.SendNow)))
 }
 
 func safeFilename(s string) string {

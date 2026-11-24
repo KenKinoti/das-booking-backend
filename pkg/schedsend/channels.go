@@ -32,6 +32,9 @@ type InvoiceResult struct {
 	CC      []string
 	BCC     []string
 	Subject string
+	// Queued: waiting for approval in Pending review (ReviewID = its item).
+	Queued   bool
+	ReviewID string
 }
 
 // APIError is a non-2xx answer from the invoicing API.
@@ -109,6 +112,10 @@ func (a *APIInvoices) Send(ctx context.Context, who Actor, invoiceID string, bod
 	out.LogID, _ = d["log_id"].(string)
 	out.To, _ = d["to"].(string)
 	out.Subject, _ = d["subject"].(string)
+	out.Queued, _ = d["queued"].(bool)
+	if rv, ok := d["review"].(map[string]any); ok {
+		out.ReviewID, _ = rv["id"].(string)
+	}
 	for _, k := range []string{"cc", "bcc"} {
 		if l, ok := d[k].([]any); ok {
 			for _, v := range l {

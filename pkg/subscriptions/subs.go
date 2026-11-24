@@ -615,6 +615,8 @@ type Detail struct {
 	Domains  []DomainInfo    `json:"domain_info"`
 	Today    string          `json:"today"`
 	Portal   string          `json:"portal_url,omitempty"`
+	// ReviewHold: the suspension waits for a notice in Pending review.
+	ReviewHold *ReviewHold `json:"review_hold"`
 }
 
 // GetDetail returns the subscription drawer data.
@@ -631,6 +633,7 @@ func (s *Service) GetDetail(org, id string) (*Detail, error) {
 	d.Portal = s.PortalURL(org, sub.CustomerID)
 	d.Timeline = s.timeline(org, sub, d.Periods, d.Events, d.Tasks, today)
 	d.Domains = s.domainInfo(org, sub, today)
+	d.ReviewHold = s.reviewHold(sub)
 	return d, nil
 }
 

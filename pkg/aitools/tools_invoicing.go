@@ -23,20 +23,20 @@ func init() {
 			due = "Valid-until (expiry) date"
 		}
 		return map[string]any{
-			"customer_id":  tStr("Existing customer id (preferred). Name, email, address, currency and CC contacts are filled from the customer."),
-			"customer":     tStr("Customer name or email to look up when you don't have the id"),
-			"client_name":  tStr("Client name for a one-off client with no customer record"),
-			"client_email": tStr("Client email (one-off client, or to override the customer's)"),
+			"customer_id":       tStr("Existing customer id (preferred). Name, email, address, currency and CC contacts are filled from the customer."),
+			"customer":          tStr("Customer name or email to look up when you don't have the id"),
+			"client_name":       tStr("Client name for a one-off client with no customer record"),
+			"client_email":      tStr("Client email (one-off client, or to override the customer's)"),
 			"client_is_company": tBool("Bill a company: client_name is then the company's name. Filled automatically for customers whose record has a company name."),
 			"client_contact":    tStr("When billing a company: the person it is for (printed as \"Attn:\" and greeted in the email). Optional."),
-			"items":        map[string]any{"type": "array", "description": "Line items (at least one)", "items": itemSchema, "minItems": 1},
-			"currency":     tStr("ISO 4217 currency (default: the customer's billing currency, else the organisation's)"),
-			"issue_date":   tDate("Issue date (default today)"),
-			"due_date":     tDate(due + " (default from invoicing settings)"),
-			"reference":    tStr("Reference / PO number"),
-			"title":        tStr("Short title shown on the document"),
-			"notes":        tStr("Notes shown to the client"),
-			"terms":        tStr("Terms shown to the client"),
+			"items":             map[string]any{"type": "array", "description": "Line items (at least one)", "items": itemSchema, "minItems": 1},
+			"currency":          tStr("ISO 4217 currency (default: the customer's billing currency, else the organisation's)"),
+			"issue_date":        tDate("Issue date (default today)"),
+			"due_date":          tDate(due + " (default from invoicing settings)"),
+			"reference":         tStr("Reference / PO number"),
+			"title":             tStr("Short title shown on the document"),
+			"notes":             tStr("Notes shown to the client"),
+			"terms":             tStr("Terms shown to the client"),
 		}
 	}
 	depositProps := map[string]any{
@@ -746,6 +746,17 @@ func invoicesSendReceipt(c *Ctx, a map[string]any) (any, error) {
 // heldNote describes an email held for the undo window (pkg/invoicing
 // hold.go): nothing has gone yet.
 func heldNote(d, out map[string]any) {
+	// Pending review: the email waits for an owner / admin to approve it.
+	if q, _ := d["queued"].(bool); q {
+		rv := tObjOf(d, "review")
+		out["emailed"] = false
+		out["queued"] = true
+		out["review_id"] = tS(rv, "id")
+		out["review_url"] = tURL("/outbox?open=" + tS(rv, "id"))
+		out["note"] = "Waiting for approval in Pending review — nothing was sent yet. An owner or admin approves it (or edits / rejects it) in " +
+			"Communication → Pending review; it goes out then."
+		return
+	}
 	if b, _ := d["held"].(bool); !b {
 		return
 	}

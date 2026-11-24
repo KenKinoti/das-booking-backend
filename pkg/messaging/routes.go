@@ -9,6 +9,8 @@ import (
 func RegisterRoutes(r *gin.Engine, handler *Handler, cfg *config.Config) {
 	// WebSocket clients authenticate with the same JWT as the REST API.
 	handler.jwtSecret = cfg.JWTSecret
+	// Pending review sends waiting WhatsApp messages through this handler (review.go).
+	handler.registerReview()
 
 	// WebSocket endpoints
 	r.GET("/ws/messaging", handler.HandleWebSocket)

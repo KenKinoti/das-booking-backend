@@ -199,6 +199,11 @@ type Input struct {
 	LocalSendAt   string       `json:"local_send_at"`
 	Repeat        Recurrence   `json:"repeat"`
 	Paused        bool         `json:"paused"`
+	// Reviewed / SendNow: an approver's "I've reviewed it" — the one-off
+	// message's client deliveries go at their time without waiting in
+	// Pending review (review.go).
+	Reviewed bool `json:"reviewed"`
+	SendNow  bool `json:"send_now"`
 }
 
 func cleanChannels(in []string, allowed ...string) ([]string, error) {
@@ -562,6 +567,7 @@ func (s *Service) Create(a Actor, in Input) (*Message, error) {
 	if in.Paused {
 		m.Status = StatusPaused
 	}
+	m.ReviewNote = s.reviewInput(a, m, in)
 	m.CreatedAt, m.UpdatedAt = now, now
 	if err := fresh(s.DB).Create(m).Error; err != nil {
 		return nil, err
@@ -624,16 +630,22 @@ func (s *Service) Update(a Actor, id string, in Input) (*Message, error) {
 		m.Status = StatusScheduled
 	}
 	m.UpdatedBy, m.UpdatedAt = a.User, Now()
+	note := s.reviewInput(a, m, in)
 	res := fresh(s.DB).Model(&Message{}).Where("id = ? AND organization_id = ? AND status IN ?", m.ID, a.Org, []string{StatusScheduled, StatusPaused}).
 		Select("title", "channels", "marketing", "invoice_id", "payment_id", "doc_number", "doc_type", "customer_name", "invoice_send", "audience",
-			"subject", "body", "sms_body", "whatsapp", "timezone", "local_send_at", "repeat_rule", "next_run_at", "status", "updated_by", "updated_at").Updates(m)
+			"subject", "body", "sms_body", "whatsapp", "timezone", "local_send_at", "repeat_rule", "next_run_at", "status", "updated_by", "updated_at",
+			"reviewed", "reviewed_by", "reviewed_by_name", "reviewed_at").Updates(m)
 	if res.Error != nil {
 		return nil, res.Error
 	}
 	if res.RowsAffected == 0 {
 		return nil, &Error{http.StatusConflict, "BUSY", "It changed while you were editing — reload and try again."}
 	}
-	return s.Get(a.Org, m.ID)
+	out, err := s.Get(a.Org, m.ID)
+	if out != nil {
+		out.ReviewNote = note
+	}
+	return out, err
 }
 
 // SetStatus pauses, resumes or cancels.

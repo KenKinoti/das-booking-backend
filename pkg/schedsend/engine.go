@@ -13,8 +13,8 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/emailprefs"
-	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/notify"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/outbox"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/wa"
 )
 
@@ -82,6 +82,7 @@ func (s *Service) RunOnce(ctx context.Context, wait time.Duration) (RunResult, e
 		r.Ran = true
 		s.releaseStale()
 		s.sendDue(ctx, &r)
+		s.prepareAhead(ctx, &r) // Pending review: client occurrences of the next 24 h (review.go)
 		s.retryDue(ctx, &r)
 	})
 	if err == nil && !ok {
@@ -203,7 +204,11 @@ func (s *Service) process(ctx context.Context, m *Message, now time.Time, r *Run
 	}
 	nx, ok := sch.After(occ, done)
 	if !ok {
-		s.advance(m, done, nil, "", run.Status, run.Note)
+		ended := ""
+		if run.Status == RunWaiting {
+			ended = endedWaiting // Pending review: it goes once approved
+		}
+		s.advance(m, done, nil, ended, run.Status, run.Note)
 		return
 	}
 	s.advance(m, done, &nx, "", run.Status, run.Note)
@@ -272,6 +277,8 @@ func (s *Service) runOccurrence(ctx context.Context, m *Message, occ time.Time, 
 	fin := s.finishRun(cur.ID)
 	if fin != nil {
 		cur = *fin
+	} else {
+		fresh(s.DB).Where("id = ?", cur.ID).Take(&cur) // still open (waiting for approval)
 	}
 	return cur, stop
 }
@@ -578,9 +585,20 @@ func (s *Service) sendOne(ctx context.Context, m *Message, d *Delivery, who *Act
 		if snd.Set {
 			body["to"], body["cc"], body["bcc"] = snd.To, nonNil(snd.CC), nonNil(snd.BCC)
 		}
+		// Pending review (review.go): the invoicing send path queues it.
+		if outbox.Active() {
+			body["review"] = s.reviewMeta(ctx, m, d)
+			if reviewedCtx(ctx, m) {
+				body["send_now"] = true
+			}
+		}
 		res, err := s.Invoices.Send(ctx, *who, m.InvoiceID, body)
 		if err != nil {
 			fail(err)
+			return
+		}
+		if res.Queued {
+			s.waitOn(d, res.ReviewID, r)
 			return
 		}
 		if !res.Emailed {
@@ -634,49 +652,34 @@ func (s *Service) sendOne(ctx context.Context, m *Message, d *Delivery, who *Act
 		unsub = s.UnsubscribeURL(org, rec.ID)
 	}
 	vals := s.Values(org, rec, open, focus, unsub)
-	short := firstNonEmpty(m.SMSBody, m.Body)
+	c := s.render(m, vals, open, unsub, team)
 
-	switch d.Channel {
-	case ChanInApp:
-		title, _ := Render(m.Subject, vals)
-		body, _ := Render(m.Body, vals)
-		_, err := notify.Send(fresh(s.DB), org, notify.Users(rec.ID), notify.Message{Type: "message.team", Severity: notify.Info, Title: title, Body: body,
-			Link: "/notifications", EntityType: "scheduled_message", EntityID: m.ID, ActorID: m.CreatedBy, ActorName: m.CreatedByName})
-		if err != nil {
-			fail(err)
+	// Pending review (review.go): client messages wait for approval; team
+	// messages never do.
+	if !team && d.Channel != ChanInApp {
+		dec := s.gate(ctx, m)
+		if dec.Wait {
+			s.queue(ctx, m, d, rec, c, r)
 			return
 		}
-		sent("", title+"\n\n"+body)
-	case ChanEmail:
-		subject, _ := Render(m.Subject, vals)
-		body, _ := Render(m.Body, vals)
-		html, text := s.emailFor(org, m, subject, body, open, unsub, s.pixelURL(org, d.ID), team)
-		if unsub != "" {
-			text += "\n\nUnsubscribe from offers: " + unsub
+		if dec.SentNow {
+			sentNow := sent
+			sent = func(provider, preview string) {
+				sentNow(provider, preview)
+				outbox.SentNow(org, m.CreatedBy, "scheduled_message", m.ID, "Scheduled "+kindLabel(m.Kind), d.Address)
+			}
 		}
-		id, err := s.sendMail(ctx, org, mail.Message{To: []string{d.Address}, Subject: subject, HTML: html, Text: text})
-		if err != nil {
-			fail(err)
-			return
-		}
-		sent(id, subject+"\n\n"+body)
-	case ChanSMS:
-		text, _ := Render(short, vals)
-		if unsub != "" {
-			text += " Reply STOP to opt out."
-		}
-		res, err := s.sendSMS(ctx, org, d.Address, text, d.ID)
-		if err != nil {
-			fail(err)
-			return
-		}
-		sent(res.ID, text)
-	case ChanWhatsApp:
-		s.sendWhatsApp(ctx, m, d, vals, short, fail, skip, sent)
-	default:
-		skip("Unknown channel")
 	}
+	s.deliver(ctx, m, d, rec, c, fail, skip, sent)
 }
+
+// notifySend is the in-app channel of team messages.
+func notifySend(s *Service, org, userID string, m *Message, title, body string) (int, error) {
+	return notify.Send(fresh(s.DB), org, notify.Users(userID), notify.Message{Type: "message.team", Severity: notify.Info, Title: title, Body: body,
+		Link: "/notifications", EntityType: "scheduled_message", EntityID: m.ID, ActorID: m.CreatedBy, ActorName: m.CreatedByName})
+}
+
+func gormExpr(expr string) any { return gorm.Expr(expr) }
 
 func nonNil(l []string) []string {
 	if l == nil {
@@ -687,7 +690,7 @@ func nonNil(l []string) []string {
 
 // sendWhatsApp: free text inside the 24-hour window, else the chosen
 // template, else skipped with the reason.
-func (s *Service) sendWhatsApp(ctx context.Context, m *Message, d *Delivery, vals map[string]string, short string, fail func(error), skip func(string), sent func(string, string)) {
+func (s *Service) sendWhatsApp(ctx context.Context, m *Message, d *Delivery, c content, fail func(error), skip func(string), sent func(string, string)) {
 	org := m.OrganizationID
 	acct, err := s.wa().Resolve(org)
 	if err != nil {
@@ -695,7 +698,7 @@ func (s *Service) sendWhatsApp(ctx context.Context, m *Message, d *Delivery, val
 		return
 	}
 	to := strings.TrimPrefix(d.Address, "+")
-	text, _ := Render(short, vals)
+	text := c.WAText
 	record := func(res *wa.Result, kind, tpl string) {
 		var a *wa.Account
 		if x, ok := acct.(*wa.Account); ok {
@@ -722,13 +725,11 @@ func (s *Service) sendWhatsApp(ctx context.Context, m *Message, d *Delivery, val
 		skip("No WhatsApp conversation with this person in the last 24 hours and no template chosen — WhatsApp only allows an approved template")
 		return
 	}
-	params := make([]string, 0, len(m.WhatsApp.Params))
-	for _, p := range m.WhatsApp.Params {
-		v, _ := Render(p, vals)
-		params = append(params, wa.CleanParam(v))
+	params := c.WAParams
+	if params == nil {
+		params = []string{}
 	}
-	btn, _ := Render(m.WhatsApp.URLButton, vals)
-	res, err := acct.SendTemplate(ctx, to, wa.Template{Name: m.WhatsApp.Template, Language: m.WhatsApp.Language, BodyParams: params, URLButton: strings.TrimSpace(btn)})
+	res, err := acct.SendTemplate(ctx, to, wa.Template{Name: m.WhatsApp.Template, Language: m.WhatsApp.Language, BodyParams: params, URLButton: strings.TrimSpace(c.WAButton)})
 	if err != nil {
 		fail(err)
 		return
@@ -759,8 +760,21 @@ func (s *Service) finishRun(runID string) *Run {
 	sentN := c[DelSent] + c[DelDelivered] + c[DelRead]
 	run.Total, run.Sent, run.Failed, run.Skipped = total, sentN, c[DelFailed], c[DelSkipped]
 	open := c[DelPending] + c[DelSending] + c[DelRetry]
+	waiting := c[DelWaiting] // Pending review (review.go)
 	upd := map[string]any{"total": run.Total, "sent": run.Sent, "failed": run.Failed, "skipped": run.Skipped}
-	if open > 0 || run.Status != RunSending {
+	if open == 0 && waiting > 0 && (run.Status == RunSending || run.Status == RunWaiting) {
+		// Everything else is done; the rest waits for approval.
+		note := fmt.Sprintf("%d waiting for approval in Pending review", waiting)
+		if p := runNote(run, ""); p != "" {
+			note = p + ", " + note
+		}
+		upd["status"], upd["note"] = RunWaiting, clip(note, 490)
+		fresh(s.DB).Model(&Run{}).Where("id = ? AND status IN ?", runID, []string{RunSending, RunWaiting}).Updates(upd)
+		fresh(s.DB).Model(&Message{}).Where("id = ? AND (last_run_at IS NULL OR last_run_at <= ?)", run.MessageID, Now()).
+			Updates(map[string]any{"last_result": RunWaiting, "last_note": clip(note, 490)})
+		return nil
+	}
+	if open > 0 || (run.Status != RunSending && run.Status != RunWaiting) {
 		fresh(s.DB).Model(&Run{}).Where("id = ?", runID).Updates(upd)
 		if open > 0 {
 			return nil
@@ -788,10 +802,13 @@ func (s *Service) finishRun(runID string) *Run {
 	now := Now()
 	run.FinishedAt = &now
 	upd["status"], upd["finished_at"], upd["note"] = run.Status, now, clip(run.Note, 490)
-	res := fresh(s.DB).Model(&Run{}).Where("id = ? AND status = ?", runID, RunSending).Updates(upd)
+	res := fresh(s.DB).Model(&Run{}).Where("id = ? AND status IN ?", runID, []string{RunSending, RunWaiting}).Updates(upd)
 	if res.RowsAffected == 0 {
 		return &run
 	}
+	// A one-off that waited for approval has now really finished.
+	fresh(s.DB).Model(&Message{}).Where("id = ? AND ended_reason = ?", run.MessageID, endedWaiting).
+		Update("ended_reason", map[bool]string{true: "Sent", false: clip(run.Note, 290)}[run.Status == RunSent])
 	// Recurring messages already moved on; keep the last result current.
 	fresh(s.DB).Model(&Message{}).Where("id = ? AND (last_run_at IS NULL OR last_run_at <= ?)", run.MessageID, now).
 		Updates(map[string]any{"last_result": run.Status, "last_note": clip(run.Note, 490), "last_run_at": now})
@@ -857,7 +874,11 @@ func (s *Service) retryDue(ctx context.Context, r *RunResult) {
 
 // SendNow sends a message immediately (in the background): a one-off is then
 // done; a recurring one keeps its schedule.
-func (s *Service) SendNow(a Actor, id string) (*Message, error) {
+func (s *Service) SendNow(a Actor, id string) (*Message, error) { return s.sendNow(a, id, false) }
+
+// sendNow is SendNow; reviewed: an approver ticked "I've reviewed it" (the
+// client deliveries don't wait in Pending review).
+func (s *Service) sendNow(a Actor, id string, reviewed bool) (*Message, error) {
 	m, err := s.Get(a.Org, id)
 	if err != nil {
 		return nil, err
@@ -882,7 +903,11 @@ func (s *Service) SendNow(a Actor, id string) (*Message, error) {
 			}
 		}()
 		var r RunResult
-		run, stop := s.runOccurrence(context.Background(), m, occ, true, &r)
+		ctx := context.Background()
+		if reviewed {
+			ctx = withReviewed(ctx)
+		}
+		run, stop := s.runOccurrence(ctx, m, occ, true, &r)
 		if !m.Repeat.Repeats() {
 			s.advance(m, m.Occurrences+1, nil, firstNonEmpty(stop, "Sent now by "+firstNonEmpty(a.Name, a.Email)), run.Status, run.Note)
 			return

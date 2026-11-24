@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/outbox"
 	"io"
 	"log"
 	"net/http"
@@ -722,6 +723,13 @@ func (h *Handler) SendWhatsAppMessage(c *gin.Context) {
 		return
 	}
 
+	// Pending review (review.go): a reply in a conversation goes at once for
+	// approvers (they review it as they write); everyone else's waits.
+	if d := outbox.LiveReply(oid, outbox.Who{UserID: contextString(c, "user_id", "userID"), Role: contextString(c, "user_role", "role")}); d.Wait {
+		h.queueWhatsApp(c, oid, request.To, request.Message, "", "", nil)
+		return
+	}
+
 	whatsapp := NewWhatsAppService(&settings)
 
 	response, err := whatsapp.SendMessage(request.To, request.Message)
@@ -748,6 +756,7 @@ func (h *Handler) SendWhatsAppTemplate(c *gin.Context) {
 		Template   string        `json:"template" binding:"required"`
 		Language   string        `json:"language"`
 		Components []interface{} `json:"components"`
+		SendNow    bool          `json:"send_now"`
 	}
 
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -767,6 +776,12 @@ func (h *Handler) SendWhatsAppTemplate(c *gin.Context) {
 
 	if settings.WhatsappAPIKey == "" || settings.WhatsappPhoneNumber == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "WhatsApp not configured"})
+		return
+	}
+
+	// Pending review (review.go): waits unless an approver sends it now.
+	if d := outbox.Decide(oid, outbox.Who{UserID: contextString(c, "user_id", "userID"), Role: contextString(c, "user_role", "role")}, request.SendNow); d.Wait {
+		h.queueWhatsApp(c, oid, request.To, "", request.Template, request.Language, request.Components)
 		return
 	}
 

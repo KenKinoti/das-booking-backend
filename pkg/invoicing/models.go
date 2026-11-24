@@ -90,17 +90,17 @@ func (TaxRate) TableName() string { return "billing_tax_rates" }
 
 // Invoice is an invoice or a quote (DocType).
 type Invoice struct {
-	ID              string    `json:"id" gorm:"type:varchar(64);primaryKey"`
-	OrganizationID  string    `json:"organization_id" gorm:"type:varchar(255);index;not null"`
-	DocType         string    `json:"doc_type" gorm:"type:varchar(20);index;not null;default:'invoice'"`
-	Number          string    `json:"number" gorm:"type:varchar(50);index"`
-	Status          string    `json:"status" gorm:"type:varchar(20);index;not null;default:'draft'"`
-	CustomerID      *string   `json:"customer_id" gorm:"type:varchar(255);index"`
-	ClientName      string    `json:"client_name" gorm:"type:varchar(255)"`
-	ClientEmail     string    `json:"client_email" gorm:"type:varchar(255)"`
-	ClientPhone     string    `json:"client_phone" gorm:"type:varchar(50)"`
-	ClientAddress   string    `json:"client_address" gorm:"type:text"`
-	ClientTaxNumber string    `json:"client_tax_number" gorm:"type:varchar(100)"`
+	ID              string  `json:"id" gorm:"type:varchar(64);primaryKey"`
+	OrganizationID  string  `json:"organization_id" gorm:"type:varchar(255);index;not null"`
+	DocType         string  `json:"doc_type" gorm:"type:varchar(20);index;not null;default:'invoice'"`
+	Number          string  `json:"number" gorm:"type:varchar(50);index"`
+	Status          string  `json:"status" gorm:"type:varchar(20);index;not null;default:'draft'"`
+	CustomerID      *string `json:"customer_id" gorm:"type:varchar(255);index"`
+	ClientName      string  `json:"client_name" gorm:"type:varchar(255)"`
+	ClientEmail     string  `json:"client_email" gorm:"type:varchar(255)"`
+	ClientPhone     string  `json:"client_phone" gorm:"type:varchar(50)"`
+	ClientAddress   string  `json:"client_address" gorm:"type:text"`
+	ClientTaxNumber string  `json:"client_tax_number" gorm:"type:varchar(100)"`
 	// ClientIsCompany: billed to a company. ClientName is then the company's
 	// name (what lists, PDFs and statements show) and ClientContact the person
 	// it is for, printed as "Attn:" and used to greet them in emails.
@@ -283,7 +283,7 @@ type EmailLog struct {
 	InvoiceID      string            `json:"invoice_id" gorm:"type:varchar(64);index;not null"`
 	Kind           string            `json:"kind" gorm:"type:varchar(20)"`   // invoice | quote | reminder | receipt
 	Mode           string            `json:"mode" gorm:"type:varchar(20)"`   // email | test | mailto
-	Status         string            `json:"status" gorm:"type:varchar(20)"` // sent | failed | recorded | blocked | held | cancelled (undone)
+	Status         string            `json:"status" gorm:"type:varchar(20)"` // sent | failed | recorded | blocked | held | cancelled (undone) | awaiting_approval | rejected | superseded (Pending review)
 	UserID         string            `json:"user_id" gorm:"type:varchar(255)"`
 	UserEmail      string            `json:"user_email" gorm:"type:varchar(255)"`
 	FromAddress    string            `json:"from" gorm:"type:varchar(320)"`
@@ -315,6 +315,10 @@ type EmailLog struct {
 	// a hold) — hold.go. Recalls: who it was recalled for — recall.go.
 	Hold    *HoldInfo      `json:"hold,omitempty" gorm:"-"`
 	Recalls []RecallStatus `json:"recalls,omitempty" gorm:"-"`
+	// ReviewID: the Pending-review item of this email (its own id) when it
+	// went through review (status awaiting_approval / rejected / superseded,
+	// or sent / failed after approval) — review.go.
+	ReviewID string `json:"review_id" gorm:"-"`
 }
 
 func (EmailLog) TableName() string { return "invoice_email_log" }

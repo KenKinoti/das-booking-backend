@@ -48,6 +48,9 @@ const (
 	// PlatformUpdates: announcements from the DASYIN team (pkg/broadcast)
 	// emailed when unread; urgent service notices are sent regardless.
 	PlatformUpdates = "platform_updates"
+	// PendingReview: client messages waiting for approval (pkg/outbox) —
+	// soon after they start waiting and a daily summary.
+	PendingReview = "pending_review"
 )
 
 // Audiences: who a category's emails are for before the mode and the
@@ -77,6 +80,7 @@ var Categories = []Category{
 	{StrategyBrief, "Monthly strategy brief", "What changed in the business this month and the actions worth taking.", Admins},
 	{"client_billing", "Client billing", "Client subscriptions: who is overdue or about to be suspended (at least 3 days ahead, to call them), suspensions, domain renewals and the daily digest.", Admins},
 	{PlatformUpdates, "Updates from DASYIN", "Product updates, reminders and offers from the DASYIN team you haven't read in the app. Urgent service notices are always sent.", Involved},
+	{PendingReview, "Messages waiting for approval", "Client emails, SMS and WhatsApp messages waiting in Pending review: about 15 minutes after new ones start waiting (at most one an hour) and a daily summary at 07:30.", Admins},
 }
 
 // CategoryByKey finds a category.

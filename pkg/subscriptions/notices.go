@@ -15,6 +15,7 @@ import (
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/invoicing"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/mail"
 	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/notify"
+	"github.com/kenkinoti/gofiber-das-crm-backend/pkg/outbox"
 )
 
 // AlertsCategory is the pkg/emailprefs category of the admin alerts and the
@@ -305,20 +306,40 @@ func (s *Service) suspensionAlert(org string, sub *Subscription, per *BillingPer
 
 // clientReminder emails the client through the invoice's own reminder email
 // (branded, PDF attached, the pay link), with the subscription's wording.
-func (s *Service) clientReminder(ctx context.Context, who Actor, sub *Subscription, p *BillingPeriod, subject, message string) error {
+// meta describes it to Pending review (nil = none); reviewID is set when it
+// waits there (review.go).
+func (s *Service) clientReminder(ctx context.Context, who Actor, sub *Subscription, p *BillingPeriod, subject, message string, meta map[string]any) (string, error) {
 	if s.Inv == nil {
-		return errors.New("invoicing is not available")
+		return "", errors.New("invoicing is not available")
 	}
-	return s.Inv.Send(ctx, who, p.InvoiceID, map[string]any{"kind": "reminder", "subject": subject, "message": message, "app_url": s.AppURL})
+	return s.clientSend(ctx, who, p.InvoiceID, map[string]any{"kind": "reminder", "subject": subject, "message": message, "app_url": s.AppURL}, meta)
 }
 
 // clientDirect emails the client a notice that is not about an unpaid
 // invoice (service active again).
-func (s *Service) clientDirect(ctx context.Context, org string, sub *Subscription, subject, message, status, tone string, facts []invoicing.EmailRow) (string, error) {
+// With Pending review on it waits there (reviewID; eventID is its timeline row).
+func (s *Service) clientDirect(ctx context.Context, org string, sub *Subscription, subject, message, status, tone string, facts []invoicing.EmailRow, eventID ...string) (to string, err error) {
+	to, _, err = s.clientDirectReview(ctx, org, sub, subject, message, status, tone, facts, firstNonEmpty(eventID...))
+	return to, err
+}
+
+func (s *Service) clientDirectReview(ctx context.Context, org string, sub *Subscription, subject, message, status, tone string, facts []invoicing.EmailRow, eventID string) (string, string, error) {
 	cu, _ := s.customer(org, sub.CustomerID)
 	if !mail.ValidAddress(cu.Email) {
-		return "", errors.New("the customer has no email address")
+		return "", "", errors.New("the customer has no email address")
 	}
+	if outbox.Decide(org, outbox.Who{}, false).Wait {
+		id, err := s.queueDirect(org, sub, cu.Email, firstNonEmpty(cu.Contact, cu.Name), subject, message, status, tone, facts, eventID)
+		return cu.Email, id, err
+	}
+	msg := s.directMessage(org, sub, subject, message, status, tone, facts)
+	msg.To = []string{cu.Email}
+	_, err := s.Mail.SendAs(ctx, org, msg)
+	return cu.Email, "", err
+}
+
+// directMessage renders a direct client notice (no recipients set).
+func (s *Service) directMessage(org string, sub *Subscription, subject, message, status, tone string, facts []invoicing.EmailRow) mail.Message {
 	info := s.orgInfo(org)
 	actions := []invoicing.EmailAction{}
 	if u := s.PortalURL(org, sub.CustomerID); u != "" {
@@ -328,8 +349,7 @@ func (s *Service) clientDirect(ctx context.Context, org string, sub *Subscriptio
 		LogoURL: info.Logo, Accent: info.Accent, Preheader: subject, DocLabel: "Your services", Number: sub.Number, Message: message,
 		StatusLine: status, StatusTone: tone, Facts: facts, Actions: actions}
 	h, t := invoicing.RenderEmail(v)
-	_, err := s.Mail.SendAs(ctx, org, mail.Message{To: []string{cu.Email}, Subject: subject, HTML: h, Text: t})
-	return cu.Email, err
+	return mail.Message{Subject: subject, HTML: h, Text: t}
 }
 
 func (s *Service) portalLine(org string, sub *Subscription) string {

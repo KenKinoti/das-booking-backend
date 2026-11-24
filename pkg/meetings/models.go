@@ -71,7 +71,11 @@ type Participant struct {
 	UserID     string     `json:"user_id,omitempty" gorm:"type:varchar(255)"`
 	Response   string     `json:"response" gorm:"type:varchar(20)"` // needs_action, accepted, declined, tentative
 	InvitedAt  *time.Time `json:"invited_at"`
-	CreatedAt  time.Time  `json:"created_at"`
+	// Pending review (review.go): the invitation's item and its state
+	// ("" | waiting | sent | rejected) for guests who are not users.
+	ReviewID     string    `json:"review_id" gorm:"type:varchar(64)"`
+	InviteStatus string    `json:"invite_status" gorm:"type:varchar(12)"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 func (Participant) TableName() string { return "meeting_participants" }
