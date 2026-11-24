@@ -650,7 +650,8 @@ func AllModels() []any {
 		&TaskState{}, &TeamAlias{}, &UnmatchedEvent{}, &Bet{}, &BankrollEntry{}, &Limits{}, &WatchItem{}, &ManualOdd{}}
 	// v2.17 (free sources, news, jackpots): free_models.go; v2.18: win_models.go.
 	out = append(out, FreeModels()...)
-	return append(out, WinModels()...)
+	out = append(out, WinModels()...)
+	return append(out, LockModels()...) // v2.19.1: lock_models.go
 }
 
 // Migrate creates the tables and seeds the settings row and the default
@@ -667,5 +668,8 @@ func Migrate(db *gorm.DB) error {
 	if err := seedFree(db); err != nil {
 		return err
 	}
-	return seedWin(db)
+	if err := seedWin(db); err != nil {
+		return err
+	}
+	return seedLock(db) // v2.19.1: keyless free sources on by default, once (lock_tick.go)
 }

@@ -145,7 +145,7 @@ func TestGradeVerdict(t *testing.T) {
 		t.Fatalf("goal marks %+v %+v", rc.Goals, rc.BTTS)
 	}
 	np := NoPickCheck("0-1")
-	if np.Status != "no_pick" || np.Label != "No pick" || *np.Outcome != "2" || np.Pick != nil || np.Summary != "No pick was frozen before kickoff." {
+	if np.Status != "no_pick" || np.Label != "No pick" || *np.Outcome != "2" || np.Pick != nil || np.Summary != "No pick — not locked before kick-off." { // v2.19.1 wording
 		t.Fatalf("no pick %+v", np)
 	}
 	vd := VoidCheck(&v, voidWhy("ABD"), now, ProviderAPIFootball)

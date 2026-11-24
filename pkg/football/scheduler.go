@@ -35,6 +35,11 @@ type RunSummary struct {
 	Graded     int            `json:"graded"`
 	Settled    int            `json:"settled"`
 	Notes      []string       `json:"notes"`
+	// v2.19.1 (lock.go): picks locked or refreshed before kickoff, matches
+	// locked as "not enough data", picks marked ✓ / ✗.
+	Locked  int `json:"locked"`
+	NoData  int `json:"no_data"`
+	VGraded int `json:"verdicts_graded"`
 }
 
 // TaskRun is one task's outcome.
@@ -58,11 +63,13 @@ type RunOpts struct {
 }
 
 // StartScheduler runs a pass every 30 seconds on the instance holding the
-// advisory lock (FOOTBALL_SCHEDULER=off disables it).
+// advisory lock (FOOTBALL_SCHEDULER=off disables it), plus a catch-up pass
+// soon after start (v2.19.1, lock_tick.go).
 func (s *Service) StartScheduler(ctx context.Context) {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("FOOTBALL_SCHEDULER")), "off") {
 		return
 	}
+	s.startCatchUp(ctx)
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -181,7 +188,7 @@ func (s *Service) runLocked(ctx context.Context, o RunOpts) (RunSummary, error) 
 	// v2.17 free sources (ClubElo, football-data.co.uk / .org, OddsPapi,
 	// news), seeded-fixture dedupe and jackpot grading (freeplan.go). They
 	// run even when no paid key is saved.
-	if !o.NoFetch || o.Trigger == "schedule" {
+	if !o.NoFetch || isAutoTrigger(o.Trigger) {
 		s.runFree(ctx, o, &sum)
 	}
 	// Internal work (no provider calls).
@@ -194,6 +201,7 @@ func (s *Service) runLocked(ctx context.Context, o RunOpts) (RunSummary, error) 
 	s.winPass(&sum, "grade") // v2.18: ✓/✗ marks, weekly learned consensus weights
 	sum.Settled = s.AutoSettle()
 	sum.DurationMS = time.Since(started).Milliseconds()
+	s.recordPass(sum) // v2.19.1: last pass for the tick / self-heal (lock_tick.go)
 	now := s.Now()
 	if o.Trigger == "manual" || sum.Planned > 0 || sum.Graded+sum.Settled+sum.Frozen+sum.Closed > 0 {
 		s.DB.Model(&Settings{}).Where("id = 1").Updates(map[string]any{"last_run_at": now, "last_run": mustJSON(sum)})

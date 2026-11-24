@@ -113,6 +113,7 @@ type Scorecard struct {
 		VerdictText string `json:"verdict_text"`
 		Void        int    `json:"void"`
 		NoPick      int    `json:"no_pick"`
+		NoData      int    `json:"no_data"` // v2.19.1: finished matches locked as "no pick — not enough data" (not graded)
 	} `json:"totals"`
 	Safer       LineStats `json:"safer"`
 	Goals       LineStats `json:"goals"`
@@ -230,7 +231,7 @@ func (s *Service) ScorecardFor(q ScoreQuery) (*Scorecard, error) {
 	sc := &Scorecard{ByTier: []TierStats{}, ByCompetition: []CompStats{}, Weekly: []WeekStats{}, Rows: []ScoreRow{}, Jackpots: []JackpotLine{},
 		History: History.Summary(), Disclaimer: Disclaimer, AsOf: now,
 		Note: "Win rate depends mostly on which games and markets you play: strong favourites win about 7 in 10, coin-flips about 4 in 10, whatever the formula. " +
-			"Picks are frozen before kickoff and never regraded."}
+			"Picks are locked before kickoff (refreshed until then), graded once and never regraded; matches without enough data get no pick and are counted apart."}
 	key := q.Period
 	if key == "" {
 		key = "weekend"
@@ -358,6 +359,7 @@ func (s *Service) ScorecardFor(q ScoreQuery) (*Scorecard, error) {
 		return sc.ByCompetition[i].Name < sc.ByCompetition[j].Name
 	})
 	sc.Totals.NoPick = s.noPickCount(from, to, q.Competition)
+	sc.Totals.NoData = s.noDataCount(from, to, q.Competition)
 	sc.Weekly = s.weeklySeries(to, loc, q.Competition, q.Tier)
 	// Rows, newest first.
 	for i := len(rows) - 1; i >= 0 && len(sc.Rows) < 300; i-- {
@@ -388,6 +390,18 @@ func (s *Service) noPickCount(from, to time.Time, comp int64) int {
 	q := s.DB.Table("fb_fixtures f").Joins("JOIN fb_competitions c ON c.id = f.competition_id AND c.enabled").
 		Where("f.status IN ('FT','AET','PEN') AND f.kickoff >= ? AND f.kickoff < ? AND f.id > 0", from, to).
 		Where("NOT EXISTS (SELECT 1 FROM fb_verdicts v WHERE v.fixture_id = f.id)")
+	if comp != 0 {
+		q = q.Where("f.competition_id = ?", comp)
+	}
+	q.Count(&n)
+	return int(n)
+}
+
+// noDataCount: finished matches locked as "no pick — not enough data".
+func (s *Service) noDataCount(from, to time.Time, comp int64) int {
+	var n int64
+	q := s.DB.Table("fb_verdicts v").Joins("JOIN fb_fixtures f ON f.id = v.fixture_id").
+		Where("v.status = 'no_data' AND f.status IN ('FT','AET','PEN') AND f.kickoff >= ? AND f.kickoff < ?", from, to)
 	if comp != 0 {
 		q = q.Where("f.competition_id = ?", comp)
 	}
@@ -483,6 +497,7 @@ type PickRow struct {
 	Away        TeamRef        `json:"away"`
 	Status      string         `json:"status"`
 	Verdict     *Verdict       `json:"verdict"`
+	Lock        *LockOut       `json:"lock"` // v2.19.1
 }
 
 // Picks lists upcoming verdicts, strongest first.
@@ -507,7 +522,7 @@ func (s *Service) Picks(from, to *time.Time, minTier string, comp int64, limit i
 			continue
 		}
 		out = append(out, PickRow{FixtureID: r.ID, Kickoff: r.Kickoff, Competition: map[string]any{"id": r.Competition.ID, "name": r.Competition.Name, "country": r.Competition.Country},
-			Home: r.Home, Away: r.Away, Status: r.Status, Verdict: r.Verdict})
+			Home: r.Home, Away: r.Away, Status: r.Status, Verdict: r.Verdict, Lock: r.Lock})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Verdict.P != out[j].Verdict.P {

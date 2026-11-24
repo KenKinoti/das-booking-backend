@@ -164,6 +164,16 @@ func fbFixtureCard(f map[string]any) map[string]any {
 	if rc := tObjOf(f["result_check"]); rc != nil {
 		m["result_check"] = fbCheckLine(rc)
 	}
+	// v2.19.1: no pick without real data (and why); when the pick was locked.
+	if np := tObjOf(f["no_pick"]); np != nil {
+		m["no_pick"] = tS(np, "label") + ": " + tS(np, "reason")
+	}
+	if lk := tObjOf(f["lock"]); lk != nil && tS(lk, "label") != "" {
+		m["locked"] = tS(lk, "label")
+	}
+	if n := tS(f, "model_note"); n != "" {
+		m["model_note"] = n
+	}
 	return m
 }
 

@@ -571,7 +571,8 @@ func (h *Handler) sourcesView() gin.H {
 		"jackpot": gin.H{"weights": st.JackpotWeights, "sharing": st.JackpotSharing, "top_n": 10},
 		"attribution": "Results and closing odds: football-data.co.uk. Club ratings and probabilities: clubelo.com. Cross-check: football-data.org. Prices: OddsPapi. News: Google News, GDELT and the publishers' feeds (links only). " +
 			"Crowd prices: Polymarket. Fixtures and results: openfootball (public domain). Hit-rate history: Club Football Match Data (xgabora, MIT)."}
-	h.winSourcesView(view) // v2.18
+	h.winSourcesView(view)              // v2.18
+	view["keyless"] = h.S.keylessView() // v2.19.1: keyless sources on by default (lock_tick.go)
 	return view
 }
 
@@ -630,8 +631,12 @@ func (s *Service) SaveSources(p SourcesPatch, by string) error {
 	if err := setKey("fdorg_key", p.FDOrgKey); err != nil {
 		return err
 	}
+	before := map[string]bool{}
 	if p.Enabled != nil {
 		en := st.Enabled
+		for k, v := range en {
+			before[k] = v
+		}
 		for k, v := range p.Enabled {
 			if !isFreeProvider(k) {
 				return inputErr("Unknown source %q.", k)
@@ -736,7 +741,13 @@ func (s *Service) SaveSources(p SourcesPatch, by string) error {
 	if err := s.SaveWinSources(p.WinPatch); err != nil {
 		return err
 	}
-	return s.DB.Model(&FreeSettings{}).Where("id = 1").Updates(up).Error
+	if err := s.DB.Model(&FreeSettings{}).Where("id = 1").Updates(up).Error; err != nil {
+		return err
+	}
+	if p.Enabled != nil {
+		s.noteSourceChoices(before, p.Enabled) // v2.19.1: a person's choice is never overridden (lock_tick.go)
+	}
+	return nil
 }
 
 func (h *Handler) saveSources(c *gin.Context) {

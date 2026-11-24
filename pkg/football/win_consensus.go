@@ -69,6 +69,12 @@ type consInputs struct {
 	BTTS    *float64
 	BTTSSrc string
 	Fav     *P3 // the bookmakers' view (sharp else market) for the favourite baseline
+	// v2.19.1 data gate (lock_gate.go): what the model knows, how many API
+	// bookmakers priced the match, a Kenyan / OddsPapi price, typed-in prices.
+	Model  *ModelData
+	Books  int
+	KEorOP bool
+	Typed  bool
 }
 
 func newConsInputs() consInputs {
@@ -201,7 +207,15 @@ func marketSources(mv MarketView, in *consInputs) {
 func (s *Service) consensusInputs(f Fixture, mv MarketView, pred *Prediction, before *time.Time) consInputs {
 	in := newConsInputs()
 	marketSources(mv, &in)
-	if pred != nil && pred.PHome+pred.PDraw+pred.PAway > 0 {
+	in.Books, in.KEorOP = marketEvidence(mv)
+	s.typedMarket(f, before, &in) // v2.19.1: a price typed in by hand when nothing was fetched
+	// v2.19.1: the model counts only when it knows the teams (lock_gate.go);
+	// an unfitted default is not a probability.
+	md := s.modelDataFor(f, pred)
+	in.Model = &md
+	if pred != nil && pred.PHome+pred.PDraw+pred.PAway > 0 && !md.Solid {
+		in.Why["model"] = md.Why
+	} else if pred != nil && pred.PHome+pred.PDraw+pred.PAway > 0 {
 		p := P3{pred.PHome, pred.PDraw, pred.PAway}
 		in.P["model"] = &p
 		in.Label["model"] = consLabels["model"]
@@ -218,7 +232,7 @@ func (s *Service) consensusInputs(f Fixture, mv MarketView, pred *Prediction, be
 			v := *pred.Detail.BTTS
 			in.BTTS, in.BTTSSrc = &v, "model"
 		}
-	} else {
+	} else if in.Why["model"] == "" {
 		in.Why["model"] = "no model prediction"
 	}
 	if s.FreeOn(ProviderClubElo) {
@@ -347,13 +361,26 @@ func BlendConsensus(ps map[string]*P3, w map[string]float64) (P3, map[string]flo
 	return out, eff
 }
 
-// verdictFromInputs builds a fixture's verdict from its inputs.
+// verdictFromInputs builds a fixture's verdict from its inputs (nil when
+// the data gate finds no solid source — lock_gate.go).
 func (s *Service) verdictFromInputs(f Fixture, comp Competition, in consInputs, own map[string]*OwnRecord) *Verdict {
+	v, _ := s.verdictGated(f, comp, in, own)
+	return v
+}
+
+// verdictGated is verdictFromInputs with the data gate's answer (why there
+// is no pick, or which solid sources back it).
+func (s *Service) verdictGated(f Fixture, comp Competition, in consInputs, own map[string]*OwnRecord) (*Verdict, GateOut) {
+	g := gateFor(in)
+	if !g.OK {
+		return nil, g
+	}
 	group := groupOf(comp)
 	w, from := s.consWeightsFor(group)
 	blend, eff := BlendConsensus(in.P, w)
 	if len(eff) == 0 {
-		return nil
+		g.OK, g.Reason = false, "No prices and too little match history for these teams"
+		return nil, g
 	}
 	srcs := []ConsSource{}
 	missing := []ConsMissing{}
@@ -378,7 +405,15 @@ func (s *Service) verdictFromInputs(f Fixture, comp Competition, in consInputs, 
 	v := BuildVerdict(VerdictInput{Home: s.teamName(f.HomeID), Away: s.teamName(f.AwayID), Probs: blend, Sources: srcs, Missing: missing, WeightsFrom: from,
 		Group: group, MarketUsed: in.P["sharp"] != nil || in.P["market"] != nil, Over: in.Over, OverSource: in.OverSrc, BTTS: in.BTTS, BTTSSource: in.BTTSSrc,
 		Own: own, AsOf: asOf})
-	return &v
+	capModelOnly(&v, g)
+	if g.ModelOnly && in.P["market"] != nil {
+		v.Tier.Note = "One bookmaker's price and the model only — less reliable"
+	}
+	if v.Tier.Capped && own != nil {
+		v.Tier.Own = own["good"]
+	}
+	v.Data = &g
+	return &v, g
 }
 
 // ---------------------------------------------------------------- own record

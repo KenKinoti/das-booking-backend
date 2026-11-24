@@ -1087,8 +1087,20 @@ func (s *Service) JackpotViewOf(org, user, id string, topN int) (*JackpotView, e
 	for _, t := range ts {
 		v.Tickets = append(v.Tickets, s.ticketView(j, t, ps))
 	}
-	s.jackpotWin(v, &j, gs) // v2.18: frozen chances, review, per-game ✓/✗ (jackpot_win.go)
+	s.jackpotWin(v, &j, gs)               // v2.18: frozen chances, review, per-game ✓/✗ (jackpot_win.go)
+	s.LockFixtures(jackpotFixtureIDs(gs)) // v2.19.1: lock on view for the matched games (lock.go)
 	return v, nil
+}
+
+// jackpotFixtureIDs are the fixtures a jackpot's games matched.
+func jackpotFixtureIDs(gs []JackpotGame) []int64 {
+	ids := []int64{}
+	for _, g := range gs {
+		if g.FixtureID != nil && *g.FixtureID > 0 {
+			ids = append(ids, *g.FixtureID)
+		}
+	}
+	return ids
 }
 
 // rememberMostLikely stores the analysis' most likely ticket on the jackpot

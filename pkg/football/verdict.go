@@ -38,6 +38,7 @@ type TierOut struct {
 	History VerdictHistory `json:"history"`
 	Own     *OwnRecord     `json:"own"`
 	Note    string         `json:"note"`
+	Capped  bool           `json:"capped,omitempty"` // v2.19.1: a model-only pick shown as Good at most (lock_gate.go)
 }
 
 // SaferOut is the safer double-chance pick.
@@ -122,6 +123,12 @@ type Verdict struct {
 	Kind      string      `json:"kind"` // live | frozen
 	FrozenAt  *time.Time  `json:"frozen_at"`
 	AsOf      time.Time   `json:"as_of"`
+	// v2.19.1 (lock.go): when this pick was locked (stored; refreshed until
+	// kickoff, then final), "Locked 2 h 10 min before kick-off", and which
+	// solid sources back it (lock_gate.go).
+	LockedAt    *time.Time `json:"locked_at"`
+	LockedLabel string     `json:"locked_label,omitempty"`
+	Data        *GateOut   `json:"evidence,omitempty"` // not "data": the AI tools unwrap {"data": …} envelopes
 }
 
 // VerdictInput feeds BuildVerdict.
@@ -466,6 +473,11 @@ type ResultCheck struct {
 	GradedAt     *time.Time `json:"graded_at"`
 	ResultSource *string    `json:"result_source"`
 	Tier         *string    `json:"tier"`
+	// v2.19.1: why there was no pick (not_enough_data) and when the graded
+	// pick was locked ("Locked 2 h 10 min before kick-off").
+	Reason      string     `json:"reason,omitempty"`
+	LockedAt    *time.Time `json:"locked_at"`
+	LockedLabel string     `json:"locked_label,omitempty"`
 }
 
 func bp(b bool) *bool { return &b }
@@ -480,9 +492,9 @@ func outcomeKey(hg, ag int) string {
 	return "X"
 }
 
-// NoPickCheck is a finished match without a frozen pick.
+// NoPickCheck is a finished match without a locked pick.
 func NoPickCheck(score string) *ResultCheck {
-	rc := &ResultCheck{Status: "no_pick", Label: "No pick", Summary: "No pick was frozen before kickoff."}
+	rc := &ResultCheck{Status: "no_pick", Label: "No pick", Summary: "No pick — not locked before kick-off."}
 	if score != "" {
 		s := score
 		rc.Score = &s

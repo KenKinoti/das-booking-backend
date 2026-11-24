@@ -22,7 +22,7 @@ const ModelVersion = "dc+elo linear blend 0.6/0.4 (pkg/football/model defaults: 
 // Kelly 1956). The package defaults come from its walk-forward tuning.
 var (
 	dcOptions  = model.DefaultDCOptions()
-	eloOptions = model.DefaultEloOptions()
+	eloOptions = crossCompElo() // v2.19.1: new teams start at 1500 (lock_gate.go)
 	// Blend weights (Dixon–Coles, Elo); Elo alone when there's no DC fit.
 	blendDC, blendElo = model.DefaultBlendW[0], model.DefaultBlendW[1]
 )
@@ -276,6 +276,7 @@ type PredDetail struct {
 	Inputs    []string           `json:"inputs"`
 	DataAsOf  time.Time          `json:"data_as_of"`
 	Note      string             `json:"note,omitempty"`
+	Data      *ModelData         `json:"model_data,omitempty"` // v2.19.1: how much the model knows about the two teams (lock_gate.go)
 }
 
 // compute builds the current prediction of a fixture.
@@ -291,12 +292,14 @@ func (s *Service) computeOrg(f Fixture, org string) (Prediction, error) {
 	adj, adjOut := s.availabilityOrg(f, org)
 	d.Adjust = adjOut
 	e := s.eloNow()
+	dc := s.dcFor(f.CompetitionID, false)
+	md := modelDataFrom(e, dc, f.HomeID, f.AwayID, s.teamName(f.HomeID), s.teamName(f.AwayID)) // v2.19.1: what the model knows (lock_gate.go)
+	d.Data = &md
 	eh, ed, ea := e.Probabilities(h, a, false)
 	d.Elo = &EloOut{Home: eh, Draw: ed, Away: ea, RatingHome: math.Round(e.Rating(h)*10) / 10, RatingAway: math.Round(e.Rating(a)*10) / 10}
 	d.Inputs = append(d.Inputs, fmt.Sprintf("Elo ratings from every stored result: %s %.0f, %s %.0f.", s.teamName(f.HomeID), d.Elo.RatingHome, s.teamName(f.AwayID), d.Elo.RatingAway))
 	probs := []model.Probs{{H: eh, D: ed, A: ea}}
 	weights := []float64{1}
-	dc := s.dcFor(f.CompetitionID, false)
 	if dc.p != nil {
 		if _, ok := dc.p.Attack[h]; ok {
 			if _, ok := dc.p.Attack[a]; ok {
@@ -520,26 +523,14 @@ func (s *Service) CurrentPrediction(f Fixture) (Prediction, bool) {
 	return p, true
 }
 
-// FreezeWindow: predictions are frozen during the last 30 minutes before
-// kickoff (never after).
+// FreezeWindow: until v2.19.0 predictions and verdicts were frozen only in
+// the last 30 minutes before kickoff (lost whenever no pass ran then); since
+// v2.19.1 they are locked early (lock.go). Kept for the scheduler's notes.
 const FreezeWindow = 30 * time.Minute
 
-// FreezeDue freezes the prediction of fixtures kicking off within 30
-// minutes, with the market's de-margined view at that moment.
-func (s *Service) FreezeDue() int {
-	now := s.Now()
-	var fx []Fixture
-	s.DB.Joins("JOIN fb_competitions c ON c.id = fb_fixtures.competition_id AND c.enabled").
-		Where("fb_fixtures.kickoff > ? AND fb_fixtures.kickoff <= ? AND fb_fixtures.status IN ?", now, now.Add(FreezeWindow), []string{"NS", "TBD"}).
-		Where("NOT EXISTS (SELECT 1 FROM fb_predictions p WHERE p.fixture_id = fb_fixtures.id AND p.kind = 'frozen')").Find(&fx)
-	n := 0
-	for _, f := range fx {
-		if s.Freeze(f) == nil {
-			n++
-		}
-	}
-	return n
-}
+// FreezeDue stores the model's frozen prediction early (v2.19.1: every
+// fixture within the lookahead days, refreshed until kickoff — lock.go).
+func (s *Service) FreezeDue() int { return s.LockPredictions() }
 
 // Freeze stores the frozen copy of a fixture's prediction.
 func (s *Service) Freeze(f Fixture) error {
@@ -756,7 +747,7 @@ func (s *Service) ModelPerformance(comp *int64, from, to *time.Time) Performance
 	var ps []Prediction
 	q.Order("kickoff").Find(&ps)
 	perf := Performance{CompetitionID: comp, From: from, To: to, N: len(ps), Calibration: []CalBinOut{}, MarketCalib: []CalBinOut{}, Timeline: []PerfWeek{},
-		Note: "Predictions are frozen up to 30 minutes before kickoff and scored after full time against the 90-minute result. Lower Brier, RPS and log loss are better; the market is the de-margined closing price (Pinnacle when available, otherwise the consensus of bookmakers)."}
+		Note: "Predictions are locked before kickoff (stored up to three days ahead, refreshed until kickoff, then final) and scored after full time against the 90-minute result. Lower Brier, RPS and log loss are better; the market is the de-margined closing price (Pinnacle when available, otherwise the consensus of bookmakers)."}
 	if comp != nil {
 		var c Competition
 		if s.DB.Where("id = ?", *comp).Limit(1).Find(&c).RowsAffected > 0 {
@@ -764,7 +755,7 @@ func (s *Service) ModelPerformance(comp *int64, from, to *time.Time) Performance
 		}
 	}
 	if len(ps) == 0 {
-		perf.Note = "No graded predictions yet: the track record starts with the first match that kicks off after the model's prediction is frozen. " + perf.Note
+		perf.Note = "No graded predictions yet: the track record starts with the first match that kicks off after the model's prediction is locked. " + perf.Note
 		return perf
 	}
 	var b, r, l, mb, mr, ml, pb, pr, pl, acc float64

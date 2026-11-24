@@ -59,6 +59,7 @@ type Handler struct{ S *Service }
 //	POST   /super-admin/football/test/clock         {now: RFC3339 | null} (FOOTBALL_TEST_CLOCK=1 only)
 func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
 	g := auth.Group("/football")
+	g.Use(h.wake) // v2.19.1: a pass in the background when the last one is old (lock_tick.go)
 	g.GET("/meta", h.meta)
 	g.GET("/competitions", h.competitions)
 	g.GET("/fixtures", h.fixtures)
@@ -90,6 +91,7 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
 	g.DELETE("/odds/manual/:id", h.deleteManualOdd)
 
 	sa := auth.Group("/super-admin/football", requireSuper)
+	sa.Use(h.wake)
 	sa.GET("/settings", h.settings)
 	sa.PUT("/settings", h.saveSettings)
 	sa.POST("/settings/test", h.testConn)
@@ -108,6 +110,8 @@ func (h *Handler) RegisterRoutes(auth *gin.RouterGroup) {
 	h.registerFree(g, sa)
 	// v2.18: scorecard, picks, consensus weights, history, jackpot plan (win_handler.go).
 	h.registerWin(g, sa)
+	// v2.19.1: results view, lock status (lock_tick.go, lock_results.go).
+	h.registerLock(g, sa)
 }
 
 func ok(c *gin.Context, v any) { c.JSON(http.StatusOK, gin.H{"success": true, "data": v}) }

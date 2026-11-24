@@ -375,8 +375,12 @@ type Analysis struct {
 	KenyanOdds  *KenyanOddsOut   `json:"kenyan_odds"`
 	// v2.18: the one-line verdict, the ✓/✗ after full time and the external
 	// probabilities (Polymarket, API-Football's prediction) — win_handler.go.
-	Verdict     *Verdict        `json:"verdict"`
-	ResultCheck *ResultCheck    `json:"result_check"`
+	Verdict     *Verdict     `json:"verdict"`
+	ResultCheck *ResultCheck `json:"result_check"`
+	// v2.19.1 (lock.go): the lock, why there's no pick, what the model knows.
+	Lock        *LockOut        `json:"lock"`
+	NoPick      *NoPickOut      `json:"no_pick"`
+	ModelData   *ModelData      `json:"model_data"`
 	SourceProbs []SourceProbOut `json:"source_probs"`
 	Sources     []SourceOut     `json:"sources"`
 	Stale       bool            `json:"stale"`
@@ -1272,6 +1276,12 @@ type FixtureRow struct {
 	// v2.18 (win_freeze.go): the one-line verdict and the ✓/✗ after the game.
 	Verdict     *Verdict     `json:"verdict"`
 	ResultCheck *ResultCheck `json:"result_check"`
+	// v2.19.1 (lock.go): the lock ("Locked 2 h 10 min before kick-off"), why
+	// an upcoming match has no pick, and why the model's numbers are hidden
+	// (model is null when it knows nothing about the teams).
+	Lock      *LockOut   `json:"lock"`
+	NoPick    *NoPickOut `json:"no_pick"`
+	ModelNote string     `json:"model_note,omitempty"`
 }
 
 // FixtureQuery filters the list.
@@ -1369,7 +1379,14 @@ func (s *Service) Fixtures(q FixtureQuery) ([]FixtureRow, error) {
 		if !f.Kickoff.After(now) {
 			kind = "frozen"
 		}
+		var md ModelData
 		if s.DB.Where("fixture_id = ? AND kind = ?", f.ID, kind).Limit(1).Find(&p).RowsAffected > 0 {
+			md = s.modelDataFor(f, &p) // v2.19.1: no numbers without data (lock_gate.go)
+			if !md.Solid {
+				r.ModelNote = md.Why
+			}
+		}
+		if md.HasData {
 			pp = &p
 			r.Model = &struct {
 				Home float64 `json:"home"`
@@ -1391,7 +1408,7 @@ func (s *Service) Fixtures(q FixtureQuery) ([]FixtureRow, error) {
 			}
 		}
 		r.Market, r.MarketSource = mv.Fair1X2, mv.FairSource
-		if r.Model != nil && f.Kickoff.After(now) {
+		if r.Model != nil && md.Solid && f.Kickoff.After(now) {
 			for _, v := range valueRows(p, mv, st.MinEdge, st.KellyFraction, st.KellyCap, 0, "") {
 				if v.Value {
 					r.Edges = append(r.Edges, v)
@@ -1406,7 +1423,8 @@ func (s *Service) Fixtures(q FixtureQuery) ([]FixtureRow, error) {
 		if x, ok := vrows[f.ID]; ok {
 			vr = &x
 		}
-		r.Verdict, r.ResultCheck = s.fixtureWin(f, c, mv, pp, vr)
+		lv := s.fixtureLock(f, c, mv, pp, vr) // v2.19.1: lock on view, lock, no-pick reason (lock.go)
+		r.Verdict, r.ResultCheck, r.Lock, r.NoPick = lv.Verdict, lv.Check, lv.Lock, lv.NoPick
 		if q.MinTier != "" && (r.Verdict == nil || tierRank(r.Verdict.Tier.Key) > tierRank(q.MinTier)) {
 			continue
 		}

@@ -40,6 +40,8 @@ type BetView struct {
 	Score           ScoreOut `json:"score"`
 	InPlay          bool     `json:"in_play_bet"`
 	PotentialReturn float64  `json:"potential_return"`
+	// v2.19.1: DASYIN's locked pick for the match and whether it was right (lock.go).
+	Locked *LockedPick `json:"dasyin_pick"`
 }
 
 func (s *Service) currencyOf(org string) string {
@@ -189,7 +191,8 @@ func (s *Service) view(b Bet) BetView {
 	s.DB.Where("id = ?", b.FixtureID).Limit(1).Find(&f)
 	h, a := s.teamRef(f.HomeID), s.teamRef(f.AwayID)
 	v := BetView{Bet: b, Label: SelectionLabel(b.Market, b.Selection, b.Line, h.Name, a.Name), MarketLabel: MarketLabels[b.Market], Home: h, Away: a,
-		Competition: s.compName(f.CompetitionID), Status90: f.Status, Score: scoreOf(f), InPlay: !b.PlacedAt.Before(b.Kickoff), PotentialReturn: round2(b.Stake * b.Odds)}
+		Competition: s.compName(f.CompetitionID), Status90: f.Status, Score: scoreOf(f), InPlay: !b.PlacedAt.Before(b.Kickoff), PotentialReturn: round2(b.Stake * b.Odds),
+		Locked: s.lockedPickFor(f)}
 	if v.Tags == nil {
 		v.Tags = []string{}
 	}

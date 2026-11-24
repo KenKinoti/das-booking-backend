@@ -84,7 +84,7 @@ type VerdictRow struct {
 	FavP          *float64     `json:"fav_p"`
 	NoMarket      bool         `json:"no_market"`
 	GradedAt      *time.Time   `json:"graded_at" gorm:"index"`
-	Status        string       `json:"status" gorm:"type:varchar(10);index"` // "" | correct | wrong | void
+	Status        string       `json:"status" gorm:"type:varchar(10);index"` // "" | correct | wrong | void | no_data (v2.19.1)
 	Score         string       `json:"score" gorm:"type:varchar(8)"`
 	Outcome       string       `json:"outcome" gorm:"type:varchar(2)"`
 	PickOK        *bool        `json:"pick_ok"`
@@ -96,6 +96,13 @@ type VerdictRow struct {
 	ResultSource  string       `json:"result_source" gorm:"type:varchar(14)"`
 	Check         *ResultCheck `json:"check" gorm:"column:check_json;type:text;serializer:json"`
 	UpdatedAt     time.Time    `json:"updated_at"`
+	// v2.19.1 (lock.go): locked early and refreshed until kickoff. Status
+	// "no_data" = locked as "no pick — not enough data" (Reason; never graded).
+	FirstLockedAt *time.Time `json:"first_locked_at"`
+	CheckedAt     *time.Time `json:"checked_at"`
+	Refreshes     int        `json:"refreshes"`
+	Reason        string     `json:"reason" gorm:"type:varchar(300)"`
+	Gate          *GateOut   `json:"gate" gorm:"column:gate_json;type:text;serializer:json"`
 }
 
 func (VerdictRow) TableName() string { return "fb_verdicts" }

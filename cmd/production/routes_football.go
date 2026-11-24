@@ -31,7 +31,9 @@ import (
 //
 // Env: FOOTBALL_APIFOOTBALL_BASE, FOOTBALL_ODDSAPI_BASE (tests: the fakes),
 // FOOTBALL_TEST_CLOCK=1 (test clock endpoint), FOOTBALL_SCHEDULER=off (no
-// background fetching; manual refresh still works).
+// background fetching, catch-up or self-heal passes; manual refresh and the
+// tick still work), FOOTBALL_TICK_TOKEN (optional: the tick then needs the
+// X-Tick-Token header), FOOTBALL_CATCHUP_DELAY_SEC (default 20).
 func init() {
 	extraRoutes = append(extraRoutes, func(auth, public *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 		svc := football.New(db)
@@ -55,7 +57,13 @@ func init() {
 			}
 			return a.Can("football", act)
 		}
-		(&football.Handler{S: svc}).RegisterRoutes(auth)
+		fh := &football.Handler{S: svc}
+		fh.RegisterRoutes(auth)
+		// v2.19.1: GET|POST /public/football/tick (Cloud Scheduler wakes the
+		// service hourly; FOOTBALL_TICK_TOKEN optional) and a catch-up pass
+		// after start-up migrations.
+		fh.RegisterPublic(public)
+		football.DBReady = dbstatus.Ready
 		svc.StartScheduler(context.Background())
 	})
 	extraMigrations = append(extraMigrations, func(db *gorm.DB) {

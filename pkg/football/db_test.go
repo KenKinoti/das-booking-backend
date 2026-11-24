@@ -54,8 +54,21 @@ func testDB(t *testing.T) *gorm.DB {
 	if err := Migrate(db); err != nil {
 		t.Fatal(err)
 	}
+	// v2.19.1 switches the keyless free sources on by default; these tests
+	// were written for "every free source off" and must not reach the real
+	// hosts (lock_db_test.go tests the defaults on a fresh schema).
+	freeAllOff(db)
 	ResetModelCache()
 	return db
+}
+
+// freeAllOff switches every free source off (test fixtures).
+func freeAllOff(db *gorm.DB) {
+	en := map[string]bool{}
+	for _, p := range FreeProviders {
+		en[p] = false
+	}
+	db.Model(&FreeSettings{}).Where("id = 1").Update("enabled", mustJSON(en))
 }
 
 func newSvc(t *testing.T, db *gorm.DB, now time.Time) *Service {
@@ -300,14 +313,16 @@ func TestPredictionFreezeAndGrade(t *testing.T) {
 		odd(f.ID, ProviderAPIFootball, "bet365", Mkt1X2, SelDraw, nil, 3.3, before), odd(f.ID, ProviderAPIFootball, "bet365", Mkt1X2, SelAway, nil, 3.5, before)}); err != nil {
 		t.Fatal(err)
 	}
-	// Not yet: freezing happens in the last 30 minutes.
+	// v2.19.1: locked early (here 45 minutes before kickoff; until v2.19.0
+	// only in the last 30 minutes) and refreshed only when the model's
+	// numbers change.
 	s.SetClock(ko.Add(-45 * time.Minute))
-	if s.FreezeDue() != 0 {
-		t.Fatal("frozen too early")
+	if s.FreezeDue() != 1 {
+		t.Fatal("not locked early")
 	}
 	s.SetClock(ko.Add(-20 * time.Minute))
-	if s.FreezeDue() != 1 || s.FreezeDue() != 0 {
-		t.Fatal("freeze once")
+	if s.FreezeDue() != 0 || s.FreezeDue() != 0 {
+		t.Fatal("refreshed without a change")
 	}
 	var fr Prediction
 	db.Where("fixture_id = ? AND kind = 'frozen'", f.ID).First(&fr)

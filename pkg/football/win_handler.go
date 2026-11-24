@@ -132,7 +132,18 @@ type SourceProbOut struct {
 // winSections adds the verdict, the ✓/✗ and the new sources to the match page.
 func (s *Service) winSections(a *Analysis, f Fixture, pred *Prediction, addSrc func(SourceOut)) {
 	a.SourceProbs = []SourceProbOut{}
-	a.Verdict, a.ResultCheck = s.winForFixture(f, a.Market, pred)
+	// v2.19.1: the lock (lock on view), the no-pick reason and what the model
+	// knows; value flags only from a model that knows the teams.
+	md := s.modelDataFor(f, pred)
+	a.ModelData = &md
+	if !md.Solid {
+		a.Value = []ValueOut{}
+	}
+	if !md.HasData {
+		a.Model = nil
+	}
+	lv := s.lockForFixture(f, a.Market, pred)
+	a.Verdict, a.ResultCheck, a.Lock, a.NoPick = lv.Verdict, lv.Check, lv.Lock, lv.NoPick
 	var sps []SourceProb
 	s.DB.Where("fixture_id = ?", f.ID).Order("source").Find(&sps)
 	for _, sp := range sps {

@@ -86,11 +86,12 @@ var defaultFreeBudgets = map[string]int{ProviderOddsPapi: 230, ProviderClubElo: 
 var DefaultJackpotWeights = map[string]float64{"jackpot": 0.25, "market": 0.45, "clubelo": 0.15, "model": 0.15}
 
 func defaultFreeSettings() FreeSettings {
-	// Every free source starts switched off: a super admin turns each one on
-	// in System settings → Football data (after reading its terms).
+	// The free sources start switched off — a super admin turns each one on
+	// in System settings → Football data (after reading its terms) — except
+	// the keyless ones (v2.19.1: ClubElo, football-data.co.uk, openfootball).
 	en := map[string]bool{}
 	for _, p := range FreeProviders {
-		en[p] = false
+		en[p] = isKeyless(p)
 	}
 	b := map[string]int{}
 	for k, v := range defaultFreeBudgets {

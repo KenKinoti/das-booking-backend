@@ -9,7 +9,7 @@ import (
 )
 
 // DefaultAppVersion is the release reported by /health when APP_VERSION is not set.
-const DefaultAppVersion = "2.19.0"
+const DefaultAppVersion = "2.19.1"
 
 // AppVersion returns the running release (env APP_VERSION, default DefaultAppVersion).
 func AppVersion() string {

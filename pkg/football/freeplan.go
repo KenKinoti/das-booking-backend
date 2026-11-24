@@ -652,7 +652,12 @@ func (s *Service) RunFreeNow(ctx context.Context, providers []string, force bool
 		}
 	}
 	started := time.Now()
-	ok := s.withLock(ctx, "football:scheduler", func() { s.runFree(ctx, RunOpts{Trigger: "manual", Force: force, Only: only}, &sum) })
+	ok := s.withLock(ctx, "football:scheduler", func() {
+		s.runFree(ctx, RunOpts{Trigger: "manual", Force: force, Only: only}, &sum)
+		// v2.19.1: new prices / probabilities refresh the locked picks now (lock.go).
+		n, nd := s.LockVerdicts()
+		sum.Locked, sum.NoData = n, nd
+	})
 	if !ok {
 		return sum, ErrBusy
 	}

@@ -3,13 +3,11 @@ package football
 import (
 	"fmt"
 	"time"
-
-	"gorm.io/gorm/clause"
 )
 
-// Frozen verdicts (fb_verdicts): a fixture's verdict is frozen together with
-// the model's frozen prediction (FreezeWindow before kickoff) and refreshed
-// at every later pre-kickoff refresh of its inputs; at kickoff it is final.
+// Frozen (locked) verdicts (fb_verdicts): since v2.19.1 a fixture's pick is
+// locked early (every target fixture within the lookahead days, lock.go) and
+// refreshed whenever its inputs change; at kickoff it is final.
 // After full time it is graded once (marks stored on the row so the
 // scorecard is a query); nothing is regraded after the fact.
 
@@ -48,74 +46,13 @@ func (s *Service) predictionFor(f Fixture) *Prediction {
 	return nil
 }
 
-// liveVerdict computes a fixture's verdict now from its current inputs.
-func (s *Service) liveVerdict(f Fixture, comp Competition, mv MarketView, pred *Prediction) (*Verdict, consInputs) {
-	in := s.consensusInputs(f, mv, pred, nil)
-	return s.verdictFromInputs(f, comp, in, s.ownRecords()), in
-}
-
-// FreezeVerdicts freezes (or refreshes) the verdicts of fixtures kicking off
-// within FreezeWindow. It returns how many were stored or refreshed.
+// FreezeVerdicts locks (or refreshes) the picks of fixtures within the
+// lookahead window (v2.19.1: lock.go; until v2.19.0 only within the last
+// FreezeWindow before kickoff). It returns how many picks were stored or
+// refreshed.
 func (s *Service) FreezeVerdicts() int {
-	now := s.Now()
-	n := 0
-	// Rescheduled before kickoff: forget the old pick (a new one is frozen later).
-	var moved []int64
-	s.DB.Raw(`SELECT v.fixture_id FROM fb_verdicts v JOIN fb_fixtures f ON f.id = v.fixture_id
-		WHERE v.graded_at IS NULL AND f.status IN ('NS','TBD') AND f.kickoff > v.kickoff + interval '3 hours'`).Scan(&moved)
-	if len(moved) > 0 {
-		s.DB.Where("fixture_id IN ?", moved).Delete(&VerdictRow{})
-	}
-	for _, f := range s.verdictTargets(now, now.Add(FreezeWindow)) {
-		var row VerdictRow
-		have := s.DB.Where("fixture_id = ?", f.ID).Limit(1).Find(&row).RowsAffected > 0
-		if have && row.GradedAt != nil {
-			continue
-		}
-		comp := s.compOf(f.CompetitionID)
-		mv := s.marketView(f, nil, "")
-		pred := s.predictionFor(f)
-		in := s.consensusInputs(f, mv, pred, nil)
-		v := s.verdictFromInputs(f, comp, in, s.ownRecords())
-		if v == nil {
-			continue
-		}
-		// Refresh only when an input changed since the last freeze.
-		if have && row.InputsAt != nil && !v.AsOf.After(*row.InputsAt) && row.Verdict.Consensus.Probs["1"] == v.Consensus.Probs["1"] &&
-			row.Verdict.Consensus.Probs["X"] == v.Consensus.Probs["X"] {
-			continue
-		}
-		if s.storeFrozen(f, comp, *v, in, now) == nil {
-			n++
-		}
-	}
+	n, _ := s.LockVerdicts()
 	return n
-}
-
-// storeFrozen writes a frozen verdict row.
-func (s *Service) storeFrozen(f Fixture, comp Competition, v Verdict, in consInputs, now time.Time) error {
-	if !f.Kickoff.After(now) {
-		return inputErr("too late: the match has kicked off")
-	}
-	t := now
-	asOf := v.AsOf
-	v.Kind, v.FrozenAt = "frozen", &t
-	row := VerdictRow{FixtureID: f.ID, CompetitionID: f.CompetitionID, Kickoff: f.Kickoff, Grp: groupOf(comp), FrozenAt: now, InputsAt: &asOf, Verdict: v,
-		Pick: v.Pick, P: v.P, Tier: v.Tier.Key, Safer: v.Safer.Selection, SaferP: v.Safer.P, NoMarket: !v.Consensus.MarketUsed, UpdatedAt: now}
-	if v.Goals != nil {
-		row.GoalsPick, row.GoalsP = v.Goals.Pick, ptr(v.Goals.P)
-	}
-	if v.BTTS != nil {
-		row.BTTSPick, row.BTTSP = v.BTTS.Pick, ptr(v.BTTS.P)
-	}
-	if len(v.TopScores) > 0 {
-		row.TopScore, row.TopScoreP = v.TopScores[0].Score, v.TopScores[0].P
-	}
-	if in.Fav != nil {
-		k := MostLikely([]P3{*in.Fav})[0]
-		row.FavPick, row.FavP = selKeys[k], ptr(round4(in.Fav[k]))
-	}
-	return s.DB.Clauses(clause.OnConflict{UpdateAll: true}).Create(&row).Error
 }
 
 // fixtureScore is the 90-minute score of a finished fixture.
@@ -150,7 +87,7 @@ func (s *Service) fallbackScore(f Fixture) (int, int, string, bool) {
 func (s *Service) GradeVerdicts() int {
 	now := s.Now()
 	var rows []VerdictRow
-	s.DB.Where("graded_at IS NULL AND kickoff < ?", now.Add(-90*time.Minute)).Order("kickoff").Limit(500).Find(&rows)
+	s.DB.Where("graded_at IS NULL AND COALESCE(status, '') <> 'no_data' AND kickoff < ?", now.Add(-90*time.Minute)).Order("kickoff").Limit(500).Find(&rows)
 	n := 0
 	for _, row := range rows {
 		var f Fixture
@@ -240,33 +177,33 @@ func (s *Service) verdictRows(ids []int64) map[int64]VerdictRow {
 	return out
 }
 
-// fixtureWin returns what a fixture shows: the frozen verdict when there is
-// one, else a live verdict before kickoff (nil after kickoff), and the ✓/✗
-// once finished or void.
+// fixtureWin returns what a fixture shows: the locked pick (refreshed now
+// when it's upcoming — lock on view) and the ✓/✗ once finished or void
+// (v2.19.1: fixtureLock in lock.go also gives the lock and no-pick reason).
 func (s *Service) fixtureWin(f Fixture, comp Competition, mv MarketView, pred *Prediction, row *VerdictRow) (*Verdict, *ResultCheck) {
-	now := s.Now()
-	var v *Verdict
-	if row != nil {
-		vv := row.Verdict
-		v = &vv
-	} else if f.Kickoff.After(now) && notStartedStats[f.Status] && f.Status != "PST" {
-		v, _ = s.liveVerdict(f, comp, mv, pred)
-	}
-	return v, s.fixtureCheck(f, row)
+	lv := s.fixtureLock(f, comp, mv, pred, row)
+	return lv.Verdict, lv.Check
+}
+
+// liveVerdict computes a fixture's verdict now from its current inputs.
+func (s *Service) liveVerdict(f Fixture, comp Competition, mv MarketView, pred *Prediction) (*Verdict, consInputs) {
+	in := s.consensusInputs(f, mv, pred, nil)
+	return s.verdictFromInputs(f, comp, in, s.ownRecords()), in
 }
 
 // fixtureCheck is a fixture's ✓/✗ (nil until it is finished or void).
 func (s *Service) fixtureCheck(f Fixture, row *VerdictRow) *ResultCheck {
 	now := s.Now()
 	if row != nil && row.Check != nil {
-		return row.Check
+		return decorateCheck(row.Check, row, f)
 	}
+	noData := row != nil && row.Status == "no_data"
 	if voidStatuses[f.Status] {
 		var v *Verdict
-		if row != nil {
+		if row != nil && !noData {
 			v = &row.Verdict
 		}
-		return VoidCheck(v, voidWhy(f.Status), now, ProviderAPIFootball)
+		return decorateCheck(VoidCheck(v, voidWhy(f.Status), now, ProviderAPIFootball), row, f)
 	}
 	hg, ag, ok := fixtureScore(f)
 	if !ok {
@@ -275,8 +212,11 @@ func (s *Service) fixtureCheck(f Fixture, row *VerdictRow) *ResultCheck {
 	if row == nil {
 		return NoPickCheck(itoa(hg) + "-" + itoa(ag))
 	}
+	if noData {
+		return NoDataCheck(itoa(hg)+"-"+itoa(ag), row.Reason)
+	}
 	// Finished but not graded yet by the scheduler: the same pure grading.
-	return GradeVerdict(row.Verdict, hg, ag, s.teamName(f.HomeID), s.teamName(f.AwayID), now, ProviderAPIFootball)
+	return decorateCheck(GradeVerdict(row.Verdict, hg, ag, s.teamName(f.HomeID), s.teamName(f.AwayID), now, ProviderAPIFootball), row, f)
 }
 
 // winPass is the scheduler's v2.18 work (counts go to the run's notes so
@@ -284,16 +224,23 @@ func (s *Service) fixtureCheck(f Fixture, row *VerdictRow) *ResultCheck {
 func (s *Service) winPass(sum *RunSummary, step string) {
 	switch step {
 	case "freeze":
-		if n := s.FreezeVerdicts(); n > 0 {
+		n, nd := s.LockVerdicts() // v2.19.1: locked early, refreshed until kickoff (lock.go)
+		if n > 0 {
 			sum.Notes = append(sum.Notes, fmt.Sprintf("%d verdict(s) frozen or refreshed before kickoff", n))
 		}
+		if nd > 0 {
+			sum.Notes = append(sum.Notes, fmt.Sprintf("%d match(es) locked as \"no pick — not enough data\"", nd))
+		}
+		sum.Locked, sum.NoData = sum.Locked+n, sum.NoData+nd
 		if n := s.FreezeJackpots(); n > 0 {
 			sum.Notes = append(sum.Notes, fmt.Sprintf("%d jackpot(s) frozen at close", n))
 		}
 	case "grade":
-		if n := s.GradeVerdicts(); n > 0 {
+		n := s.GradeVerdicts()
+		if n > 0 {
 			sum.Notes = append(sum.Notes, fmt.Sprintf("%d verdict(s) marked ✓/✗", n))
 		}
+		sum.VGraded += n
 		if s.FitConsensusDue() {
 			sum.Notes = append(sum.Notes, "consensus weights refitted (weekly)")
 		}
@@ -302,10 +249,16 @@ func (s *Service) winPass(sum *RunSummary, step string) {
 
 // winForFixture is the match page's verdict and check.
 func (s *Service) winForFixture(f Fixture, mv MarketView, pred *Prediction) (*Verdict, *ResultCheck) {
+	lv := s.lockForFixture(f, mv, pred)
+	return lv.Verdict, lv.Check
+}
+
+// lockForFixture is the match page's verdict, check, lock and no-pick reason.
+func (s *Service) lockForFixture(f Fixture, mv MarketView, pred *Prediction) LockView {
 	rows := s.verdictRows([]int64{f.ID})
 	var row *VerdictRow
 	if r, ok := rows[f.ID]; ok {
 		row = &r
 	}
-	return s.fixtureWin(f, s.compOf(f.CompetitionID), mv, pred, row)
+	return s.fixtureLock(f, s.compOf(f.CompetitionID), mv, pred, row)
 }

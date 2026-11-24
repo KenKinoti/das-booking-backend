@@ -56,9 +56,11 @@ func TestWinFreezeRefreshGrade(t *testing.T) {
 	w.fixture(7000001, 39, ko, 9001, 9002, "R15")
 	w.fixture(7000002, 39, ko, 9002, 9001, "R15") // finishes without a frozen pick
 	w.market(7000001, [3]float64{1.50, 4.40, 7.30}, ko.Add(-3*time.Hour), true)
-	// Before the window: nothing frozen; the list shows a live verdict.
-	if n := s.FreezeVerdicts(); n != 0 {
-		t.Fatalf("frozen too early: %d", n)
+	// v2.19.1: locked early (3 h before kickoff; until v2.19.0 nothing was
+	// frozen before the last 30 minutes) with the market of the moment; the
+	// match without prices or history is locked as "no pick — not enough data".
+	if n := s.FreezeVerdicts(); n != 1 {
+		t.Fatalf("not locked early: %d", n)
 	}
 	rows, _ := s.Fixtures(FixtureQuery{From: ptr(ko.Add(-time.Hour)), To: ptr(ko.Add(time.Hour))})
 	var live *Verdict
@@ -66,14 +68,17 @@ func TestWinFreezeRefreshGrade(t *testing.T) {
 		if r.ID == 7000001 {
 			live = r.Verdict
 		}
+		if r.ID == 7000002 && (r.Verdict != nil || r.NoPick == nil || r.NoPick.Status != "not_enough_data") {
+			t.Fatalf("no-data row %+v %+v", r.Verdict, r.NoPick)
+		}
 	}
-	if live == nil || live.Kind != "live" || live.Pick != "1" || live.Tier.Key != "strong" || !live.Consensus.MarketUsed {
-		t.Fatalf("live verdict %+v", live)
+	if live == nil || live.Kind != "frozen" || live.LockedAt == nil || live.Pick != "1" || live.Tier.Key != "strong" || !live.Consensus.MarketUsed {
+		t.Fatalf("locked verdict %+v", live)
 	}
-	// T-25: frozen with the market of the moment.
+	// T-25: the same inputs → no refresh.
 	s.SetClock(ko.Add(-25 * time.Minute))
-	if n := s.FreezeVerdicts(); n != 1 {
-		t.Fatalf("freeze: %d", n)
+	if n := s.FreezeVerdicts(); n != 0 {
+		t.Fatalf("refreshed without new inputs: %d", n)
 	}
 	r1, ok := verdictRow(t, db, 7000001)
 	if !ok || r1.Verdict.Kind != "frozen" || r1.Verdict.FrozenAt == nil || r1.Pick != "1" || r1.FavPick != "1" || r1.Grp != "top5" || r1.GradedAt != nil {
@@ -129,8 +134,8 @@ func TestWinFreezeRefreshGrade(t *testing.T) {
 			if r.Verdict == nil || r.Verdict.Kind != "frozen" || r.ResultCheck == nil || r.ResultCheck.Status != "wrong" || *r.ResultCheck.Score != "1-1" {
 				t.Fatalf("graded row %+v %+v", r.Verdict, r.ResultCheck)
 			}
-		case 7000002:
-			if r.Verdict != nil || r.ResultCheck == nil || r.ResultCheck.Status != "no_pick" {
+		case 7000002: // v2.19.1: locked as "not enough data" (was: no pick frozen)
+			if r.Verdict != nil || r.ResultCheck == nil || r.ResultCheck.Status != "not_enough_data" || r.ResultCheck.Reason == "" {
 				t.Fatalf("no-pick row %+v", r.ResultCheck)
 			}
 		}
@@ -140,14 +145,17 @@ func TestWinFreezeRefreshGrade(t *testing.T) {
 	if err != nil || a.Verdict == nil || a.ResultCheck == nil || a.ResultCheck.Status != "wrong" || a.SourceProbs == nil {
 		t.Fatalf("analysis %v %+v", err, a.ResultCheck)
 	}
-	// Rescheduled before kickoff: the old pick is dropped and refrozen later.
+	// Rescheduled before kickoff: the old pick is dropped and (v2.19.1) a new
+	// one locked for the new date.
 	w.fixture(7000003, 39, ko.Add(24*time.Hour), 9001, 9002, "R16")
 	w.market(7000003, [3]float64{2.1, 3.3, 3.6}, ko.Add(20*time.Hour), true)
 	s.SetClock(ko.Add(24*time.Hour - 20*time.Minute))
 	s.FreezeVerdicts()
+	old, _ := verdictRow(t, db, 7000003)
 	db.Model(&Fixture{}).Where("id = 7000003").Update("kickoff", ko.Add(72*time.Hour))
+	s.SetClock(ko.Add(24*time.Hour - 19*time.Minute))
 	s.FreezeVerdicts()
-	if _, ok := verdictRow(t, db, 7000003); ok {
+	if nv, ok := verdictRow(t, db, 7000003); !ok || !nv.Kickoff.Equal(ko.Add(72*time.Hour)) || !nv.FrozenAt.After(old.FrozenAt) {
 		t.Fatal("pick of a rescheduled match kept")
 	}
 	// Abandoned after the freeze: void.

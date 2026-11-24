@@ -89,6 +89,9 @@ func fbVerdictLine(v map[string]any) map[string]any {
 		out["top_scores"] = strings.Join(scores, ", ")
 	}
 	out["kind"] = v["kind"]
+	if l := tS(v, "locked_label"); l != "" { // v2.19.1
+		out["locked"] = l
+	}
 	return out
 }
 
@@ -97,7 +100,11 @@ func fbCheckLine(rc map[string]any) map[string]any {
 	if rc == nil {
 		return nil
 	}
-	return tPick(rc, "label", "score", "summary")
+	out := tPick(rc, "label", "score", "summary")
+	if l := tS(rc, "locked_label"); l != "" { // v2.19.1: when the graded pick was locked
+		out["locked"] = l
+	}
+	return out
 }
 
 func footballScorecard(c *Ctx, a map[string]any) (any, error) {
